@@ -1,0 +1,692 @@
+// LearnSpace database schema. Keep in sync with docs/DATABASE.md.
+// Things Prisma cannot express (CHECK constraints, partial/expression/GIN indexes)
+// live in migrations/20261116000100_constraints_and_search/migration.sql.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext]
+}
+
+// ---------------------------------------------------------------- enums
+
+enum ThemePref {
+  system
+  light
+  dark
+}
+
+enum AuthProvider {
+  google
+}
+
+enum EmailTokenType {
+  verify_email
+  reset_password
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+enum MessageStatus {
+  complete
+  partial
+  error
+}
+
+enum AiAction {
+  explain_simple
+  example
+  quiz_me
+  summarize
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum TaskStatus {
+  todo
+  done
+}
+
+enum NotificationType {
+  task_reminder
+  system
+}
+
+enum StudySessionKind {
+  focus
+}
+
+enum StudySessionSource {
+  pomodoro
+  manual
+}
+
+enum AttachmentKind {
+  image
+  document
+}
+
+enum DocumentType {
+  past_question
+  slides
+  notes
+}
+
+enum DocumentStatus {
+  uploaded
+  extracting
+  ready
+  failed
+}
+
+enum DocumentJobKind {
+  extract
+  detect_questions
+  generate_set
+}
+
+enum DocumentJobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum AnswerMode {
+  full_worked
+  answers_only
+  marking_scheme
+}
+
+enum ExtractedQuestionStatus {
+  pending
+  answering
+  answered
+  error
+}
+
+enum GeneratedQuestionType {
+  mcq
+  true_false
+  short_answer
+  essay
+  fill_blank
+  calculation
+  flashcard
+}
+
+enum QuestionDifficulty {
+  easy
+  medium
+  hard
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String    @unique @db.Citext
+  name             String    @db.VarChar(100)
+  passwordHash     String?
+  emailVerified    Boolean   @default(false)
+  studentId        String?   @db.VarChar(50)
+  programme        String?   @db.VarChar(120)
+  level            String?   @db.VarChar(30)
+  university       String?   @db.VarChar(120)
+  bio              String?   @db.VarChar(500)
+  avatarUrl        String?
+  avatarPublicId   String?
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  identities     AuthIdentity[]
+  refreshTokens  RefreshToken[]
+  emailTokens    EmailToken[]
+  settings       UserSettings?
+  conversations  Conversation[]
+  messages       Message[]
+  aiUsage        AiUsageDaily[]
+  courses        Course[]
+  notes          Note[]
+  tasks          Task[]
+  notifications  Notification[]
+  studySessions  StudySession[]
+  decks          Deck[]
+  quizzes        Quiz[]
+  quizAttempts   QuizAttempt[]
+  studyDocuments           StudyDocument[]
+  documentChunks           DocumentChunk[]
+  attachments              MessageAttachment[]
+  documents                Document[]
+  documentJobs             DocumentJob[]
+  extractedQuestions       ExtractedQuestion[]
+  generatedQuestionSets    GeneratedQuestionSet[]
+  documentPracticeAttempts DocumentPracticeAttempt[]
+
+  @@map("users")
+}
+
+model AuthIdentity {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String       @db.Uuid
+  provider       AuthProvider
+  providerUserId String
+  email          String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+model RefreshToken {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @db.Uuid
+  familyId     String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime  @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  replacedById String?   @db.Uuid
+  persistent   Boolean   @default(false)
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model EmailToken {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String         @db.Uuid
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime       @db.Timestamptz(3)
+  usedAt    DateTime?      @db.Timestamptz(3)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("email_tokens")
+}
+
+model UserSettings {
+  userId               String    @id @db.Uuid
+  theme                ThemePref @default(system)
+  timezone             String    @default("UTC")
+  notifyInApp          Boolean   @default(true)
+  notifyEmailReminders Boolean   @default(false)
+  notifyProductEmail   Boolean   @default(false)
+  focusMinutes         Int       @default(25)
+  shortBreakMinutes    Int       @default(5)
+  longBreakMinutes     Int       @default(15)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ---------------------------------------------------------------- AI chat
+
+model Conversation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  title     String   @default("New chat") @db.VarChar(120)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+  attachments MessageAttachment[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String        @db.Uuid
+  userId         String        @db.Uuid
+  role           MessageRole
+  content        String
+  status         MessageStatus @default(complete)
+  action         AiAction?
+  inputTokens    Int?
+  outputTokens   Int?
+  model          String?
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments  MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String         @db.Uuid
+  conversationId String         @db.Uuid
+  messageId      String?        @db.Uuid
+  originalName   String         @db.VarChar(255)
+  mimeType       String         @db.VarChar(120)
+  kind           AttachmentKind
+  sizeBytes      Int
+  storageKey     String
+  storageUrl     String
+  extractedText  String?
+  truncated      Boolean        @default(false)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+model AiUsageDaily {
+  userId       String @db.Uuid
+  day          DateTime @db.Date
+  inputTokens  Int    @default(0)
+  outputTokens Int    @default(0)
+  requests     Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@map("ai_usage_daily")
+}
+
+// ---------------------------------------------------------------- notes and planner
+
+model Course {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  name      String   @db.VarChar(80)
+  color     String?  @db.VarChar(7)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     Note[]
+  tasks     Task[]
+  documents Document[]
+
+  @@index([userId])
+  @@map("courses")
+}
+
+model Note {
+  id           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String                   @db.Uuid
+  courseId     String?                  @db.Uuid
+  title        String                   @db.VarChar(200)
+  body         String                   @default("")
+  aiSummary    String?
+  // Generated column (title weight A, body weight B); created in the migration SQL.
+  searchVector Unsupported("tsvector")?
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz(3)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  decks  Deck[]
+  quizzes Quiz[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, courseId])
+  @@map("notes")
+}
+
+model Task {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String       @db.Uuid
+  courseId              String?      @db.Uuid
+  title                 String       @db.VarChar(200)
+  description           String?
+  dueAt                 DateTime?    @db.Timestamptz(3)
+  priority              TaskPriority @default(medium)
+  status                TaskStatus   @default(todo)
+  completedAt           DateTime?    @db.Timestamptz(3)
+  reminderOffsetMinutes Int?
+  remindAt              DateTime?    @db.Timestamptz(3)
+  reminderSentAt        DateTime?    @db.Timestamptz(3)
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime     @updatedAt @db.Timestamptz(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course        Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  notifications Notification[]
+  studySessions StudySession[]
+
+  @@index([userId, status, dueAt])
+  @@map("tasks")
+}
+
+model Notification {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String           @db.Uuid
+  type          NotificationType
+  title         String           @db.VarChar(200)
+  body          String
+  taskId        String?          @db.Uuid
+  dueAtSnapshot DateTime?        @db.Timestamptz(3)
+  readAt        DateTime?        @db.Timestamptz(3)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, type, dueAtSnapshot])
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model StudySession {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String             @db.Uuid
+  taskId          String?            @db.Uuid
+  kind            StudySessionKind   @default(focus)
+  startedAt       DateTime           @db.Timestamptz(3)
+  durationSeconds Int
+  source          StudySessionSource @default(pomodoro)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  // Also makes POST /study-sessions idempotent across retries.
+  @@unique([userId, startedAt])
+  @@map("study_sessions")
+}
+
+// ---------------------------------------------------------------- flashcards and quizzes
+
+model Deck {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  noteId    String?  @db.Uuid
+  title     String   @db.VarChar(150)
+  topic     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note                  Note?                  @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  cards                 Card[]
+  generatedQuestionSets GeneratedQuestionSet[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("decks")
+}
+
+model Card {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deckId    String   @db.Uuid
+  front     String
+  back      String
+  position  Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  @@index([deckId, position])
+  @@map("cards")
+}
+
+model Quiz {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  noteId    String?  @db.Uuid
+  title     String   @db.VarChar(150)
+  topic     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note                  Note?                  @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  questions             QuizQuestion[]
+  attempts              QuizAttempt[]
+  generatedQuestionSets GeneratedQuestionSet[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId       String @db.Uuid
+  position     Int
+  prompt       String
+  options      Json
+  correctIndex Int    @db.SmallInt
+  explanation  String
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId, position])
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId  String   @db.Uuid
+  userId  String   @db.Uuid
+  answers Json
+  score   Int      @db.SmallInt
+  total   Int      @db.SmallInt
+  takenAt DateTime @default(now()) @db.Timestamptz(3)
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([quizId, takenAt])
+  @@index([userId, takenAt])
+  @@map("quiz_attempts")
+}
+
+// ---------------------------------------------------------------- PDF lecture notes (RAG)
+
+model StudyDocument {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  filename  String   @db.VarChar(255)
+  sizeBytes Int
+  pageCount Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks DocumentChunk[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("study_documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String   @db.Uuid
+  userId     String   @db.Uuid
+  chunkIndex Int
+  content    String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  document StudyDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, chunkIndex])
+  @@index([userId])
+  @@map("document_chunks")
+}
+
+// ---------------------------------------------------------------- Study from Documents
+
+model Document {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String         @db.Uuid
+  courseId      String?        @db.Uuid
+  title         String         @db.VarChar(200)
+  type          DocumentType
+  originalName  String         @db.VarChar(255)
+  mimeType      String         @db.VarChar(120)
+  kind          AttachmentKind
+  sizeBytes     Int
+  storageKey    String
+  storageUrl    String
+  extractedText String         @default("")
+  pagesJson     Json           @default("[]")
+  pageCount     Int            @default(0)
+  truncated     Boolean        @default(false)
+  status        DocumentStatus @default(uploaded)
+  errorMessage  String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course             Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  jobs               DocumentJob[]
+  extractedQuestions ExtractedQuestion[]
+  questionSets       GeneratedQuestionSet[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, type])
+  @@index([userId, courseId])
+  @@map("documents")
+}
+
+model DocumentJob {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String            @db.Uuid
+  userId     String            @db.Uuid
+  kind       DocumentJobKind
+  status     DocumentJobStatus @default(queued)
+  progress   Int               @default(0)
+  payload    Json              @default("{}")
+  error      String?
+  attempts   Int               @default(0)
+  runAt      DateTime          @default(now()) @db.Timestamptz(3)
+  startedAt  DateTime?         @db.Timestamptz(3)
+  finishedAt DateTime?         @db.Timestamptz(3)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAt])
+  @@index([documentId, createdAt(sort: Desc)])
+  @@map("document_jobs")
+}
+
+model ExtractedQuestion {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId       String                  @db.Uuid
+  userId           String                  @db.Uuid
+  position         Int
+  section          String?                 @db.VarChar(120)
+  questionNumber   String                  @db.VarChar(40)
+  prompt           String
+  marks            Int?                    @db.SmallInt
+  instructions     String?
+  unclear          Boolean                 @default(false)
+  unclearReason    String?
+  selected         Boolean                 @default(true)
+  answerMode       AnswerMode              @default(full_worked)
+  answerMarkdown   String?
+  thinkingMarkdown String?
+  citedSourcesJson Json?
+  status           ExtractedQuestionStatus @default(pending)
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                @updatedAt @db.Timestamptz(3)
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, position])
+  @@index([userId])
+  @@map("extracted_questions")
+}
+
+model GeneratedQuestionSet {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId   String   @db.Uuid
+  userId       String   @db.Uuid
+  title        String   @db.VarChar(200)
+  settingsJson Json
+  quizId       String?  @db.Uuid
+  deckId       String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  document  Document                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz      Quiz?                     @relation(fields: [quizId], references: [id], onDelete: SetNull)
+  deck      Deck?                     @relation(fields: [deckId], references: [id], onDelete: SetNull)
+  questions GeneratedQuestion[]
+  attempts  DocumentPracticeAttempt[]
+
+  @@index([documentId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("generated_question_sets")
+}
+
+model GeneratedQuestion {
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  setId         String                @db.Uuid
+  position      Int
+  type          GeneratedQuestionType
+  difficulty    QuestionDifficulty
+  topic         String                @db.VarChar(160)
+  prompt        String
+  optionsJson   Json?
+  correctAnswer String
+  explanation   String
+  sourceRef     String                @db.VarChar(120)
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+
+  set GeneratedQuestionSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+
+  @@index([setId, position])
+  @@map("generated_questions")
+}
+
+model DocumentPracticeAttempt {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  setId          String   @db.Uuid
+  userId         String   @db.Uuid
+  answersJson    Json
+  score          Int      @db.SmallInt
+  total          Int      @db.SmallInt
+  weakTopicsJson Json     @default("[]")
+  feedbackJson   Json     @default("[]")
+  takenAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  set  GeneratedQuestionSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  user User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([setId, takenAt(sort: Desc)])
+  @@index([userId, takenAt(sort: Desc)])
+  @@map("document_practice_attempts")
+}
+

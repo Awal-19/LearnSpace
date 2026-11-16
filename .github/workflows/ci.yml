@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & integration tests
+        run: npm test
+
+      - name: Build client & server
+        run: npm run build
+        env:
+          VITE_API_URL: /api/v1
+
+      - name: Ensure no server secrets in client bundle
+        run: |
+          if grep -rn "GEMINI_API_KEY\|JWT_SECRET\|CLOUDINARY_URL" client/dist; then
+            echo "ERROR: Server secret name leaked into client/dist"
+            exit 1
+          fi

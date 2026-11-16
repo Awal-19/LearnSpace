@@ -1,0 +1,79 @@
+@import './design/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-app text-fg antialiased;
+    font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-semibold tracking-tight;
+  }
+
+  /* Visible keyboard focus everywhere (WCAG 2.4.7) */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-app;
+  }
+
+  ::selection {
+    @apply bg-primary-200 text-fg;
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md
+      focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-white;
+  }
+
+  /* Animated gradient used on the auth panel (CSS only; paused for reduced motion) */
+  .auth-gradient {
+    background: linear-gradient(
+      135deg,
+      rgb(var(--color-primary-600)),
+      rgb(var(--color-primary-400)),
+      #8b5cf6,
+      rgb(var(--color-primary-700))
+    );
+    background-size: 300% 300%;
+    animation: gradient-shift 16s ease infinite;
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-gradient {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

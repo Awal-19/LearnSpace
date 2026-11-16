@@ -1,0 +1,76 @@
+/*
+ * Design tokens: the ONE place where colours, type, spacing, radii, shadows and motion are defined.
+ * Colours are space-separated RGB channels so Tailwind can apply alpha (bg-primary-600/50).
+ * Keep in sync with docs/UI_UX.md section 5.
+ */
+:root {
+  /* Colour: one primary + neutrals + semantic */
+  --color-primary-50: 238 242 255;
+  --color-primary-100: 224 231 255;
+  --color-primary-200: 199 210 254;
+  --color-primary-300: 165 180 252;
+  --color-primary-400: 129 140 248;
+  --color-primary-500: 99 102 241;
+  --color-primary-600: 79 70 229;
+  --color-primary-700: 67 56 202;
+
+  --color-bg: 249 250 251;
+  --color-surface: 255 255 255;
+  --color-surface-2: 243 244 246;
+  --color-border: 229 231 235;
+  --color-text: 17 24 39;
+  --color-text-muted: 75 85 99;
+
+  --color-success: 22 163 74;
+  --color-warning: 217 119 6;
+  --color-danger: 220 38 38;
+  --color-info: 37 99 235;
+
+  /* Shape and depth */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.12);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 400ms;
+
+  /* Layout */
+  --sidebar-w: 16rem;
+  --content-max: 72rem;
+  --bottom-nav-h: 4rem;
+}
+
+.dark {
+  --color-bg: 11 15 25;
+  --color-surface: 17 24 39;
+  --color-surface-2: 31 41 55;
+  --color-border: 55 65 81;
+  --color-text: 243 244 246;
+  --color-text-muted: 156 163 175;
+
+  /* Lighter accent for text/rings on dark. Button fill (600) stays the same for white-text contrast. */
+  --color-primary-500: 129 140 248;
+  --color-primary-50: 30 27 75;
+  --color-primary-100: 49 46 129;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}
+
