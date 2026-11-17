@@ -7,7 +7,7 @@ describe('loadEnv (T-X-04)', () => {
     const env = testEnv();
     expect(env.PORT).toBe(4000);
     expect(env.TRUST_PROXY).toBe(0);
-    expect(env.RATE_LIMIT_GLOBAL_PER_MIN).toBe(300);
+    expect(env.RATE_LIMIT_GLOBAL_PER_MIN).toBe(600);
     expect(env.RESEND_API_KEY).toBeUndefined();
   });
 

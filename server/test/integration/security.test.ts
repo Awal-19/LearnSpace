@@ -56,6 +56,7 @@ describe('cross-cutting security & IDOR sweep (T-X-*)', () => {
         prisma,
         email: {
           sendVerificationEmail: async () => undefined,
+          sendOtpEmail: async () => undefined,
           sendPasswordResetEmail: async () => undefined,
           sendTaskReminderEmail: async () => undefined,
         },

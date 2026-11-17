@@ -363,5 +363,58 @@ describe('AI assistant integration (/api/v1/conversations & /api/v1/ai/usage)', 
     expect(budgetRes.status).toBe(429);
     expect(budgetRes.body.error.code).toBe('AI_BUDGET_EXCEEDED');
   });
+
+  it('allows unlimited daily tokens when dailyTokenLimit is null', async () => {
+    const unlimitedAi = createAiService({
+      prisma: db.prisma,
+      llm: {
+        modelName: 'gemini-test',
+        isConfigured: () => true,
+        stream: () => streamImpl(),
+        generateText: async () => ({ text: 'ok' }),
+      },
+      logger,
+      dailyTokenLimit: null,
+    });
+    const unlimitedApp = createApp(
+      env,
+      {
+        checkDb: async () => undefined,
+        ai: {
+          service: unlimitedAi,
+          isEmailVerified: async (uid) => Boolean(db.users.get(uid)?.emailVerified),
+        },
+      },
+      logger,
+    );
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    db.usageDaily.set(`${userId}:${todayStr}`, {
+      userId,
+      day: todayStr,
+      inputTokens: DAILY_TOKEN_LIMIT * 10,
+      outputTokens: 0,
+      requests: 100,
+    });
+
+    const usageRes = await request(unlimitedApp)
+      .get('/api/v1/ai/usage')
+      .set('Authorization', `Bearer ${token}`);
+    expect(usageRes.status).toBe(200);
+    expect(usageRes.body.tokenLimit).toBeNull();
+
+    const created = await request(unlimitedApp)
+      .post('/api/v1/conversations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    const convId = created.body.id as string;
+
+    const msgRes = await request(unlimitedApp)
+      .post(`/api/v1/conversations/${convId}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ content: 'Still works over 100k' });
+    expect(msgRes.status).toBe(200);
+    expect(msgRes.text).toContain('event: done');
+  });
 });
 

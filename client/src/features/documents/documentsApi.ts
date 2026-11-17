@@ -115,21 +115,31 @@ export interface GeneratedQuestionSet {
   attempts?: DocumentPracticeAttempt[];
 }
 
-export function listDocuments(params?: {
-  type?: DocumentType;
-  courseId?: string;
-  q?: string;
-}): Promise<{ documents: StudyDoc[] }> {
+export function listDocuments(
+  params?: {
+    type?: DocumentType;
+    courseId?: string;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{ documents: StudyDoc[]; total: number; page: number; pageSize: number }> {
   const sp = new URLSearchParams();
   if (params?.type) sp.set('type', params.type);
   if (params?.courseId) sp.set('courseId', params.courseId);
   if (params?.q) sp.set('q', params.q);
+  if (params?.page) sp.set('page', String(params.page));
+  if (params?.pageSize) sp.set('pageSize', String(params.pageSize));
   const qs = sp.toString();
-  return request<{ documents: StudyDoc[] }>(`/documents${qs ? `?${qs}` : ''}`);
+  return request<{ documents: StudyDoc[]; total: number; page: number; pageSize: number }>(
+    `/documents${qs ? `?${qs}` : ''}`,
+    { signal },
+  );
 }
 
-export function getDocumentDetail(id: string): Promise<DocumentDetailResponse> {
-  return request<DocumentDetailResponse>(`/documents/${id}`);
+export function getDocumentDetail(id: string, signal?: AbortSignal): Promise<DocumentDetailResponse> {
+  return request<DocumentDetailResponse>(`/documents/${id}`, { signal });
 }
 
 export function deleteDocument(id: string): Promise<void> {

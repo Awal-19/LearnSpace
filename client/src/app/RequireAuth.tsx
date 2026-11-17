@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Skeleton } from '../design';
+import { setPendingVerifyEmail } from '../features/auth/pendingVerify';
 import { useAuth } from './AuthContext';
 
 function FullPageLoading() {
@@ -16,13 +17,17 @@ function FullPageLoading() {
 
 /** Client-side route guard. The server independently enforces auth on every endpoint. */
 export function RequireAuth() {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const location = useLocation();
 
   if (status === 'loading') return <FullPageLoading />;
   if (status === 'unauthenticated') {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/login?next=${next}`} replace />;
+  }
+  if (user && !user.emailVerified) {
+    setPendingVerifyEmail(user.email);
+    return <Navigate to="/verify-email" replace />;
   }
   return <Outlet />;
 }

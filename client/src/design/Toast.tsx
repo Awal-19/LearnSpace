@@ -17,6 +17,7 @@ interface Toast {
   kind: ToastKind;
   title: string;
   description?: string;
+  dedupeKey?: string;
 }
 
 interface ToastApi {
@@ -38,15 +39,36 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
 
+  const timers = useRef<Map<number, number>>(new Map());
+
   const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      timers.current.delete(id);
+    }
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
   const show = useCallback<ToastApi['show']>(
-    ({ kind = 'info', ...toast }) => {
+    ({ kind = 'info', dedupeKey, ...toast }) => {
+      const key = dedupeKey ?? `${kind}:${toast.title}`;
       const id = nextId.current++;
-      setToasts((current) => [...current.slice(-3), { id, kind, ...toast }]);
-      window.setTimeout(() => dismiss(id), DURATION_MS);
+      setToasts((current) => {
+        const existing = current.find((t) => (t.dedupeKey ?? `${t.kind}:${t.title}`) === key);
+        if (existing) {
+          const oldTimer = timers.current.get(existing.id);
+          if (oldTimer !== undefined) {
+            window.clearTimeout(oldTimer);
+            timers.current.delete(existing.id);
+          }
+          const updated = { id, kind, dedupeKey: key, ...toast };
+          return current.map((t) => (t.id === existing.id ? updated : t));
+        }
+        return [...current.slice(-3), { id, kind, dedupeKey: key, ...toast }];
+      });
+      const timer = window.setTimeout(() => dismiss(id), DURATION_MS);
+      timers.current.set(id, timer);
     },
     [dismiss],
   );

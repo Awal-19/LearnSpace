@@ -171,10 +171,20 @@ export function FocusPage() {
     await qc.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
+  const totalSeconds = Math.max(1, durations[mode]);
+  const pctRemaining = Math.max(0, Math.min(1, remaining / totalSeconds));
+  const ringRadius = 104;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const strokeOffset = ringCircumference * (1 - pctRemaining);
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Card className="p-6 text-center space-y-6">
-        <div className="flex justify-center gap-2" role="tablist" aria-label="Timer mode">
+      <Card className="relative overflow-hidden border-primary-200/80 bg-gradient-to-b from-primary-50/70 via-surface to-surface p-6 text-center dark:border-primary-500/20 dark:from-primary-600/10 sm:p-8 space-y-6">
+        <div
+          className="inline-flex justify-center gap-1 rounded-xl border border-line bg-surface2/70 p-1"
+          role="tablist"
+          aria-label="Timer mode"
+        >
           {(
             [
               { id: 'focus', label: 'Focus' },
@@ -188,10 +198,10 @@ export function FocusPage() {
               role="tab"
               aria-selected={mode === m.id}
               onClick={() => switchMode(m.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                 mode === m.id
-                  ? 'bg-primary-600 text-white'
-                  : 'border border-line bg-bg text-muted hover:text-fg'
+                  ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
+                  : 'text-muted hover:text-fg'
               }`}
             >
               {m.label}
@@ -199,23 +209,53 @@ export function FocusPage() {
           ))}
         </div>
 
-        <p
-          className="font-mono text-6xl font-bold tracking-tight text-fg sm:text-7xl"
-          aria-live="off"
-        >
-          {formatClock(remaining)}
-        </p>
+        <div className="relative mx-auto flex h-60 w-60 items-center justify-center">
+          <svg className="h-full w-full -rotate-90" viewBox="0 0 240 240" aria-hidden="true">
+            <circle
+              cx="120"
+              cy="120"
+              r={ringRadius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="10"
+              className="text-surface2"
+            />
+            <circle
+              cx="120"
+              cy="120"
+              r={ringRadius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeDasharray={ringCircumference}
+              strokeDashoffset={strokeOffset}
+              className="text-primary-600 transition-[stroke-dashoffset] duration-base ease-soft dark:text-primary-400"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <p
+              className="font-mono text-5xl font-bold tracking-tight text-fg tabular-nums sm:text-6xl"
+              aria-live="off"
+            >
+              {formatClock(remaining)}
+            </p>
+            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">
+              {mode === 'focus' ? 'Deep Work' : mode === 'short' ? 'Short Break' : 'Long Break'}
+            </span>
+          </div>
+        </div>
 
         {mode === 'focus' ? (
           <div className="mx-auto max-w-xs text-left">
-            <label htmlFor="focus-task" className="mb-1 block text-xs font-medium text-muted">
+            <label htmlFor="focus-task" className="mb-1.5 block text-xs font-medium text-muted">
               Link to task (optional)
             </label>
             <select
               id="focus-task"
               value={taskId}
               onChange={(e) => setTaskId(e.target.value)}
-              className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-sm text-fg"
+              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="">General study</option>
               {(tasksQuery.data?.items ?? []).map((t) => (

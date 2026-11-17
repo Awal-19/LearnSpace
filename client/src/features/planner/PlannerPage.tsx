@@ -107,8 +107,22 @@ export function PlannerPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Card className="p-5">
-        <form onSubmit={handleAdd} className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end">
+      <div className="flex items-start gap-4 rounded-2xl border border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-5 shadow-sm dark:border-line/90 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-6">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400">
+          <CalendarClock className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
+            Study Planner
+          </h1>
+          <p className="mt-0.5 text-sm text-muted">
+            Organize coursework, deadlines, and revision sessions with smart reminders.
+          </p>
+        </div>
+      </div>
+
+      <Card className="p-5 sm:p-6">
+        <form onSubmit={handleAdd} className="grid gap-3.5 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end">
           <Input
             label="New task"
             placeholder="e.g. Review Chapter 4 lecture notes"
@@ -124,7 +138,7 @@ export function PlannerPage() {
               type="datetime-local"
               value={dueLocal}
               onChange={(e) => setDueLocal(e.target.value)}
-              className="h-10 rounded-lg border border-line bg-bg px-2.5 text-sm text-fg"
+              className="h-10 rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             />
           </div>
           <div>
@@ -135,7 +149,7 @@ export function PlannerPage() {
               id="task-priority"
               value={priority}
               onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')}
-              className="h-10 rounded-lg border border-line bg-bg px-2.5 text-sm text-fg"
+              className="h-10 rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -151,7 +165,7 @@ export function PlannerPage() {
               value={offset}
               disabled={!dueLocal}
               onChange={(e) => setOffset(e.target.value)}
-              className="h-10 rounded-lg border border-line bg-bg px-2.5 text-sm text-fg disabled:opacity-50"
+              className="h-10 rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none disabled:opacity-50"
             >
               <option value="">None</option>
               <option value="0">At due time</option>
@@ -166,7 +180,11 @@ export function PlannerPage() {
         </form>
       </Card>
 
-      <div role="tablist" aria-label="Task views" className="flex flex-wrap gap-2">
+      <div
+        role="tablist"
+        aria-label="Task views"
+        className="inline-flex flex-wrap gap-1 rounded-xl bg-surface2/80 p-1 ring-1 ring-line/60"
+      >
         {VIEWS.map((v) => (
           <button
             key={v.id}
@@ -174,10 +192,10 @@ export function PlannerPage() {
             role="tab"
             aria-selected={view === v.id}
             onClick={() => setView(v.id)}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-base ease-soft ${
               view === v.id
-                ? 'bg-primary-600 text-white'
-                : 'border border-line bg-surface text-muted hover:text-fg'
+                ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
+                : 'text-muted hover:text-fg'
             }`}
           >
             {v.label}
@@ -185,7 +203,7 @@ export function PlannerPage() {
         ))}
       </div>
 
-      <Card className="divide-y divide-line">
+      <Card className="divide-y divide-line/80 overflow-hidden !p-0">
         {tasksQuery.isLoading ? (
           <div className="space-y-3 p-5">
             <Skeleton className="h-12 w-full" />
@@ -205,18 +223,21 @@ export function PlannerPage() {
           </div>
         ) : (
           tasksQuery.data!.items.map((task) => (
-            <div key={task.id} className="flex items-center justify-between gap-3 p-4">
+            <div
+              key={task.id}
+              className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-surface2/40"
+            >
               <div className="flex min-w-0 items-center gap-3">
                 <button
                   type="button"
                   aria-label={task.status === 'done' ? `Mark ${task.title} as todo` : `Complete ${task.title}`}
                   onClick={() => void toggleDone(task)}
-                  className="text-primary-600 hover:text-primary-700"
+                  className="text-primary-600 transition-transform hover:scale-105 hover:text-primary-700"
                 >
                   {task.status === 'done' ? (
                     <CheckCircle2 className="h-5 w-5" />
                   ) : (
-                    <Circle className="h-5 w-5 text-muted" />
+                    <Circle className="h-5 w-5 text-muted hover:text-primary-500" />
                   )}
                 </button>
                 <div className="min-w-0">
@@ -250,7 +271,7 @@ export function PlannerPage() {
                   type="button"
                   aria-label={`Delete ${task.title}`}
                   onClick={() => void handleDelete(task.id)}
-                  className="rounded p-1.5 text-muted hover:bg-surface2 hover:text-danger"
+                  className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-danger"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

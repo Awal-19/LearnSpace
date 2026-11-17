@@ -14,6 +14,9 @@ export interface AuthUser {
   email: string;
   name: string;
   emailVerified: boolean;
+  role?: 'student' | 'admin' | 'super_admin';
+  status?: 'active' | 'suspended';
+  twoFactorEnabled?: boolean;
   studentId?: string | null;
   programme?: string | null;
   level?: string | null;

@@ -106,9 +106,10 @@ export function documentsRouter({
     auth,
     validate({ query: listDocumentsQuerySchema }),
     asyncHandler(async (req, res) => {
-      const query = req.query as z.infer<typeof listDocumentsQuerySchema>;
-      const list = await documents.list(req.user!.id, query);
-      res.json({ documents: list });
+      const query = req.query as unknown as z.infer<typeof listDocumentsQuerySchema>;
+      const result = await documents.list(req.user!.id, query);
+      res.setHeader('Cache-Control', 'private, max-age=10');
+      res.json(result);
     }),
   );
 

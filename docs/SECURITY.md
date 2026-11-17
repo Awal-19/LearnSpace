@@ -65,3 +65,12 @@ ESLint security rules (`eslint-plugin-security`, no `dangerouslySetInnerHTML`), 
 ## 8. Incident basics
 Rotate `JWT_SECRET` (invalidates all access tokens; refresh tokens survive) and `DATABASE_URL`/API keys via the host dashboards; revoke all refresh tokens with a single SQL update; logs carry request IDs for tracing. Sentry alerts on error spikes (Phase 8).
 
+## 9. Admin Dashboard Threat Model
+| Threat | Mitigation |
+|---|---|
+| **Privilege escalation** | Roles (`student`, `admin`, `super_admin`) are enforced server-side via `requireAdmin` and `requireSuperAdmin` on every `/api/admin/*` route; regular admins cannot promote or demote roles. First admin is seeded from `ADMIN_EMAIL` via `npm run admin:seed -w server` with no hardcoded passwords. |
+| **Account takeover of admin** | Admin login requires a verified email, supports optional email OTP 2FA (`admin_2fa`), and issues shorter session lifetimes (5-minute access token, 4-hour refresh token). |
+| **Unauthorized data exposure** | Conversation listings and upload listings return metadata only by default. Reading message text or inspecting files requires an explicit moderation `reason`, which is recorded in the immutable `audit_logs` table. |
+| **Secret / PII leakage** | Admin endpoints never return `passwordHash`, token hashes, OTP hashes, or provider API keys. |
+| **Suspended account persistence** | Suspended users are blocked at login, token refresh, and admin middleware with `403 ACCOUNT_SUSPENDED`, and all refresh tokens are revoked on suspension. |
+

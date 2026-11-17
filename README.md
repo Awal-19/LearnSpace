@@ -29,8 +29,16 @@ npm run dev
 - Client: `http://localhost:5173`
 - API: `http://localhost:4000/api/v1`
 
+## Email & EmailJS Setup
+- **Sensitive auth emails (verification, password reset, OTPs, reminders):** Sent exclusively from the backend ([server/src/lib/email.ts](server/src/lib/email.ts)), switchable via `EMAIL_PROVIDER` (`auto` | `resend` | `smtp` | `emailjs`). For EmailJS on the server, set `EMAIL_PROVIDER=emailjs`, `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY`, and `EMAILJS_PRIVATE_KEY` (never expose the private key in the client).
+- **Non-sensitive contact/feedback emails:** Sent from the browser via [client/src/services/email.ts](client/src/services/email.ts) (`@emailjs/browser`) with a honeypot field and a 30-second submission cooldown. Configure `VITE_EMAILJS_SERVICE_ID`, `VITE_EMAILJS_TEMPLATE_ID`, and `VITE_EMAILJS_PUBLIC_KEY` in `client/.env` (locally) or Netlify/Vercel environment variables.
+- **Template variables:**
+  - Client feedback template: `{{from_name}}`, `{{from_email}}`, `{{category}}`, `{{subject}}`, `{{message}}`, `{{app_name}}`
+  - Server auth/reminder template: `{{to_email}}`, `{{to_name}}`, `{{subject}}`, `{{message}}`, `{{app_name}}`
+
 ## Quality & Deployment
 - **Checks:** `npm run lint && npm run typecheck && npm test && npm run build`
+- **Admin Console:** Available at `/admin` for `admin` and `super_admin` accounts. See [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) and seed the first admin with `ADMIN_EMAIL=... npm run admin:seed -w server`.
 - **Backend (Render):** [render.yaml](render.yaml) (`server/Dockerfile`, `npx prisma migrate deploy`, `/api/v1/health/ready`)
 - **Frontend (Vercel):** [client/vercel.json](client/vercel.json) (SPA rewrites + security headers)
 - **CI:** [.github/workflows/ci.yml](.github/workflows/ci.yml)

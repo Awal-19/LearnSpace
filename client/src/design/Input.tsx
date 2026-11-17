@@ -16,10 +16,12 @@ interface FieldChromeProps {
 
 const controlClasses = (error?: string) =>
   cn(
-    'w-full rounded-md border bg-surface px-3 text-fg placeholder:text-muted/70',
-    'transition duration-fast ease-soft',
+    'w-full rounded-xl border bg-surface2/40 px-3.5 text-sm text-fg placeholder:text-muted/65',
+    'transition duration-fast ease-soft focus:bg-surface',
     'focus-visible:ring-offset-0',
-    error ? 'border-danger' : 'border-line hover:border-primary-300',
+    error
+      ? 'border-danger focus:border-danger'
+      : 'border-line hover:border-primary-300 focus:border-primary-500',
     'disabled:cursor-not-allowed disabled:opacity-60',
   );
 
@@ -32,7 +34,7 @@ function Chrome({
 }: FieldChromeProps & { id: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-fg">
+      <label htmlFor={id} className="block text-[13px] font-medium text-fg">
         {label}
       </label>
       {children}
@@ -57,25 +59,36 @@ export interface InputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'>,
     FieldChromeProps {
   id?: string;
+  leftIcon?: ReactNode;
 }
 
 /** Labelled text input; forwards ref so it works with react-hook-form's register(). */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { id, label, hint, error, className, ...rest },
+  { id, label, hint, error, leftIcon, className, ...rest },
   ref,
 ) {
   const autoId = useId();
   const inputId = id ?? autoId;
   return (
     <Chrome id={inputId} label={label} hint={hint} error={error}>
-      <input
-        ref={ref}
-        id={inputId}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy(inputId, hint, error)}
-        className={cn(controlClasses(error), 'h-11', className)}
-        {...rest}
-      />
+      <div className="relative">
+        {leftIcon ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-muted"
+          >
+            {leftIcon}
+          </span>
+        ) : null}
+        <input
+          ref={ref}
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(inputId, hint, error)}
+          className={cn(controlClasses(error), 'h-11', leftIcon ? 'pl-10' : '', className)}
+          {...rest}
+        />
+      </div>
     </Chrome>
   );
 });

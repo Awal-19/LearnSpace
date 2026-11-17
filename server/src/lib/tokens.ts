@@ -3,10 +3,13 @@ import jwt from 'jsonwebtoken';
 import { AppError } from './errors';
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+export const ADMIN_ACCESS_TOKEN_TTL_SECONDS = 5 * 60; // 5 minutes for admin sessions
 export const REFRESH_TTL_SESSION_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const ADMIN_REFRESH_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours for admin sessions
 export const REFRESH_TTL_PERSISTENT_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000; // 1 hour
+export const ADMIN_2FA_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 export interface AccessTokenPayload {
   userId: string;
@@ -16,14 +19,15 @@ export interface AccessTokenPayload {
 export function signAccessToken(
   userId: string,
   secret: string,
+  expiresInSeconds = ACCESS_TOKEN_TTL_SECONDS,
 ): { token: string; expiresIn: number } {
   const token = jwt.sign({}, secret, {
     algorithm: 'HS256',
     subject: userId,
-    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    expiresIn: expiresInSeconds,
     jwtid: randomUUID(),
   });
-  return { token, expiresIn: ACCESS_TOKEN_TTL_SECONDS };
+  return { token, expiresIn: expiresInSeconds };
 }
 
 export function verifyAccessToken(token: string, secret: string): AccessTokenPayload {
@@ -51,3 +55,6 @@ export function generateOpaqueToken(): { raw: string; hash: string } {
   return { raw, hash: hashToken(raw) };
 }
 
+
+export const OTP_EXPIRY_MINUTES = 10;
+export const OTP_TTL_MS = OTP_EXPIRY_MINUTES * 60 * 1000;

@@ -4,6 +4,7 @@ export { Input, Textarea } from './Input';
 export { PasswordInput } from './PasswordInput';
 export { Checkbox } from './Checkbox';
 export { Card, Badge, Skeleton, Avatar } from './Card';
+export { VerifiedBadge } from './VerifiedBadge';
 export { EmptyState, ErrorState } from './States';
 export { Modal } from './Modal';
 export { Spinner } from './Spinner';

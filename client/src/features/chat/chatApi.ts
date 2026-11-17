@@ -48,7 +48,7 @@ export interface StudyDocument {
 export interface AiUsage {
   day: string;
   tokensUsed: number;
-  tokenLimit: number;
+  tokenLimit: number | null;
   requestsPerMinute: number;
   resetsAt: string;
 }
@@ -107,12 +107,25 @@ export function deleteDocument(id: string) {
   return request<void>(`/ai/documents/${id}`, { method: 'DELETE' });
 }
 
+export interface UploadAttachmentOptions {
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}
+
 export function uploadChatAttachment(
   conversationId: string,
   file: File,
-  onProgress?: (percent: number) => void,
+  options?: UploadAttachmentOptions | ((percent: number) => void),
 ): Promise<MessageAttachment> {
+  const { onProgress, signal } =
+    typeof options === 'function' ? { onProgress: options, signal: undefined } : (options ?? {});
+
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ApiError(0, 'ABORTED', 'Upload cancelled'));
+      return;
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_BASE_URL}/ai/attachments`);
     const token = getAccessToken();
@@ -120,13 +133,36 @@ export function uploadChatAttachment(
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     }
 
+    let lastProgressAt = 0;
+    let lastPercent = -1;
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
+      if (!event.lengthComputable || !onProgress) return;
+      const pct = Math.round((event.loaded / event.total) * 100);
+      const now = Date.now();
+      if (pct === 100 || (pct !== lastPercent && now - lastProgressAt >= 100)) {
+        lastProgressAt = now;
+        lastPercent = pct;
+        onProgress(pct);
+      }
+    };
+
+    const handleAbort = () => {
+      xhr.abort();
+      reject(new ApiError(0, 'ABORTED', 'Upload cancelled'));
+    };
+
+    if (signal) {
+      signal.addEventListener('abort', handleAbort, { once: true });
+    }
+
+    const cleanup = () => {
+      if (signal) {
+        signal.removeEventListener('abort', handleAbort);
       }
     };
 
     xhr.onload = () => {
+      cleanup();
       try {
         const payload = JSON.parse(xhr.responseText || '{}') as MessageAttachment & {
           error?: { code?: string; message?: string };
@@ -148,7 +184,12 @@ export function uploadChatAttachment(
     };
 
     xhr.onerror = () => {
+      cleanup();
       reject(new ApiError(0, 'NETWORK_ERROR', 'Upload failed due to a network error'));
+    };
+
+    xhr.onabort = () => {
+      cleanup();
     };
 
     const formData = new FormData();

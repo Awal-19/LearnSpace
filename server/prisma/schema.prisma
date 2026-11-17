@@ -28,6 +28,78 @@ enum AuthProvider {
 enum EmailTokenType {
   verify_email
   reset_password
+  admin_2fa
+  super_step_up
+}
+
+enum UserRole {
+  student
+  admin
+  super_admin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum AnnouncementAudience {
+  all
+  programme
+  level
+}
+
+enum FeedbackCategory {
+  bug
+  suggestion
+  abuse
+}
+
+enum FeedbackStatus {
+  new
+  in_progress
+  resolved
+}
+
+enum FlagStatus {
+  open
+  dismissed
+  warned
+  suspended
+}
+
+enum UsageFeature {
+  chat
+  document_answer
+  question_gen
+  summary
+  flashcards
+  quiz
+}
+
+enum UsageStatus {
+  success
+  error
+}
+
+enum LoginMethod {
+  email
+  google
+}
+
+enum AdminExportKind {
+  users
+  usage
+  ai_costs
+  feedback
+  overview_pdf
+}
+
+enum AdminExportStatus {
+  queued
+  running
+  completed
+  failed
 }
 
 enum MessageRole {
@@ -140,8 +212,15 @@ model User {
   email            String    @unique @db.Citext
   name             String    @db.VarChar(100)
   passwordHash     String?
-  emailVerified    Boolean   @default(false)
-  studentId        String?   @db.VarChar(50)
+  emailVerified    Boolean    @default(false)
+  role             UserRole   @default(student)
+  status           UserStatus @default(active)
+  suspendedAt      DateTime?  @db.Timestamptz(3)
+  suspendedReason  String?    @db.VarChar(500)
+  twoFactorEnabled     Boolean    @default(false)
+  adminPermissionsJson Json       @default("{\"can_manage_users\":true,\"can_moderate_content\":true,\"can_view_ai_usage\":true,\"can_send_announcements\":true,\"can_export_data\":true}")
+  lastActiveAt         DateTime?  @db.Timestamptz(3)
+  studentId        String?    @db.VarChar(50)
   programme        String?   @db.VarChar(120)
   level            String?   @db.VarChar(30)
   university       String?   @db.VarChar(120)
@@ -156,6 +235,7 @@ model User {
   identities     AuthIdentity[]
   refreshTokens  RefreshToken[]
   emailTokens    EmailToken[]
+  otpCodes       OtpCode[]
   settings       UserSettings?
   conversations  Conversation[]
   messages       Message[]
@@ -176,7 +256,18 @@ model User {
   extractedQuestions       ExtractedQuestion[]
   generatedQuestionSets    GeneratedQuestionSet[]
   documentPracticeAttempts DocumentPracticeAttempt[]
+  auditLogsAsActor         AuditLog[]
+  announcementsAuthored    Announcement[]
+  feedbackReports          FeedbackReport[]
+  flaggedTargets           FlaggedContent[]         @relation("FlagTargetUser")
+  flaggedReports           FlaggedContent[]         @relation("FlagReporter")
+  usageEvents              UsageEvent[]
+  activityEvents           ActivityEvent[]
+  loginHistory             LoginHistory[]
 
+  @@index([role])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
   @@map("users")
 }
 
@@ -688,5 +779,255 @@ model DocumentPracticeAttempt {
   @@index([setId, takenAt(sort: Desc)])
   @@index([userId, takenAt(sort: Desc)])
   @@map("document_practice_attempts")
+}
+
+// ---------------------------------------------------------------- Admin, logging & moderation
+
+model AuditLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId      String   @db.Uuid
+  action       String   @db.VarChar(120)
+  targetType   String   @db.VarChar(80)
+  targetId     String?  @db.VarChar(120)
+  reason       String?  @db.VarChar(1000)
+  metadataJson Json     @default("{}")
+  beforeJson   Json?
+  afterJson    Json?
+  ip           String?  @db.VarChar(64)
+  userAgent    String?  @db.VarChar(400)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model AppSettings {
+  id                   String   @id @default("global") @db.VarChar(32)
+  appName              String   @default("LearnSpace") @db.VarChar(100)
+  supportEmail         String   @default("support@learnspace.local") @db.VarChar(200)
+  maintenanceMode      Boolean  @default(false)
+  maintenanceMessage   String   @default("LearnSpace is undergoing scheduled maintenance. Please check back shortly.") @db.VarChar(500)
+  featureChat          Boolean  @default(true)
+  featureUploads       Boolean  @default(true)
+  featureDocuments         Boolean  @default(true)
+  featureSignups           Boolean  @default(true)
+  featureGoogleLogin       Boolean  @default(true)
+  maintenanceAllowlistJson Json     @default("[]")
+  dailyMessageLimit        Int      @default(100)
+  maxUploadBytes           Int      @default(20971520)
+  dailyUploadQuota         Int      @default(50)
+  dailyCostAlertUsd        Float    @default(5.0)
+  monthlyCostCapUsd        Float    @default(100.0)
+  sessionLifetimeMinutes   Int      @default(10080)
+  minPasswordLength        Int      @default(8)
+  requireEmailVerification Boolean  @default(true)
+  requireAdminOtp          Boolean  @default(false)
+  maxLoginAttempts         Int      @default(5)
+  lockoutMinutes           Int      @default(15)
+  aiModel                  String   @default("z-ai/glm-5.3-flash") @db.VarChar(120)
+  aiSystemPromptVersion    String   @default("v1") @db.VarChar(40)
+  aiMaxTokens              Int      @default(2048)
+  currentVersion           Int      @default(1)
+  allowedFileTypesJson     Json     @default("[\"pdf\",\"docx\",\"pptx\",\"txt\",\"csv\",\"jpg\",\"png\",\"webp\",\"heic\"]")
+  updatedById              String?  @db.Uuid
+  updatedAt                DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("app_settings")
+}
+
+model AppSettingsVersion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  version      Int
+  snapshotJson Json
+  changedById  String   @db.Uuid
+  reason       String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([version(sort: Desc)])
+  @@map("app_settings_versions")
+}
+
+model AdminInvite {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String    @db.Citext
+  role            UserRole  @default(admin)
+  permissionsJson Json      @default("{}")
+  tokenHash       String    @unique
+  invitedById     String    @db.Uuid
+  expiresAt       DateTime  @db.Timestamptz(3)
+  acceptedAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([email, createdAt(sort: Desc)])
+  @@map("admin_invites")
+}
+
+model OtpCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  purpose   String    @db.VarChar(40)
+  codeHash  String
+  expiresAt DateTime  @db.Timestamptz(3)
+  attempts  Int       @default(0)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("otp_codes")
+}
+
+model Announcement {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authorId      String               @db.Uuid
+  title         String               @db.VarChar(160)
+  message       String
+  audience      AnnouncementAudience @default(all)
+  audienceValue String?              @db.VarChar(120)
+  scheduledAt   DateTime?            @db.Timestamptz(3)
+  publishedAt   DateTime?            @db.Timestamptz(3)
+  sendEmail     Boolean              @default(false)
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(3)
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([active, scheduledAt])
+  @@map("announcements")
+}
+
+model FeedbackReport {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String           @db.Uuid
+  category   FeedbackCategory
+  subject    String           @db.VarChar(160)
+  message    String
+  status     FeedbackStatus   @default(new)
+  adminNotes String?
+  repliedAt  DateTime?        @db.Timestamptz(3)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("feedback_reports")
+}
+
+model FlaggedContent {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId     String?    @db.Uuid
+  targetUserId   String     @db.Uuid
+  conversationId String?    @db.Uuid
+  messageId      String?    @db.Uuid
+  reason         String     @db.VarChar(500)
+  status         FlagStatus @default(open)
+  reviewedById   String?    @db.Uuid
+  reviewNote     String?    @db.VarChar(1000)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+
+  reporter   User? @relation("FlagReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  targetUser User  @relation("FlagTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([targetUserId])
+  @@map("flagged_contents")
+}
+
+model UsageEvent {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?      @db.Uuid
+  feature    UsageFeature
+  model      String?      @db.VarChar(120)
+  tokensIn   Int          @default(0)
+  tokensOut  Int          @default(0)
+  costUsd    Float        @default(0)
+  durationMs Int          @default(0)
+  status     UsageStatus  @default(success)
+  errorCode  String?      @db.VarChar(80)
+  route      String?      @db.VarChar(160)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([feature, createdAt(sort: Desc)])
+  @@map("usage_events")
+}
+
+model ActivityEvent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid
+  action       String   @db.VarChar(60)
+  metadataJson Json     @default("{}")
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("activity_events")
+}
+
+model LoginHistory {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?     @db.Uuid
+  email      String      @db.VarChar(255)
+  method     LoginMethod
+  success    Boolean
+  ip         String?     @db.VarChar(64)
+  userAgent  String?     @db.VarChar(255)
+  suspicious Boolean     @default(false)
+  reason     String?     @db.VarChar(255)
+  createdAt  DateTime    @default(now()) @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([suspicious, createdAt(sort: Desc)])
+  @@map("login_history")
+}
+
+model ErrorLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  route      String   @db.VarChar(200)
+  method     String   @db.VarChar(12)
+  statusCode Int
+  code       String   @db.VarChar(80)
+  message    String
+  userId     String?  @db.Uuid
+  requestId  String?  @db.VarChar(80)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+  @@map("error_logs")
+}
+
+model AdminExportJob {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId     String            @db.Uuid
+  kind        AdminExportKind
+  filtersJson Json              @default("{}")
+  status      AdminExportStatus @default(queued)
+  filePath    String?
+  fileName    String?           @db.VarChar(200)
+  error       String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  finishedAt  DateTime?         @db.Timestamptz(3)
+
+  @@index([adminId, createdAt(sort: Desc)])
+  @@map("admin_export_jobs")
 }
 

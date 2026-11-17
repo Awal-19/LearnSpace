@@ -1,6 +1,8 @@
+import type { PrismaClient } from '@prisma/client';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
 import { AppError, ERROR_STATUS, type ErrorCode } from '../lib/errors';
+import { recordErrorLog } from '../modules/admin/admin.logging';
 
 interface Envelope {
   error: { code: ErrorCode; message: string; details?: unknown; requestId: string };
@@ -22,49 +24,64 @@ export const notFound: RequestHandler = (req, _res, next) => {
  * One place that turns every failure into the documented envelope.
  * Unknown errors become INTERNAL; their message/stack are logged, never returned.
  */
-export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  if (res.headersSent) {
-    // e.g. mid-SSE-stream: let Express close the connection.
-    next(err);
-    return;
-  }
-
-  let code: ErrorCode = 'INTERNAL';
-  let message: string | undefined;
-  let details: unknown;
-
-  if (err instanceof AppError) {
-    code = err.code;
-    message = err.message;
-    details = err.details;
-  } else if (err instanceof ZodError) {
-    code = 'VALIDATION_ERROR';
-    details = err.issues.map((issue) => ({
-      path: issue.path.join('.'),
-      message: issue.message,
-    }));
-  } else {
-    const type = bodyParserErrorType(err);
-    if (type === 'entity.too.large') code = 'PAYLOAD_TOO_LARGE';
-    else if (type === 'entity.parse.failed') {
-      code = 'VALIDATION_ERROR';
-      message = 'Malformed JSON body';
+export function createErrorHandler(prisma?: PrismaClient): ErrorRequestHandler {
+  return (err, req, res, next) => {
+    if (res.headersSent) {
+      next(err);
+      return;
     }
-  }
 
-  const status = ERROR_STATUS[code];
-  if (status >= 500) {
-    req.log?.error({ err, requestId: req.requestId }, 'Unhandled error');
-  }
+    let code: ErrorCode = 'INTERNAL';
+    let message: string | undefined;
+    let details: unknown;
 
-  const body: Envelope = {
-    error: {
-      code,
-      message: message ?? new AppError(code).message,
-      ...(details !== undefined ? { details } : {}),
-      requestId: req.requestId,
-    },
+    if (err instanceof AppError) {
+      code = err.code;
+      message = err.message;
+      details = err.details;
+    } else if (err instanceof ZodError) {
+      code = 'VALIDATION_ERROR';
+      details = err.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      }));
+    } else {
+      const type = bodyParserErrorType(err);
+      if (type === 'entity.too.large') code = 'PAYLOAD_TOO_LARGE';
+      else if (type === 'entity.parse.failed') {
+        code = 'VALIDATION_ERROR';
+        message = 'Malformed JSON body';
+      }
+    }
+
+    const status = ERROR_STATUS[code];
+    if (status >= 500) {
+      req.log?.error({ err, requestId: req.requestId }, 'Unhandled error');
+      if (prisma) {
+        const errMsg = err instanceof Error ? err.message : 'Internal server error';
+        void recordErrorLog(prisma, {
+          route: req.originalUrl || req.path,
+          method: req.method,
+          statusCode: status,
+          code,
+          message: errMsg,
+          userId: req.user?.id ?? null,
+          requestId: req.requestId,
+        });
+      }
+    }
+
+    const body: Envelope = {
+      error: {
+        code,
+        message: message ?? new AppError(code).message,
+        ...(details !== undefined ? { details } : {}),
+        requestId: req.requestId,
+      },
+    };
+    res.status(status).json(body);
   };
-  res.status(status).json(body);
-};
+}
+
+export const errorHandler: ErrorRequestHandler = createErrorHandler();
 

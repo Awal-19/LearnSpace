@@ -9,6 +9,7 @@ import { prisma } from './lib/prisma';
 import { createStorageService } from './lib/storage';
 import { createAiService } from './modules/ai/ai.service';
 import { createAttachmentsService } from './modules/ai/attachments.service';
+import { createAdminService } from './modules/admin/admin.service';
 import { createDocumentJobQueue } from './modules/documents/documents.jobs';
 import { createDocumentsService } from './modules/documents/documents.service';
 import { createAuthService } from './modules/auth/auth.service';
@@ -43,13 +44,30 @@ function main(): void {
     return Boolean(user?.emailVerified);
   };
 
+  const aiDailyTokenLimit = env.AI_DAILY_TOKEN_LIMIT ?? null;
   const auth = createAuthService({ prisma, env, email, logger });
   const users = createUsersService({ prisma, storage, logger });
   const rag = createRagService({ prisma, logger });
   const attachments = createAttachmentsService({ prisma, storage, logger });
   const documentJobs = createDocumentJobQueue({ prisma, storage, llm, logger });
-  const documents = createDocumentsService({ prisma, storage, jobs: documentJobs, llm, logger });
-  const ai = createAiService({ prisma, llm, logger, rag, attachments, storage });
+  const documents = createDocumentsService({
+    prisma,
+    storage,
+    jobs: documentJobs,
+    llm,
+    dailyTokenLimit: aiDailyTokenLimit,
+    logger,
+  });
+  const admin = createAdminService({ prisma, env, email, storage, llm, logger });
+  const ai = createAiService({
+    prisma,
+    llm,
+    logger,
+    rag,
+    attachments,
+    storage,
+    dailyTokenLimit: aiDailyTokenLimit,
+  });
   const notes = createNotesService({ prisma, llm, logger });
   const planner = createPlannerService({ prisma, email, logger, clientUrl: env.CLIENT_URL });
   const focus = createFocusService(prisma);
@@ -71,6 +89,7 @@ function main(): void {
       rag: { service: rag, isEmailVerified },
       attachments: { service: attachments, isEmailVerified },
       documents: { service: documents, isEmailVerified },
+      admin: { service: admin, prisma },
       dashboardPrisma: prisma,
     },
     logger,

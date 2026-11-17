@@ -14,12 +14,18 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
   const autoId = useId();
   const inputId = id ?? autoId;
   return (
-    <label htmlFor={inputId} className={cn('inline-flex cursor-pointer items-center gap-2 text-sm text-fg', className)}>
+    <label
+      htmlFor={inputId}
+      className={cn(
+        'inline-flex cursor-pointer select-none items-center gap-2 text-[13px] text-fg/90',
+        className,
+      )}
+    >
       <input
         ref={ref}
         id={inputId}
         type="checkbox"
-        className="h-4 w-4 rounded border-line text-primary-600 focus:ring-primary-500"
+        className="h-4 w-4 rounded border-line bg-surface2/50 accent-primary-600 text-primary-600 transition-colors focus:ring-primary-500"
         {...rest}
       />
       <span>{label}</span>

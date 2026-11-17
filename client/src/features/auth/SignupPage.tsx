@@ -3,19 +3,20 @@ import { Check, Circle } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth, type AuthUser } from '../../app/AuthContext';
+import { useAuth } from '../../app/AuthContext';
 import { Button, cn, Input, PasswordInput, useToast } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 import { GoogleButton } from './GoogleButton';
+import { setPendingVerifyEmail } from './pendingVerify';
 import { signupSchema, type SignupValues } from './schemas';
 
 interface SignupResponse {
-  accessToken: string;
-  user: AuthUser;
+  requiresVerification: true;
+  email: string;
 }
 
 export function SignupPage() {
-  const { status, setSession } = useAuth();
+  const { status } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -51,15 +52,14 @@ export function SignupPage() {
         method: 'POST',
         body: { ...values, timezone },
         auth: false,
-        cookie: true,
       });
-      setSession(data.accessToken, data.user);
+      setPendingVerifyEmail(data.email || values.email);
       toast.show({
         kind: 'success',
-        title: 'Account created',
-        description: 'Check your email to verify your address.',
+        title: 'Verification code sent',
+        description: 'Enter the 6-digit code sent to your email.',
       });
-      navigate('/', { replace: true });
+      navigate('/verify-email', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'EMAIL_TAKEN') {

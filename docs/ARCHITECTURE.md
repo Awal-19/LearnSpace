@@ -237,3 +237,7 @@ Local email: docker-compose includes **Mailpit** so verification/reset flows are
 
 ## 9. Scaling notes
 Stateless API behind a load balancer; scheduler needs leader election or a single instance (guarded by idempotent claims); IP/user rate-limit counters are in-memory in v1 (single instance); per-account login lockout and the AI token budget are in Postgres, so they are correct across instances. Move rate-limit counters to Redis if you run more than one API instance.
+
+## 10. Admin Dashboard Architecture
+- **Backend:** `server/src/modules/admin/` (`admin.schemas.ts`, `admin.logging.ts`, `admin.service.ts`, `admin.routes.ts`) mounted at `/api/admin` (plus student engagement routes on `/api/v1`). `admin.logging.ts` records `usage_events`, `activity_events`, `login_history`, `error_logs`, and `audit_logs`.
+- **Frontend:** `client/src/features/admin/` with a dedicated `AdminLayout` (collapsible sidebar, top search, theme toggle, profile menu) guarded by `RequireAdmin`, rendering real-time charts (`recharts`) and tables via TanStack Query.

@@ -1,19 +1,25 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { PrismaClient, User } from '@prisma/client';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import type { PrismaClient, User, UserRole, UserStatus } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Env } from '../../config/env';
 import type { EmailService } from '../../lib/email';
 import { AppError } from '../../lib/errors';
 import { hashPassword, verifyPassword } from '../../lib/password';
 import {
+  ACCESS_TOKEN_TTL_SECONDS,
+  ADMIN_2FA_TTL_MS,
+  ADMIN_ACCESS_TOKEN_TTL_SECONDS,
+  ADMIN_REFRESH_TTL_MS,
   generateOpaqueToken,
   hashToken,
+  OTP_TTL_MS,
   REFRESH_TTL_PERSISTENT_MS,
   REFRESH_TTL_SESSION_MS,
   RESET_PASSWORD_TTL_MS,
   signAccessToken,
   VERIFY_EMAIL_TTL_MS,
 } from '../../lib/tokens';
+import { recordActivityEvent, recordLoginHistory } from '../admin/admin.logging';
 import type { LoginInput, ResetPasswordInput, SignupInput } from './auth.schemas';
 
 const MAX_FAILED_LOGINS = 5;
@@ -27,6 +33,9 @@ export interface PublicUser {
   email: string;
   name: string;
   emailVerified: boolean;
+  role: UserRole;
+  status: UserStatus;
+  twoFactorEnabled: boolean;
   studentId: string | null;
   programme: string | null;
   level: string | null;
@@ -43,6 +52,9 @@ export function toPublicUser(user: User): PublicUser {
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
+    role: user.role ?? 'student',
+    status: user.status ?? 'active',
+    twoFactorEnabled: Boolean(user.twoFactorEnabled),
     studentId: user.studentId,
     programme: user.programme,
     level: user.level,
@@ -77,6 +89,10 @@ export interface AuthSessionResult {
   persistent: boolean;
 }
 
+export type LoginResult =
+  | (AuthSessionResult & { requiresTwoFactor?: false })
+  | { requiresTwoFactor: true; email: string };
+
 export interface AuthServiceDeps {
   prisma: PrismaClient;
   env: Pick<Env, 'JWT_SECRET' | 'CLIENT_URL' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET'>;
@@ -95,8 +111,14 @@ export function createAuthService(deps: AuthServiceDeps) {
     meta: SessionMeta,
     familyId = randomUUID(),
   ): Promise<AuthSessionResult> {
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+    const effectivePersistent = isAdmin ? false : persistent;
     const { raw, hash } = generateOpaqueToken();
-    const ttl = persistent ? REFRESH_TTL_PERSISTENT_MS : REFRESH_TTL_SESSION_MS;
+    const ttl = isAdmin
+      ? ADMIN_REFRESH_TTL_MS
+      : effectivePersistent
+        ? REFRESH_TTL_PERSISTENT_MS
+        : REFRESH_TTL_SESSION_MS;
     const expiresAt = new Date(now().getTime() + ttl);
 
     await prisma.refreshToken.create({
@@ -105,14 +127,21 @@ export function createAuthService(deps: AuthServiceDeps) {
         familyId,
         tokenHash: hash,
         expiresAt,
-        persistent,
+        persistent: effectivePersistent,
         userAgent: meta.userAgent,
         ip: meta.ip,
       },
     });
 
-    const { token: accessToken, expiresIn } = signAccessToken(user.id, env.JWT_SECRET);
-    return { accessToken, expiresIn, user: toPublicUser(user), rawRefreshToken: raw, persistent };
+    const accessTtl = isAdmin ? ADMIN_ACCESS_TOKEN_TTL_SECONDS : ACCESS_TOKEN_TTL_SECONDS;
+    const { token: accessToken, expiresIn } = signAccessToken(user.id, env.JWT_SECRET, accessTtl);
+    return {
+      accessToken,
+      expiresIn,
+      user: toPublicUser(user),
+      rawRefreshToken: raw,
+      persistent: effectivePersistent,
+    };
   }
 
   async function createAndSendVerifyToken(user: Pick<User, 'id' | 'email' | 'name'>) {
@@ -138,8 +167,65 @@ export function createAuthService(deps: AuthServiceDeps) {
     }
   }
 
+  async function createAndSendVerificationOtp(
+    user: Pick<User, 'id' | 'email' | 'name'>,
+    enforceCooldown: boolean,
+  ): Promise<{ sent: boolean; retryAfterSeconds?: number }> {
+    const current = now();
+    if (enforceCooldown && prisma.otpCode?.findFirst) {
+      const latest = await prisma.otpCode.findFirst({
+        where: { userId: user.id, purpose: 'verify_email' },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (latest) {
+        const elapsedMs = current.getTime() - latest.createdAt.getTime();
+        if (elapsedMs < 60_000) {
+          return { sent: false, retryAfterSeconds: Math.ceil((60_000 - elapsedMs) / 1000) };
+        }
+      }
+    }
+
+    const code = String(randomInt(100_000, 1_000_000));
+    const codeHash = hashToken(code);
+    const expiresAt = new Date(current.getTime() + OTP_TTL_MS);
+
+    if (prisma.otpCode?.create) {
+      await prisma.$transaction([
+        prisma.otpCode.updateMany({
+          where: { userId: user.id, purpose: 'verify_email', usedAt: null },
+          data: { usedAt: current },
+        }),
+        prisma.otpCode.create({
+          data: {
+            userId: user.id,
+            purpose: 'verify_email',
+            codeHash,
+            expiresAt,
+          },
+        }),
+      ]);
+    }
+
+    try {
+      await email.sendOtpEmail({ email: user.email, name: user.name, code });
+    } catch (err) {
+      logger.error({ err, userId: user.id }, 'Failed to send verification OTP email');
+    }
+    return { sent: true };
+  }
+
   return {
-    async signup(input: SignupInput, meta: SessionMeta): Promise<AuthSessionResult> {
+    async signup(
+      input: SignupInput,
+      _meta: SessionMeta,
+    ): Promise<{ requiresVerification: true; email: string }> {
+      if (prisma.appSettings?.findUnique) {
+        const settings = await prisma.appSettings.findUnique({ where: { id: 'global' } });
+        if (settings && !settings.featureSignups) {
+          throw new AppError('FORBIDDEN', 'New sign-ups are currently disabled.');
+        }
+      }
+
       const existing = await prisma.user.findUnique({ where: { email: input.email } });
       if (existing) {
         throw new AppError('EMAIL_TAKEN');
@@ -153,30 +239,78 @@ export function createAuthService(deps: AuthServiceDeps) {
           name: input.name,
           email: input.email,
           passwordHash,
+          emailVerified: false,
           settings: { create: { timezone } },
         },
       });
 
-      await createAndSendVerifyToken(user);
-      return issueSession(user, false, meta);
+      await createAndSendVerificationOtp(user, false);
+      await recordActivityEvent(prisma, { userId: user.id, action: 'signup' });
+      return { requiresVerification: true, email: user.email };
     },
 
-    async login(input: LoginInput, meta: SessionMeta): Promise<AuthSessionResult> {
+    async login(input: LoginInput, meta: SessionMeta): Promise<LoginResult> {
       const user = await prisma.user.findUnique({ where: { email: input.email } });
       const current = now();
 
       if (!user) {
         await verifyPassword(DUMMY_HASH, input.password);
+        await recordLoginHistory(prisma, {
+          email: input.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          reason: 'unknown_email',
+        });
         throw new AppError('INVALID_CREDENTIALS');
+      }
+
+      if (user.status === 'suspended') {
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          suspicious: true,
+          reason: 'account_suspended',
+        });
+        throw new AppError(
+          'ACCOUNT_SUSPENDED',
+          user.suspendedReason
+            ? `Your account has been suspended: ${user.suspendedReason}`
+            : undefined,
+        );
       }
 
       if (user.lockedUntil && user.lockedUntil > current) {
         const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - current.getTime()) / 1000);
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          suspicious: true,
+          reason: 'account_locked',
+        });
         throw new AppError('ACCOUNT_LOCKED', undefined, { retryAfterSeconds });
       }
 
       if (!user.passwordHash) {
         await verifyPassword(DUMMY_HASH, input.password);
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          reason: 'google_only_account',
+        });
         throw new AppError('INVALID_CREDENTIALS');
       }
 
@@ -190,6 +324,16 @@ export function createAuthService(deps: AuthServiceDeps) {
             failedLoginCount: shouldLock ? 0 : nextCount,
             lockedUntil: shouldLock ? new Date(current.getTime() + LOCK_DURATION_MS) : null,
           },
+        });
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          suspicious: nextCount >= 3 || shouldLock,
+          reason: shouldLock ? 'locked_after_failures' : 'invalid_password',
         });
         if (shouldLock) {
           throw new AppError('ACCOUNT_LOCKED', undefined, {
@@ -206,7 +350,96 @@ export function createAuthService(deps: AuthServiceDeps) {
         });
       }
 
+      if (!user.emailVerified) {
+        await createAndSendVerificationOtp(user, true);
+        throw new AppError(
+          'EMAIL_NOT_VERIFIED',
+          'Please verify your email with the 6-digit code sent to your inbox.',
+          { email: user.email },
+        );
+      }
+
+      const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+      if (isAdmin && user.twoFactorEnabled) {
+        const code = String(randomInt(100000, 1000000));
+        const codeHash = hashToken(`${user.id}:${code}`);
+        const expiresAt = new Date(current.getTime() + ADMIN_2FA_TTL_MS);
+        await prisma.$transaction([
+          prisma.emailToken.updateMany({
+            where: { userId: user.id, type: 'admin_2fa', usedAt: null },
+            data: { usedAt: current },
+          }),
+          prisma.emailToken.create({
+            data: { userId: user.id, type: 'admin_2fa', tokenHash: codeHash, expiresAt },
+          }),
+        ]);
+        try {
+          await email.sendVerificationEmail(
+            user.email,
+            user.name,
+            `Your LearnSpace Admin 2FA code is: ${code} (expires in 10 minutes)`,
+          );
+        } catch (err) {
+          logger.error({ err, userId: user.id }, 'Failed to send admin 2FA OTP');
+        }
+        return { requiresTwoFactor: true, email: user.email };
+      }
+
+      await recordLoginHistory(prisma, {
+        userId: user.id,
+        email: user.email,
+        method: 'email',
+        success: true,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      await recordActivityEvent(prisma, {
+        userId: user.id,
+        action: 'login',
+        metadata: { method: 'email' },
+      });
       return issueSession(user, input.rememberMe, meta);
+    },
+
+    async verifyAdminTwoFactor(
+      emailInput: string,
+      code: string,
+      meta: SessionMeta,
+    ): Promise<AuthSessionResult> {
+      const user = await prisma.user.findUnique({ where: { email: emailInput } });
+      if (!user || user.status === 'suspended') {
+        throw new AppError('INVALID_TOKEN', 'Invalid or expired verification code');
+      }
+      const current = now();
+      const codeHash = hashToken(`${user.id}:${code}`);
+      const record = await prisma.emailToken.findUnique({ where: { tokenHash: codeHash } });
+      if (
+        !record ||
+        record.userId !== user.id ||
+        record.type !== 'admin_2fa' ||
+        record.usedAt !== null ||
+        record.expiresAt <= current
+      ) {
+        throw new AppError('INVALID_TOKEN', 'Invalid or expired verification code');
+      }
+      await prisma.emailToken.update({
+        where: { id: record.id },
+        data: { usedAt: current },
+      });
+      await recordLoginHistory(prisma, {
+        userId: user.id,
+        email: user.email,
+        method: 'email',
+        success: true,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      await recordActivityEvent(prisma, {
+        userId: user.id,
+        action: 'login',
+        metadata: { method: 'email_2fa' },
+      });
+      return issueSession(user, false, meta);
     },
 
     async refresh(rawRefreshToken: string | undefined, meta: SessionMeta): Promise<AuthSessionResult> {
@@ -236,9 +469,17 @@ export function createAuthService(deps: AuthServiceDeps) {
       if (!user) {
         throw new AppError('REFRESH_INVALID');
       }
+      if (user.status === 'suspended') {
+        throw new AppError('ACCOUNT_SUSPENDED');
+      }
 
+      const isAdmin = user.role === 'admin' || user.role === 'super_admin';
       const { raw, hash } = generateOpaqueToken();
-      const ttl = existing.persistent ? REFRESH_TTL_PERSISTENT_MS : REFRESH_TTL_SESSION_MS;
+      const ttl = isAdmin
+        ? ADMIN_REFRESH_TTL_MS
+        : existing.persistent
+          ? REFRESH_TTL_PERSISTENT_MS
+          : REFRESH_TTL_SESSION_MS;
       const expiresAt = new Date(current.getTime() + ttl);
 
       await prisma.$transaction(async (tx) => {
@@ -248,7 +489,7 @@ export function createAuthService(deps: AuthServiceDeps) {
             familyId: existing.familyId,
             tokenHash: hash,
             expiresAt,
-            persistent: existing.persistent,
+            persistent: isAdmin ? false : existing.persistent,
             userAgent: meta.userAgent,
             ip: meta.ip,
           },
@@ -259,13 +500,14 @@ export function createAuthService(deps: AuthServiceDeps) {
         });
       });
 
-      const { token: accessToken, expiresIn } = signAccessToken(user.id, env.JWT_SECRET);
+      const accessTtl = isAdmin ? ADMIN_ACCESS_TOKEN_TTL_SECONDS : ACCESS_TOKEN_TTL_SECONDS;
+      const { token: accessToken, expiresIn } = signAccessToken(user.id, env.JWT_SECRET, accessTtl);
       return {
         accessToken,
         expiresIn,
         user: toPublicUser(user),
         rawRefreshToken: raw,
-        persistent: existing.persistent,
+        persistent: isAdmin ? false : existing.persistent,
       };
     },
 
@@ -490,7 +732,133 @@ export function createAuthService(deps: AuthServiceDeps) {
         }
       }
 
+      if (user.status === 'suspended') {
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'google',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          suspicious: true,
+          reason: 'account_suspended',
+        });
+        throw new AppError('ACCOUNT_SUSPENDED');
+      }
+
+      await recordLoginHistory(prisma, {
+        userId: user.id,
+        email: user.email,
+        method: 'google',
+        success: true,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      await recordActivityEvent(prisma, {
+        userId: user.id,
+        action: 'login',
+        metadata: { method: 'google' },
+      });
       return issueSession(user, true, meta);
+    },
+
+    async verifyOtp(
+      input: { email: string; code: string },
+      meta: SessionMeta,
+    ): Promise<AuthSessionResult> {
+      const current = now();
+      const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
+      if (!user) {
+        throw new AppError('VALIDATION_ERROR', 'Invalid verification code.');
+      }
+      if (user.status === 'suspended') {
+        throw new AppError('ACCOUNT_SUSPENDED');
+      }
+      if (user.emailVerified) {
+        return issueSession(user, false, meta);
+      }
+
+      const otp = await prisma.otpCode.findFirst({
+        where: { userId: user.id, purpose: 'verify_email', usedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!otp) {
+        throw new AppError('VALIDATION_ERROR', 'No active verification code. Request a new code.');
+      }
+      if (otp.expiresAt <= current) {
+        await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
+        throw new AppError('VALIDATION_ERROR', 'Verification code has expired. Request a new code.');
+      }
+      if (otp.attempts >= 5) {
+        await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
+        throw new AppError('RATE_LIMITED', 'Too many incorrect attempts. Request a new code.');
+      }
+
+      if (otp.codeHash !== hashToken(input.code)) {
+        const nextAttempts = otp.attempts + 1;
+        await prisma.otpCode.update({
+          where: { id: otp.id },
+          data: {
+            attempts: nextAttempts,
+            ...(nextAttempts >= 5 ? { usedAt: current } : {}),
+          },
+        });
+        if (nextAttempts >= 5) {
+          throw new AppError('RATE_LIMITED', 'Too many incorrect attempts. Request a new code.');
+        }
+        throw new AppError('VALIDATION_ERROR', 'Incorrect verification code.');
+      }
+
+      const [, verifiedUser] = await prisma.$transaction([
+        prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } }),
+        prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } }),
+      ]);
+
+      await recordLoginHistory(prisma, {
+        userId: verifiedUser.id,
+        email: verifiedUser.email,
+        method: 'email',
+        success: true,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      await recordActivityEvent(prisma, {
+        userId: verifiedUser.id,
+        action: 'email_verified',
+      });
+      return issueSession(verifiedUser, false, meta);
+    },
+
+    async resendOtp(emailInput: string): Promise<{ ok: true; message: string }> {
+      const generic = {
+        ok: true as const,
+        message: 'If an unverified account exists, a verification code has been sent.',
+      };
+      const user = await prisma.user.findUnique({ where: { email: emailInput.toLowerCase() } });
+      if (!user || user.emailVerified) {
+        return generic;
+      }
+      const res = await createAndSendVerificationOtp(user, true);
+      if (!res.sent && res.retryAfterSeconds) {
+        throw new AppError(
+          'RATE_LIMITED',
+          `Please wait ${res.retryAfterSeconds}s before requesting another code.`,
+          { retryAfterSeconds: res.retryAfterSeconds },
+        );
+      }
+      return generic;
+    },
+
+    async cleanupExpiredOtpsAndUnverifiedUsers(): Promise<{ deletedOtps: number; deletedUsers: number }> {
+      const current = now();
+      const cutoff24h = new Date(current.getTime() - 24 * 60 * 60 * 1000);
+      const [otps, users] = await Promise.all([
+        prisma.otpCode.deleteMany({ where: { expiresAt: { lt: current } } }),
+        prisma.user.deleteMany({
+          where: { emailVerified: false, createdAt: { lt: cutoff24h } },
+        }),
+      ]);
+      return { deletedOtps: otps.count, deletedUsers: users.count };
     },
   };
 }

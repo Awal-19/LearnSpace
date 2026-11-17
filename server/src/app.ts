@@ -6,13 +6,17 @@ import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import type { Env } from './config/env';
 import { createLogger } from './lib/logger';
-import { errorHandler, notFound } from './middleware/errorHandler';
+import { AppError } from './lib/errors';
+import { createErrorHandler, notFound } from './middleware/errorHandler';
+import { requireAuth } from './middleware/auth';
 import { createRateLimiter } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { healthRouter, type HealthDeps } from './modules/health/health.routes';
 import type { PrismaClient } from '@prisma/client';
 import { aiRouter } from './modules/ai/ai.routes';
 import type { AiService } from './modules/ai/ai.service';
+import { adminRouter, studentEngagementRouter } from './modules/admin/admin.routes';
+import type { AdminService } from './modules/admin/admin.service';
 import { attachmentsRouter } from './modules/ai/attachments.routes';
 import type { AttachmentsService } from './modules/ai/attachments.service';
 import { documentsRouter } from './modules/documents/documents.routes';
@@ -44,7 +48,9 @@ export interface AppDeps extends HealthDeps {
   rag?: { service: RagService; isEmailVerified: (userId: string) => Promise<boolean> };
   attachments?: { service: AttachmentsService; isEmailVerified: (userId: string) => Promise<boolean> };
   documents?: { service: DocumentsService; isEmailVerified: (userId: string) => Promise<boolean> };
+  admin?: { service: AdminService; prisma: PrismaClient };
   dashboardPrisma?: PrismaClient;
+  isEmailVerified?: (userId: string) => Promise<boolean>;
 }
 
 export const API_PREFIX = '/api/v1';
@@ -89,13 +95,20 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     }),
   );
 
-  app.use(
-    createRateLimiter({
-      windowMs: 60_000,
-      limit: env.RATE_LIMIT_GLOBAL_PER_MIN,
-      skip: (req) => req.path.startsWith(`${API_PREFIX}/health`),
-    }),
-  );
+  const readLimiter = createRateLimiter({
+    windowMs: 60_000,
+    limit: env.RATE_LIMIT_GLOBAL_PER_MIN,
+    skip: (req) => req.path.startsWith(`${API_PREFIX}/health`) || req.method !== 'GET',
+  });
+
+  const mutationLimiter = createRateLimiter({
+    windowMs: 60_000,
+    limit: Math.min(env.RATE_LIMIT_GLOBAL_PER_MIN, 120),
+    skip: (req) => req.path.startsWith(`${API_PREFIX}/health`) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+  });
+
+  app.use(readLimiter);
+  app.use(mutationLimiter);
 
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
@@ -104,6 +117,57 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   app.use(API_PREFIX, healthRouter(deps));
   if (deps.auth) {
     app.use(API_PREFIX, authRouter(deps.auth, env));
+  }
+
+  const verifyEmailCheck =
+    deps.isEmailVerified ??
+    deps.ai?.isEmailVerified ??
+    deps.notes?.isEmailVerified ??
+    deps.study?.isEmailVerified ??
+    deps.rag?.isEmailVerified ??
+    deps.attachments?.isEmailVerified ??
+    deps.documents?.isEmailVerified ??
+    (deps.dashboardPrisma
+      ? async (userId: string) => {
+          const row = await deps.dashboardPrisma!.user.findUnique({
+            where: { id: userId },
+            select: { emailVerified: true },
+          });
+          return Boolean(row?.emailVerified);
+        }
+      : undefined);
+
+  if (verifyEmailCheck) {
+    const authMiddleware = requireAuth(env.JWT_SECRET);
+    app.use(API_PREFIX, (req, res, next) => {
+      if (req.path.startsWith('/health') || req.path.startsWith('/auth')) {
+        next();
+        return;
+      }
+      if (!req.header('authorization')?.startsWith('Bearer ')) {
+        next();
+        return;
+      }
+      authMiddleware(req, res, (authErr?: unknown) => {
+        if (authErr) {
+          next(authErr);
+          return;
+        }
+        if (!req.user) {
+          next();
+          return;
+        }
+        void verifyEmailCheck(req.user.id)
+          .then((verified) => {
+            if (!verified) {
+              next(new AppError('EMAIL_NOT_VERIFIED'));
+              return;
+            }
+            next();
+          })
+          .catch(next);
+      });
+    });
   }
   if (deps.users) {
     app.use(API_PREFIX, usersRouter(deps.users, env));
@@ -173,9 +237,13 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   if (deps.dashboardPrisma) {
     app.use(API_PREFIX, dashboardRouter(deps.dashboardPrisma, env));
   }
+  if (deps.admin) {
+    app.use(API_PREFIX, studentEngagementRouter(deps.admin.service, env));
+    app.use('/api/admin', adminRouter({ admin: deps.admin.service, prisma: deps.admin.prisma, env }));
+  }
 
   app.use(notFound);
-  app.use(errorHandler);
+  app.use(createErrorHandler(deps.dashboardPrisma));
 
   return app;
 }

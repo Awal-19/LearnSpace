@@ -266,5 +266,25 @@ Pre-stream failures are normal JSON errors: `VALIDATION_ERROR`, `NOT_FOUND`, `EM
 One round trip for the dashboard; the greeting phrase (morning/afternoon/evening) is computed client-side from local time.
 
 ## 11. Endpoint count
-Health 2 · Auth 12 · Users 9 · AI 7 · Courses/Notes 10 · Tasks/Notifications 7 · Study sessions 3 · Decks/Cards 9 · Quizzes 7 · Dashboard 1 = **67 endpoints**.
+Health 2 · Auth 13 · Users 9 · AI 7 · Courses/Notes 10 · Tasks/Notifications 7 · Study sessions 3 · Decks/Cards 9 · Quizzes 7 · Dashboard 1 · Student Engagement 3 · Admin `/api/admin/*` 36.
+
+## 12. Admin Dashboard & Student Engagement
+
+### Auth 2FA & Student Engagement (`/api/v1/*`)
+- `POST /api/v1/auth/admin-2fa/verify` — Verifies a 6-digit email OTP (`{ "userId", "code" }`) when an admin has `twoFactorEnabled = true`.
+- `GET /api/v1/announcements/active` — Returns `{ maintenanceMode, maintenanceMessage, announcements }` scoped to the signed-in student's `programme` / `level`.
+- `POST /api/v1/feedback` — Submit student feedback (`{ category: "bug" | "suggestion" | "abuse", subject, message }`).
+- `POST /api/v1/ai/messages/:id/flag` — Flag an AI chat message (`{ reason }`) for admin moderation.
+
+### Admin API (`/api/admin/*`)
+All `/api/admin/*` routes require `requireAuth` + `requireAdmin` (verified `admin` or `super_admin` and `status === "active"`). Role changes require `requireSuperAdmin`.
+
+- **Overview:** `GET /overview?range=7d|30d|90d|custom&from=&to=`
+- **Users:** `GET /users`, `GET /users/:id`, `PATCH /users/:id/status`, `POST /users/:id/force-logout`, `POST /users/:id/resend-verification`, `POST /users/:id/trigger-reset`, `PATCH /users/:id/role` (`super_admin` only), `DELETE /users/:id`, `POST /users/bulk`
+- **AI Usage & Limits:** `GET /ai-usage`, `PATCH /ai-usage/limits`
+- **Moderation & Uploads:** `GET /conversations` (metadata only), `POST /conversations/:id/inspect` (requires `reason`, audited), `GET /uploads`, `POST /uploads/:kind/:id/inspect` (requires `reason`, audited), `DELETE /uploads/:kind/:id`, `GET /flagged`, `PATCH /flagged/:id`
+- **Learning:** `GET /learning`
+- **Announcements & Feedback:** `GET /announcements`, `POST /announcements`, `PATCH /announcements/:id`, `DELETE /announcements/:id`, `GET /feedback`, `PATCH /feedback/:id`, `POST /feedback/:id/reply`
+- **Audit, System & Settings:** `GET /audit-logs?format=json|csv`, `GET /login-history`, `GET /error-logs`, `GET /health`, `GET /settings`, `PATCH /settings`
+- **Reports & Exports:** `GET /exports`, `POST /exports` (`users`, `usage`, `ai_costs`, `feedback`, `overview_pdf`), `GET /exports/:id/download`
 

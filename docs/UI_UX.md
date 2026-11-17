@@ -174,3 +174,8 @@ Fade/slide-up on page enter (200 ms); button press scale 0.98; input focus ring 
 ## 8. Accessibility checklist
 Visible labels on all inputs · `aria-invalid` + `aria-describedby` for errors · focus-visible rings (2 px primary) · skip-to-content link · logical heading order · modals trap focus and restore it · `aria-live="polite"` for streamed replies and toasts · icons have text or `aria-label` · targets ≥ 44 px on mobile · works with keyboard only (including chat, timer, tabs) · colour is never the only signal · timer announces completion.
 
+## 9. Admin Console UI
+- **Layout:** Dedicated collapsible sidebar (`Overview`, `Users`, `AI Usage`, `Content`, `Learning`, `Announcements`, `Feedback`, `Audit Log`, `System`, `Settings`, `Reports`), top bar with search, light/dark toggle, and admin profile menu.
+- **Data & Feedback:** Tables include sticky headers, filters, sorting, loading skeletons, empty states, and confirmation modals for destructive or moderation actions. Charts use `recharts` and display empty states when no data exists.
+- **Student Integration:** `AppLayout` surfaces active announcements, maintenance mode banners, and a floating **Feedback** modal for bug, suggestion, and abuse reports.
+

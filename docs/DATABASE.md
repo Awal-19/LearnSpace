@@ -175,3 +175,7 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
 - Account deletion: single `DELETE FROM users WHERE id=?` cascade, then best-effort Cloudinary avatar deletion (failure logged; public id kept in an audit log line).
 - Backups: Render managed daily backups (Phase 8 documents restore steps).
 - Seed data: none in production. Dev seed script may create a local dev user via the real signup service only when `NODE_ENV=development`.
+- **Admin Dashboard migration (`20261117000500_admin_dashboard`):**
+  - Added `role` (`student` | `admin` | `super_admin`), `status` (`active` | `suspended`), `suspendedAt`, `suspendedReason`, `twoFactorEnabled`, `lastActiveAt` on `users`.
+  - Added `EmailTokenType.admin_2fa`.
+  - Added 10 tables: `audit_logs`, `app_settings`, `announcements`, `feedback_reports`, `flagged_contents`, `usage_events`, `activity_events`, `login_history`, `error_logs`, `admin_export_jobs`.

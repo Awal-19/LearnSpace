@@ -2,9 +2,11 @@ import nodemailer from 'nodemailer';
 import type { Logger } from 'pino';
 import { Resend } from 'resend';
 import type { Env } from '../config/env';
+import { OTP_EXPIRY_MINUTES } from './tokens';
 
 export interface EmailService {
   sendVerificationEmail(to: string, name: string, verifyUrl: string): Promise<void>;
+  sendOtpEmail(params: { email: string; name: string; code: string }): Promise<void>;
   sendPasswordResetEmail(to: string, name: string, resetUrl: string): Promise<void>;
   sendTaskReminderEmail(to: string, name: string, taskTitle: string, plannerUrl: string): Promise<void>;
 }
@@ -74,12 +76,24 @@ function reminderTemplate(name: string, taskTitle: string, plannerUrl: string) {
 }
 
 export function createEmailService(
-  env: Pick<Env, 'RESEND_API_KEY' | 'EMAIL_FROM' | 'SMTP_URL'>,
+  env: Pick<
+    Env,
+    | 'EMAIL_PROVIDER'
+    | 'RESEND_API_KEY'
+    | 'EMAIL_FROM'
+    | 'SMTP_URL'
+    | 'EMAILJS_SERVICE_ID'
+    | 'EMAILJS_TEMPLATE_ID'
+    | 'EMAILJS_PUBLIC_KEY'
+    | 'EMAILJS_PRIVATE_KEY'
+  >,
   logger: Logger,
 ): EmailService {
   const from = env.EMAIL_FROM ?? 'LearnSpace <no-reply@learnspace.local>';
+  const provider = env.EMAIL_PROVIDER ?? 'auto';
 
-  if (env.RESEND_API_KEY) {
+  const canUseResend = Boolean(env.RESEND_API_KEY) && (provider === 'auto' || provider === 'resend');
+  if (canUseResend && env.RESEND_API_KEY) {
     const resend = new Resend(env.RESEND_API_KEY);
     const send = async (to: string, payload: { subject: string; text: string; html: string }) => {
       const { error } = await resend.emails.send({ from, to, ...payload });
@@ -90,32 +104,114 @@ export function createEmailService(
     };
     return {
       sendVerificationEmail: (to, name, url) => send(to, verificationTemplate(name, url)),
+      sendOtpEmail: ({ email, name, code }) =>
+        send(email, {
+          subject: 'Your LearnSpace verification code',
+          text: `Hi ${name},\n\nYour LearnSpace verification code is ${code}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+          html: `<p>Hi ${escapeHtml(name)},</p><p>Your LearnSpace verification code is <strong>${escapeHtml(code)}</strong>. It expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`,
+        }),
       sendPasswordResetEmail: (to, name, url) => send(to, resetTemplate(name, url)),
       sendTaskReminderEmail: (to, name, title, url) => send(to, reminderTemplate(name, title, url)),
     };
   }
 
-  if (env.SMTP_URL) {
+  const canUseSmtp = Boolean(env.SMTP_URL) && (provider === 'auto' || provider === 'smtp');
+  if (canUseSmtp && env.SMTP_URL) {
     const transporter = nodemailer.createTransport(env.SMTP_URL);
     const send = async (to: string, payload: { subject: string; text: string; html: string }) => {
       await transporter.sendMail({ from, to, ...payload });
     };
     return {
       sendVerificationEmail: (to, name, url) => send(to, verificationTemplate(name, url)),
+      sendOtpEmail: ({ email, name, code }) =>
+        send(email, {
+          subject: 'Your LearnSpace verification code',
+          text: `Hi ${name},\n\nYour LearnSpace verification code is ${code}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+          html: `<p>Hi ${escapeHtml(name)},</p><p>Your LearnSpace verification code is <strong>${escapeHtml(code)}</strong>. It expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`,
+        }),
       sendPasswordResetEmail: (to, name, url) => send(to, resetTemplate(name, url)),
       sendTaskReminderEmail: (to, name, title, url) => send(to, reminderTemplate(name, title, url)),
     };
   }
 
+  const emailJsConfigured = Boolean(
+    env.EMAILJS_SERVICE_ID &&
+      env.EMAILJS_TEMPLATE_ID &&
+      env.EMAILJS_PUBLIC_KEY &&
+      env.EMAILJS_PRIVATE_KEY,
+  );
+  if (emailJsConfigured && (provider === 'auto' || provider === 'emailjs')) {
+    const postEmailJs = async (templateParams: Record<string, string>) => {
+      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: env.EMAILJS_SERVICE_ID,
+          template_id: env.EMAILJS_TEMPLATE_ID,
+          user_id: env.EMAILJS_PUBLIC_KEY,
+          accessToken: env.EMAILJS_PRIVATE_KEY,
+          template_params: templateParams,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        logger.error({ status: res.status, body: text }, 'EmailJS REST API failed to send email');
+        throw new Error(`EmailJS failed (${res.status}): ${text || 'Unknown error'}`);
+      }
+    };
+    return {
+      sendVerificationEmail: (to, name, url) => {
+        const payload = verificationTemplate(name, url);
+        return postEmailJs({
+          to_email: to,
+          to_name: name,
+          subject: payload.subject,
+          message: payload.text,
+          app_name: 'LearnSpace',
+        });
+      },
+      sendOtpEmail: ({ email, name, code }) =>
+        postEmailJs({
+          to_email: email,
+          to_name: name,
+          otp_code: code,
+          expiry_minutes: String(OTP_EXPIRY_MINUTES),
+        }),
+      sendPasswordResetEmail: (to, name, url) => {
+        const payload = resetTemplate(name, url);
+        return postEmailJs({
+          to_email: to,
+          to_name: name,
+          subject: payload.subject,
+          message: payload.text,
+          app_name: 'LearnSpace',
+        });
+      },
+      sendTaskReminderEmail: (to, name, title, url) => {
+        const payload = reminderTemplate(name, title, url);
+        return postEmailJs({
+          to_email: to,
+          to_name: name,
+          subject: payload.subject,
+          message: payload.text,
+          app_name: 'LearnSpace',
+        });
+      },
+    };
+  }
+
   return {
     async sendVerificationEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY or SMTP_URL); skipped verification email');
+      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped verification email');
+    },
+    async sendOtpEmail({ email }) {
+      logger.warn({ to: email }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped OTP email');
     },
     async sendPasswordResetEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY or SMTP_URL); skipped reset email');
+      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reset email');
     },
     async sendTaskReminderEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY or SMTP_URL); skipped reminder email');
+      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reminder email');
     },
   };
 }

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, Palette, Timer } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../app/AuthContext';
 import { useTheme } from '../../app/ThemeProvider';
@@ -91,8 +92,20 @@ export function SettingsPage() {
 
   return (
     <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-6">
+      <div>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Settings</h1>
+        <p className="mt-1 text-sm text-muted">
+          Personalize your theme, timezone, study reminders, and Pomodoro timer defaults.
+        </p>
+      </div>
+
       <Card className="p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-fg">Appearance &amp; timezone</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
+            <Palette className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h2 className="text-base font-semibold text-fg">Appearance &amp; timezone</h2>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="setting-theme" className="mb-1.5 block text-sm font-medium text-fg">
@@ -104,7 +117,7 @@ export function SettingsPage() {
               onChange={(e) =>
                 setForm({ ...form, theme: e.target.value as UserSettings['theme'] })
               }
-              className="h-10 w-full rounded-lg border border-line bg-bg px-3 text-sm text-fg"
+              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="system">System</option>
               <option value="light">Light</option>
@@ -119,7 +132,7 @@ export function SettingsPage() {
               id="setting-tz"
               value={form.timezone}
               onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-              className="h-10 w-full rounded-lg border border-line bg-bg px-3 text-sm text-fg"
+              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               {!COMMON_TIMEZONES.includes(form.timezone) ? (
                 <option value={form.timezone}>{form.timezone}</option>
@@ -135,7 +148,12 @@ export function SettingsPage() {
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-fg">Notifications</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <Bell className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h2 className="text-base font-semibold text-fg">Notifications</h2>
+        </div>
         <Checkbox
           label="In-app task reminders"
           checked={form.notifyInApp}
@@ -162,7 +180,12 @@ export function SettingsPage() {
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-fg">Pomodoro timer durations (minutes)</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            <Timer className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h2 className="text-base font-semibold text-fg">Pomodoro timer durations (minutes)</h2>
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
             label="Focus"

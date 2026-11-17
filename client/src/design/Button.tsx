@@ -13,7 +13,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700',
+  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700 hover:shadow-md',
   secondary: 'border border-line bg-surface text-fg shadow-sm hover:bg-surface2',
   ghost: 'text-fg hover:bg-surface2',
   danger: 'bg-danger text-white shadow-sm hover:opacity-90',
@@ -36,7 +36,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex select-none items-center justify-center gap-2 rounded-md font-medium',
+        'inline-flex select-none items-center justify-center gap-2 rounded-xl font-medium',
         'transition duration-fast ease-soft active:scale-[0.98]',
         'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
         variants[variant],

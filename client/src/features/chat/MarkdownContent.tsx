@@ -43,14 +43,14 @@ function CodeBlock({ children, className }: { children?: ReactNode; className?: 
   };
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border border-neutral-800 bg-[#0d1117] text-neutral-100 shadow-sm">
-      <div className="flex items-center justify-between border-b border-neutral-800 bg-neutral-900/90 px-3.5 py-2 text-xs text-neutral-400">
+    <div className="my-4 overflow-hidden rounded-2xl border border-black/[0.08] bg-[#0d1117] text-neutral-100 shadow-sm dark:border-white/[0.1]">
+      <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs text-neutral-400">
         <span className="font-mono lowercase">{language}</span>
         <button
           type="button"
           onClick={handleCopy}
           aria-label="Copy code"
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-white/[0.08] hover:text-white"
         >
           {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? 'Copied' : 'Copy code'}
@@ -65,7 +65,7 @@ function CodeBlock({ children, className }: { children?: ReactNode; className?: 
 
 export function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="text-[15px] leading-7 text-fg space-y-3 break-words [&_.katex-display]:my-4 [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-1">
+    <div className="text-[15px] leading-[1.75] text-fg space-y-3.5 break-words [&_.katex-display]:my-4 [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-1.5">
       <Markdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
@@ -98,18 +98,18 @@ export function MarkdownContent({ content }: { content: string }) {
           ),
           li: ({ children }) => <li className="leading-7 pl-1">{children}</li>,
           blockquote: ({ children }) => (
-            <blockquote className="my-3 border-l-4 border-primary-500 bg-surface2/60 py-2 pl-4 pr-3 text-sm italic text-fg rounded-r-lg">
+            <blockquote className="my-3 rounded-r-xl border-l-4 border-primary-500/70 bg-surface2/50 py-2 pl-4 pr-3 text-sm italic text-fg dark:bg-white/[0.04]">
               {children}
             </blockquote>
           ),
-          hr: () => <hr className="my-5 border-line" />,
+          hr: () => <hr className="my-5 border-line/80" />,
           table: ({ children }) => (
-            <div className="my-4 overflow-x-auto rounded-lg border border-line">
+            <div className="my-4 overflow-x-auto rounded-xl border border-line/80">
               <table className="w-full border-collapse text-left text-sm">{children}</table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="border-b border-line bg-surface2 text-xs font-semibold uppercase tracking-wide text-muted">
+            <thead className="border-b border-line/80 bg-surface2/70 text-xs font-semibold uppercase tracking-wide text-muted">
               {children}
             </thead>
           ),

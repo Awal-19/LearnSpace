@@ -191,33 +191,37 @@ export function NotesPage() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+    <div className="grid gap-6 lg:grid-cols-[270px_1fr]">
       <div className="space-y-4">
-        <Card className="p-4 space-y-3">
+        <Card className="p-4 space-y-4">
           <Button type="button" className="w-full" onClick={() => void handleCreateNote()}>
             <FilePlus2 className="h-4 w-4" aria-hidden="true" />
             New note
           </Button>
 
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search notes..."
               aria-label="Search notes"
-              className="w-full rounded-lg border border-line bg-bg py-1.5 pl-8 pr-3 text-sm text-fg focus:border-primary-500 focus:outline-none"
+              className="w-full rounded-xl border border-line bg-surface2/50 py-2 pl-9 pr-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             />
           </div>
 
-          <div className="space-y-1 pt-2 border-t border-line">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Courses</p>
+          <div className="space-y-1 pt-3 border-t border-line/80">
+            <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+              Courses
+            </p>
             <button
               type="button"
               onClick={() => setCourseFilter('')}
-              className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm ${
-                courseFilter === '' ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300' : 'hover:bg-surface2'
+              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                courseFilter === ''
+                  ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
+                  : 'text-fg/80 hover:bg-surface2'
               }`}
             >
               <span>All notes</span>
@@ -225,8 +229,10 @@ export function NotesPage() {
             <button
               type="button"
               onClick={() => setCourseFilter('none')}
-              className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm ${
-                courseFilter === 'none' ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300' : 'hover:bg-surface2'
+              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                courseFilter === 'none'
+                  ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
+                  : 'text-fg/80 hover:bg-surface2'
               }`}
             >
               <span>Uncategorised</span>
@@ -236,12 +242,16 @@ export function NotesPage() {
                 key={c.id}
                 type="button"
                 onClick={() => setCourseFilter(c.id)}
-                className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm ${
-                  courseFilter === c.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300' : 'hover:bg-surface2'
+                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  courseFilter === c.id
+                    ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
+                    : 'text-fg/80 hover:bg-surface2'
                 }`}
               >
                 <span className="truncate">{c.name}</span>
-                <span className="text-xs text-muted">{c.noteCount}</span>
+                <span className="rounded-full bg-surface2 px-2 py-0.5 text-xs font-medium text-muted">
+                  {c.noteCount}
+                </span>
               </button>
             ))}
           </div>

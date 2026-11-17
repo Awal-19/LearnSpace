@@ -61,7 +61,25 @@ export interface PublicDocument {
   updatedAt: Date;
 }
 
-export function toPublicDocument(doc: Document): PublicDocument {
+export type PublicDocumentRow = Pick<
+  Document,
+  | 'id'
+  | 'title'
+  | 'type'
+  | 'courseId'
+  | 'originalName'
+  | 'mimeType'
+  | 'kind'
+  | 'sizeBytes'
+  | 'pageCount'
+  | 'truncated'
+  | 'status'
+  | 'errorMessage'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+export function toPublicDocument(doc: PublicDocumentRow): PublicDocument {
   return {
     id: doc.id,
     title: doc.title,
@@ -94,8 +112,8 @@ export interface DocumentsService {
 
   list(
     userId: string,
-    filters: { type?: DocumentType; courseId?: string; q?: string },
-  ): Promise<PublicDocument[]>;
+    filters: { type?: DocumentType; courseId?: string; q?: string; page?: number; pageSize?: number },
+  ): Promise<{ documents: PublicDocument[]; total: number; page: number; pageSize: number }>;
 
   getDetail(
     userId: string,
@@ -195,7 +213,7 @@ export function createDocumentsService(deps: {
   storage: StorageService;
   jobs: DocumentJobQueue;
   llm?: LLMProvider;
-  dailyTokenLimit?: number;
+  dailyTokenLimit?: number | null;
   logger: Logger;
   scanner?: MalwareScanner;
 }): DocumentsService {
@@ -319,7 +337,7 @@ export function createDocumentsService(deps: {
       return { document: toPublicDocument(doc), job };
     },
 
-    async list(userId, { type, courseId, q }) {
+    async list(userId, { type, courseId, q, page = 1, pageSize = 20 }) {
       const where: Prisma.DocumentWhereInput = { userId };
       if (type) where.type = type;
       if (courseId) where.courseId = courseId;
@@ -329,12 +347,33 @@ export function createDocumentsService(deps: {
           { originalName: { contains: q, mode: 'insensitive' } },
         ];
       }
-      const docs = await prisma.document.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      });
-      return docs.map(toPublicDocument);
+      const skip = (page - 1) * pageSize;
+      const [docs, total] = await Promise.all([
+        prisma.document.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: pageSize,
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            courseId: true,
+            originalName: true,
+            mimeType: true,
+            kind: true,
+            sizeBytes: true,
+            pageCount: true,
+            truncated: true,
+            status: true,
+            errorMessage: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.document.count({ where }),
+      ]);
+      return { documents: docs.map(toPublicDocument), total, page, pageSize };
     },
 
     async getOwnedDocument(userId, documentId) {
@@ -491,7 +530,7 @@ export function createDocumentsService(deps: {
         where: { userId_day: { userId, day: today } },
       });
       const usedTokens = (usageRow?.inputTokens ?? 0) + (usageRow?.outputTokens ?? 0);
-      if (usedTokens >= dailyTokenLimit) {
+      if (dailyTokenLimit !== null && dailyTokenLimit > 0 && usedTokens >= dailyTokenLimit) {
         throw new AppError('AI_BUDGET_EXCEEDED', 'Daily AI token limit reached. Try again tomorrow.');
       }
 

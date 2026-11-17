@@ -77,5 +77,21 @@ describe('apiClient', () => {
     expect(init?.credentials).toBe('include');
     expect((init?.headers as Record<string, string>)['X-Requested-With']).toBe('learnspace');
   });
+
+  it('parses Retry-After header on 429 RATE_LIMITED responses', async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          error: { code: 'RATE_LIMITED', message: 'Too many requests. Please slow down.' },
+        }),
+        { status: 429, headers: { 'Retry-After': '15' } },
+      ),
+    );
+    await expect(request('/documents')).rejects.toMatchObject({
+      status: 429,
+      code: 'RATE_LIMITED',
+      retryAfterSeconds: 15,
+    });
+  });
 });
 

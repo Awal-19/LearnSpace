@@ -21,13 +21,23 @@ const schema = z.object({
 
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
   CORS_ORIGIN: optionalString,
-  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
-  RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().min(1).default(300),
+  TRUST_PROXY: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .default(process.env.NODE_ENV === 'production' || process.env.RENDER ? 1 : 0),
+  RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().min(1).default(600),
 
   // Later phases. Optional here; the feature that needs them checks at use time.
+  EMAIL_PROVIDER: z.enum(['auto', 'resend', 'smtp', 'emailjs']).default('auto'),
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
   SMTP_URL: optionalString,
+  EMAILJS_SERVICE_ID: optionalString,
+  EMAILJS_TEMPLATE_ID: optionalString,
+  EMAILJS_PUBLIC_KEY: optionalString,
+  EMAILJS_PRIVATE_KEY: optionalString,
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
   GOOGLE_CALLBACK_URL: z.preprocess(
@@ -40,6 +50,12 @@ const schema = z.object({
   NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
   NVIDIA_MODEL: z.string().trim().min(1).default('z-ai/glm-5.3-flash'),
   NVIDIA_VISION_MODEL: z.string().trim().min(1).default('nvidia/nemotron-3.5-super-vl-120b-a12b'),
+  AI_DAILY_TOKEN_LIMIT: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  ADMIN_EMAIL: optionalString,
+  ADMIN_CONSOLE_PASSWORD: optionalString,
 });
 
 export type Env = z.infer<typeof schema> & { CORS_ORIGINS: string[] };

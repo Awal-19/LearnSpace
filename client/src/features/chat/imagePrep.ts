@@ -1,12 +1,31 @@
 const MAX_DIMENSION = 1600;
 const JPEG_QUALITY = 0.8;
 
-/**
- * Resizes and compresses an image client-side (max 1600px, quality 0.8) while
- * respecting EXIF orientation. Falls back to the original file if the browser
- * cannot decode it (e.g. HEIC on non-Safari browsers; the server handles HEIC via sharp).
- */
-export async function prepareImageForUpload(file: File): Promise<File> {
+let workerInstance: Worker | null = null;
+let workerJobId = 0;
+
+function getImagePrepWorker(): Worker | null {
+  if (typeof window === 'undefined' || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+    return null;
+  }
+  if (!workerInstance) {
+    try {
+      workerInstance = new Worker(new URL('./imagePrep.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+    } catch {
+      return null;
+    }
+  }
+  return workerInstance;
+}
+
+function toJpegFile(blob: Blob, originalName: string): File {
+  const baseName = originalName.replace(/\.[^.]+$/, '') || 'photo';
+  return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+}
+
+async function prepareOnMainThread(file: File): Promise<File> {
   if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') {
     return file;
   }
@@ -32,14 +51,48 @@ export async function prepareImageForUpload(file: File): Promise<File> {
     );
     if (!blob) return file;
 
-    const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+    return toJpegFile(blob, file.name);
   } catch {
-    // Browser could not decode (e.g. HEIC on Chrome/Windows): send original for server sharp processing.
     return file;
   } finally {
     bitmap?.close();
   }
+}
+
+/**
+ * Resizes and compresses an image off the main thread via a Web Worker when
+ * supported (falling back to main-thread canvas), preserving EXIF orientation.
+ */
+export async function prepareImageForUpload(file: File): Promise<File> {
+  const worker = getImagePrepWorker();
+  if (!worker) {
+    return prepareOnMainThread(file);
+  }
+
+  const jobId = ++workerJobId;
+  const workerBlob = await new Promise<Blob | null>((resolve) => {
+    const handleMessage = (event: MessageEvent<{ id: number; blob?: Blob; failed?: boolean }>) => {
+      if (event.data.id !== jobId) return;
+      cleanup();
+      resolve(event.data.failed || !event.data.blob ? null : event.data.blob);
+    };
+    const handleError = () => {
+      cleanup();
+      resolve(null);
+    };
+    const cleanup = () => {
+      worker.removeEventListener('message', handleMessage);
+      worker.removeEventListener('error', handleError);
+    };
+    worker.addEventListener('message', handleMessage);
+    worker.addEventListener('error', handleError);
+    worker.postMessage({ id: jobId, file });
+  });
+
+  if (workerBlob) {
+    return toJpegFile(workerBlob, file.name);
+  }
+  return prepareOnMainThread(file);
 }
 
 export function formatBytes(bytes: number): string {
@@ -47,4 +100,3 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-

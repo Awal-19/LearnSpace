@@ -16,12 +16,12 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
   if (!data?.google) return null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <a
         href={`${API_BASE_URL}/auth/google`}
-        className="inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-line bg-surface px-4 text-sm font-medium text-fg shadow-sm transition duration-fast ease-soft hover:bg-surface2 active:scale-[0.98]"
+        className="inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-full border border-white/95 bg-white/90 px-4 text-sm font-medium text-fg shadow-[0_2px_10px_rgba(15,23,42,0.05)] transition duration-fast ease-soft hover:bg-white hover:shadow-sm active:scale-[0.985] dark:border-white/10 dark:bg-white/[0.08] dark:hover:bg-white/[0.12]"
       >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
           <path
             fill="#4285F4"
             d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
@@ -42,10 +42,10 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
         {label}
       </a>
 
-      <div className="relative flex items-center text-xs uppercase text-muted">
-        <div className="flex-1 border-t border-line" />
-        <span className="px-3">or</span>
-        <div className="flex-1 border-t border-line" />
+      <div className="relative flex items-center text-[11px] font-medium uppercase tracking-wider text-muted/80">
+        <div className="flex-1 border-t border-line/70" />
+        <span className="px-3">OR</span>
+        <div className="flex-1 border-t border-line/70" />
       </div>
     </div>
   );

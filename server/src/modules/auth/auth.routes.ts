@@ -5,11 +5,14 @@ import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
 import { REFRESH_TTL_PERSISTENT_MS } from '../../lib/tokens';
 import {
+  adminTwoFactorSchema,
   forgotPasswordSchema,
   loginSchema,
+  resendOtpSchema,
   resetPasswordSchema,
   signupSchema,
   verifyEmailSchema,
+  verifyOtpSchema,
 } from './auth.schemas';
 import type { AuthService } from './auth.service';
 
@@ -55,6 +58,21 @@ export function authRouter(
     },
   });
 
+  const otpEmailLimiter = createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    limit: env.NODE_ENV === 'test' ? 1000 : 5,
+    keyGenerator: (req) => {
+      const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase() : '';
+      return `otp-email:${email || req.ip || 'unknown'}`;
+    },
+  });
+
+  const otpIpLimiter = createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    limit: env.NODE_ENV === 'test' ? 1000 : 5,
+    keyGenerator: (req) => `otp-ip:${req.ip ?? 'unknown'}`,
+  });
+
   router.get('/auth/providers', (_req, res) => {
     res.json(service.getProviders());
   });
@@ -65,12 +83,33 @@ export function authRouter(
     validate({ body: signupSchema }),
     asyncHandler(async (req, res) => {
       const result = await service.signup(req.body, sessionMeta(req));
+      res.status(201).json(result);
+    }),
+  );
+
+  router.post(
+    '/auth/verify-otp',
+    authLimiter,
+    validate({ body: verifyOtpSchema }),
+    asyncHandler(async (req, res) => {
+      const result = await service.verifyOtp(req.body, sessionMeta(req));
       res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
-      res.status(201).json({
+      res.json({
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
         user: result.user,
       });
+    }),
+  );
+
+  router.post(
+    '/auth/resend-otp',
+    otpIpLimiter,
+    otpEmailLimiter,
+    validate({ body: resendOtpSchema }),
+    asyncHandler(async (req, res) => {
+      const result = await service.resendOtp(req.body.email);
+      res.json(result);
     }),
   );
 
@@ -80,6 +119,29 @@ export function authRouter(
     validate({ body: loginSchema }),
     asyncHandler(async (req, res) => {
       const result = await service.login(req.body, sessionMeta(req));
+      if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
+        res.json({ requiresTwoFactor: true, email: result.email });
+        return;
+      }
+      res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+      res.json({
+        accessToken: result.accessToken,
+        expiresIn: result.expiresIn,
+        user: result.user,
+      });
+    }),
+  );
+
+  router.post(
+    '/auth/admin-2fa/verify',
+    authLimiter,
+    validate({ body: adminTwoFactorSchema }),
+    asyncHandler(async (req, res) => {
+      const result = await service.verifyAdminTwoFactor(
+        req.body.email,
+        req.body.code,
+        sessionMeta(req),
+      );
       res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
       res.json({
         accessToken: result.accessToken,

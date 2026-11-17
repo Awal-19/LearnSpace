@@ -217,6 +217,7 @@ describe('planner & focus integration', () => {
     db = makeFakePrisma();
     const email: EmailService = {
       sendVerificationEmail: vi.fn(async () => undefined),
+      sendOtpEmail: vi.fn(async () => undefined),
       sendPasswordResetEmail: vi.fn(async () => undefined),
       sendTaskReminderEmail: vi.fn(async () => undefined),
     };

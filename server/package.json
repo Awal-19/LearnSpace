@@ -20,7 +20,9 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "admin:seed": "tsx prisma/seedAdmin.ts",
+    "email:test": "tsx scripts/sendTestEmail.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

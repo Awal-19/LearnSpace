@@ -6,6 +6,7 @@
  */
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? '/api/v1';
+export const ADMIN_API_BASE_URL: string = API_BASE_URL.replace(/\/v1\/?$/, '/admin');
 
 export class ApiError extends Error {
   constructor(
@@ -14,10 +15,28 @@ export class ApiError extends Error {
     message: string,
     public readonly details?: unknown,
     public readonly requestId?: string,
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+function parseRetryAfterSeconds(header: string | null, details?: unknown): number | undefined {
+  if (header) {
+    const asNumber = Number(header);
+    if (Number.isFinite(asNumber) && asNumber > 0) return Math.ceil(asNumber);
+    const asDate = Date.parse(header);
+    if (Number.isFinite(asDate)) {
+      const diff = Math.ceil((asDate - Date.now()) / 1000);
+      if (diff > 0) return diff;
+    }
+  }
+  if (details && typeof details === 'object' && 'retryAfterSeconds' in details) {
+    const val = Number((details as { retryAfterSeconds?: unknown }).retryAfterSeconds);
+    if (Number.isFinite(val) && val > 0) return Math.ceil(val);
+  }
+  return undefined;
 }
 
 let accessToken: string | null = null;
@@ -40,6 +59,8 @@ export interface RequestOptions {
   body?: unknown;
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  /** Override base URL (e.g. ADMIN_API_BASE_URL). */
+  baseUrl?: string;
   /** Attach the Bearer token (default true). */
   auth?: boolean;
   /** Endpoint uses the httpOnly refresh cookie: send credentials and the CSRF guard header. */
@@ -67,9 +88,10 @@ async function executeRequest<T>(
   if (auth && accessToken) finalHeaders.Authorization = `Bearer ${accessToken}`;
   if (cookie) finalHeaders['X-Requested-With'] = 'learnspace';
 
+  const baseUrl = options.baseUrl ?? API_BASE_URL;
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: finalHeaders,
       body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
@@ -102,12 +124,22 @@ async function executeRequest<T>(
       }
     }
 
+    if (response.status === 403 && code === 'EMAIL_NOT_VERIFIED' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('learnspace:email-not-verified'));
+    }
+
+    const retryAfterSeconds =
+      response.status === 429
+        ? parseRetryAfterSeconds(response.headers.get('Retry-After'), envelope.error?.details)
+        : undefined;
+
     throw new ApiError(
       response.status,
       code,
       envelope.error?.message ?? `Request failed (${response.status})`,
       envelope.error?.details,
       envelope.error?.requestId,
+      retryAfterSeconds,
     );
   }
 

@@ -36,6 +36,63 @@ const StudyPage = lazy(() =>
 const DocumentsPage = lazy(() =>
   import('../features/documents/DocumentsPage').then((m) => ({ default: m.DocumentsPage })),
 );
+const RequireAdmin = lazy(() =>
+  import('../features/admin/RequireAdmin').then((m) => ({ default: m.RequireAdmin })),
+);
+const AdminLayout = lazy(() =>
+  import('../features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })),
+);
+const AdminOverviewPage = lazy(() =>
+  import('../features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })),
+);
+const AdminUsersPage = lazy(() =>
+  import('../features/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })),
+);
+const AdminUserDetailPage = lazy(() =>
+  import('../features/admin/AdminUserDetailPage').then((m) => ({ default: m.AdminUserDetailPage })),
+);
+const AdminAiUsagePage = lazy(() =>
+  import('../features/admin/AdminAiUsagePage').then((m) => ({ default: m.AdminAiUsagePage })),
+);
+const AdminContentPage = lazy(() =>
+  import('../features/admin/AdminContentPage').then((m) => ({ default: m.AdminContentPage })),
+);
+const AdminLearningPage = lazy(() =>
+  import('../features/admin/AdminLearningPage').then((m) => ({ default: m.AdminLearningPage })),
+);
+const AdminAnnouncementsPage = lazy(() =>
+  import('../features/admin/AdminAnnouncementsPage').then((m) => ({
+    default: m.AdminAnnouncementsPage,
+  })),
+);
+const AdminFeedbackPage = lazy(() =>
+  import('../features/admin/AdminFeedbackPage').then((m) => ({ default: m.AdminFeedbackPage })),
+);
+const AdminAuditLogPage = lazy(() =>
+  import('../features/admin/AdminAuditLogPage').then((m) => ({ default: m.AdminAuditLogPage })),
+);
+const AdminSystemPage = lazy(() =>
+  import('../features/admin/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })),
+);
+const AdminSettingsPage = lazy(() =>
+  import('../features/admin/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })),
+);
+const AdminReportsPage = lazy(() =>
+  import('../features/admin/AdminReportsPage').then((m) => ({ default: m.AdminReportsPage })),
+);
+const AdminTeamPage = lazy(() =>
+  import('../features/admin/AdminTeamPage').then((m) => ({ default: m.AdminTeamPage })),
+);
+const AdminPlatformSettingsPage = lazy(() =>
+  import('../features/admin/AdminPlatformSettingsPage').then((m) => ({
+    default: m.AdminPlatformSettingsPage,
+  })),
+);
+const AcceptAdminInvitePage = lazy(() =>
+  import('../features/auth/AcceptAdminInvitePage').then((m) => ({
+    default: m.AcceptAdminInvitePage,
+  })),
+);
 const ProfilePage = lazy(() =>
   import('../features/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })),
 );
@@ -138,12 +195,40 @@ export const routes: RouteObject[] = [
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
+      { path: '/accept-admin-invite', element: withSuspense(<AcceptAdminInvitePage />) },
       { path: '/auth/callback', element: <AuthCallbackPage /> },
     ],
   },
   {
     element: <RequireAuth />,
-    children: [{ path: '/', element: <AppLayout />, children: appRoutes }],
+    children: [
+      { path: '/', element: <AppLayout />, children: appRoutes },
+    ],
+  },
+  {
+    path: '/admin',
+    element: withSuspense(<RequireAdmin />),
+    children: [
+      {
+        element: withSuspense(<AdminLayout />),
+        children: [
+          { index: true, element: withSuspense(<AdminOverviewPage />) },
+          { path: 'users', element: withSuspense(<AdminUsersPage />) },
+          { path: 'users/:userId', element: withSuspense(<AdminUserDetailPage />) },
+          { path: 'ai-usage', element: withSuspense(<AdminAiUsagePage />) },
+          { path: 'content', element: withSuspense(<AdminContentPage />) },
+          { path: 'learning', element: withSuspense(<AdminLearningPage />) },
+          { path: 'announcements', element: withSuspense(<AdminAnnouncementsPage />) },
+          { path: 'feedback', element: withSuspense(<AdminFeedbackPage />) },
+          { path: 'audit-log', element: withSuspense(<AdminAuditLogPage />) },
+          { path: 'system', element: withSuspense(<AdminSystemPage />) },
+          { path: 'settings', element: withSuspense(<AdminSettingsPage />) },
+          { path: 'reports', element: withSuspense(<AdminReportsPage />) },
+          { path: 'team', element: withSuspense(<AdminTeamPage />) },
+          { path: 'platform-settings', element: withSuspense(<AdminPlatformSettingsPage />) },
+        ],
+      },
+    ],
   },
   ...devRoutes,
   { path: '*', element: <NotFoundPage /> },

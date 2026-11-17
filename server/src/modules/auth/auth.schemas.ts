@@ -39,6 +39,13 @@ export const verifyEmailSchema = z
   })
   .strict();
 
+export const adminTwoFactorSchema = z
+  .object({
+    email: emailSchema,
+    code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+  })
+  .strict();
+
 export const forgotPasswordSchema = z
   .object({
     email: emailSchema,
@@ -58,3 +65,16 @@ export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
+
+export const verifyOtpSchema = z
+  .object({
+    email: emailSchema,
+    code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+  })
+  .strict();
+
+export const resendOtpSchema = z
+  .object({
+    email: emailSchema,
+  })
+  .strict();

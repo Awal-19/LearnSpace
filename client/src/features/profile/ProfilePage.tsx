@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useAuth } from '../../app/AuthContext';
-import { Badge, Card } from '../../design';
+import { Badge, Card, VerifiedBadge } from '../../design';
 import { request } from '../../lib/apiClient';
 import { AvatarUploader } from './AvatarUploader';
 import { ProfileDetailsForm } from './ProfileDetailsForm';
@@ -24,20 +24,21 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Card className="p-6">
+      <Card className="relative overflow-hidden border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-6 dark:border-primary-500/20 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                {user.name}
+              <h1 className="flex items-center gap-1.5 font-display text-2xl font-bold tracking-tight text-fg">
+                <span>{user.name}</span>
+                {user.emailVerified ? <VerifiedBadge /> : null}
               </h1>
               <Badge tone={user.emailVerified ? 'success' : 'warning'}>
                 {user.emailVerified ? 'Verified' : 'Unverified email'}
               </Badge>
             </div>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{user.email}</p>
+            <p className="text-sm text-muted">{user.email}</p>
             {(user.programme || user.university) && (
-              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+              <p className="text-sm font-medium text-fg/80">
                 {[user.programme, user.level, user.university].filter(Boolean).join(' · ')}
               </p>
             )}
@@ -56,7 +57,7 @@ export function ProfilePage() {
       <div
         role="tablist"
         aria-label="Profile sections"
-        className="flex gap-2 border-b border-line pb-px"
+        className="inline-flex gap-1 rounded-xl border border-line bg-surface2/70 p-1"
       >
         {(
           [
@@ -72,10 +73,10 @@ export function ProfilePage() {
               role="tab"
               aria-selected={active}
               onClick={() => setTab(item.id)}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                 active
-                  ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400'
-                  : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
+                  : 'text-muted hover:text-fg'
               }`}
             >
               {item.label}

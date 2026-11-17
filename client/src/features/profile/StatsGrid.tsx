@@ -72,7 +72,7 @@ export function StatsGrid({ stats, isLoading, isError, onRetry }: StatsGridProps
       value: String(stats.quizzesTaken),
       subtext: stats.quizzesTaken > 0 ? `Average score: ${avgPercent}%` : 'No quiz attempts yet',
       icon: GraduationCap,
-      accent: 'text-indigo-600 dark:text-indigo-400',
+      accent: 'text-sky-600 dark:text-sky-400',
     },
   ];
 

@@ -6,6 +6,8 @@ export type ErrorCode =
   | 'INVALID_CREDENTIALS'
   | 'REFRESH_INVALID'
   | 'EMAIL_NOT_VERIFIED'
+  | 'FORBIDDEN'
+  | 'ACCOUNT_SUSPENDED'
   | 'CSRF_BLOCKED'
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
@@ -30,6 +32,8 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   INVALID_CREDENTIALS: 401,
   REFRESH_INVALID: 401,
   EMAIL_NOT_VERIFIED: 403,
+  FORBIDDEN: 403,
+  ACCOUNT_SUSPENDED: 403,
   CSRF_BLOCKED: 403,
   NOT_FOUND: 404,
   EMAIL_TAKEN: 409,
@@ -54,6 +58,8 @@ const DEFAULT_MESSAGE: Record<ErrorCode, string> = {
   INVALID_CREDENTIALS: 'Invalid email or password',
   REFRESH_INVALID: 'Your session is no longer valid. Please log in again',
   EMAIL_NOT_VERIFIED: 'Please verify your email to use this feature',
+  FORBIDDEN: 'You do not have permission to access this resource',
+  ACCOUNT_SUSPENDED: 'Your account has been suspended. Please contact support.',
   CSRF_BLOCKED: 'Request blocked',
   NOT_FOUND: 'Not found',
   EMAIL_TAKEN: 'Email already in use',

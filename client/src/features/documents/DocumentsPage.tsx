@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
@@ -7,11 +8,12 @@ import {
   FileUp,
   Loader2,
   Presentation,
+  RotateCcw,
   Sparkles,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
 import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
@@ -53,12 +55,11 @@ export function DocumentsPage() {
   const navigate = useNavigate();
   const appPath = useAppPath();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
-  const [docs, setDocs] = useState<StudyDoc[]>([]);
-  const [courses, setCourses] = useState<CourseItem[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
   const [filterType, setFilterType] = useState<DocumentType | ''>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Upload state
   const [uploadType, setUploadType] = useState<DocumentType>('past_question');
@@ -69,83 +70,170 @@ export function DocumentsPage() {
   const [dragActive, setDragActive] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
 
-  // Active document detail state
-  const [detail, setDetail] = useState<DocumentDetailResponse | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  // Active document detail mode
   const [activeMode, setActiveMode] = useState<'answer' | 'generate'>('answer');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileCamRef = useRef<HTMLInputElement>(null);
 
-  const loadLibrary = useCallback(async () => {
-    setLoadingList(true);
-    try {
-      const [docsRes, coursesRes] = await Promise.all([
-        listDocuments({
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
+
+  const coursesQuery = useQuery({
+    queryKey: ['courses'],
+    queryFn: ({ signal }) => request<CourseItem[]>('/courses', { signal }).catch(() => []),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const docsQuery = useQuery({
+    queryKey: ['documents', 'list', { type: filterType || 'all', q: debouncedSearch }],
+    queryFn: ({ signal }) =>
+      listDocuments(
+        {
           type: filterType || undefined,
-          q: searchQuery.trim() || undefined,
-        }),
-        request<CourseItem[]>('/courses').catch(() => []),
-      ]);
-      setDocs(Array.isArray(docsRes.documents) ? docsRes.documents : []);
-      setCourses(Array.isArray(coursesRes) ? coursesRes : []);
-    } catch (err) {
-      toast.show({
-        kind: 'error',
-        title: 'Could not load documents',
-        description: err instanceof ApiError ? err.message : 'Please refresh.',
-      });
-    } finally {
-      setLoadingList(false);
-    }
-  }, [filterType, searchQuery, toast]);
+          q: debouncedSearch || undefined,
+          page: 1,
+          pageSize: 50,
+        },
+        signal,
+      ),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && err.status === 429) return false;
+      return failureCount < 1;
+    },
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ['documents', 'detail', documentId],
+    queryFn: ({ signal }) => getDocumentDetail(documentId!, signal),
+    enabled: Boolean(documentId),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && err.status === 429) return false;
+      return failureCount < 1;
+    },
+  });
+
+  const docs = docsQuery.data?.documents ?? [];
+  const courses = Array.isArray(coursesQuery.data) ? coursesQuery.data : [];
+  const loadingList = docsQuery.isLoading;
+  const detail: DocumentDetailResponse | null = detailQuery.data ?? null;
+  const loadingDetail = detailQuery.isLoading;
 
   useEffect(() => {
-    void loadLibrary();
-  }, [loadLibrary]);
+    if (!detail) return;
+    setActiveMode(detail.document.type === 'past_question' ? 'answer' : 'generate');
+  }, [detail?.document.id, detail?.document.type]);
 
-  const loadDetail = useCallback(
-    async (id: string, silent = false) => {
-      if (!silent) setLoadingDetail(true);
-      try {
-        const res = await getDocumentDetail(id);
-        setDetail(res);
-        setActiveMode(res.document.type === 'past_question' ? 'answer' : 'generate');
-      } catch (err) {
-        toast.show({
-          kind: 'error',
-          title: 'Could not load document',
-          description: err instanceof ApiError ? err.message : 'Try again.',
-        });
-        navigate(appPath('/documents'), { replace: true });
-      } finally {
-        if (!silent) setLoadingDetail(false);
-      }
-    },
-    [appPath, navigate, toast],
+  // De-duplicated toast notification for rate limits without piling up
+  useEffect(() => {
+    const err = detailQuery.error ?? docsQuery.error;
+    if (!(err instanceof ApiError)) return;
+    if (err.status === 429) {
+      toast.show({
+        kind: 'info',
+        dedupeKey: 'documents-rate-limit',
+        title: "You're doing that a bit too fast",
+        description: err.retryAfterSeconds
+          ? `Please wait ${err.retryAfterSeconds}s and try again.`
+          : 'Please wait a few seconds and try again.',
+      });
+    }
+  }, [detailQuery.error, docsQuery.error, toast]);
+
+  const isDetailProcessing = Boolean(
+    documentId &&
+      detail &&
+      (detail.document.status === 'uploaded' ||
+        detail.document.status === 'extracting' ||
+        detail.latestJob?.status === 'queued' ||
+        detail.latestJob?.status === 'running'),
   );
 
+  // Visibility-aware exponential backoff polling for active document processing
   useEffect(() => {
-    if (!documentId) {
-      setDetail(null);
-      return;
-    }
-    void loadDetail(documentId);
-  }, [documentId, loadDetail]);
+    if (!documentId || !isDetailProcessing) return;
+    const BACKOFF_MS = [3000, 5000, 10000, 15000];
+    let step = 0;
+    let timer: number | undefined;
+    let cancelled = false;
 
-  // Poll while document extraction or background job is active
+    const schedule = (delayMs: number) => {
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        if (document.visibilityState === 'visible') {
+          const result = await detailQuery.refetch();
+          if (result.error instanceof ApiError && result.error.status === 429) {
+            const waitMs = (result.error.retryAfterSeconds ?? 10) * 1000;
+            schedule(waitMs);
+            return;
+          }
+          step = Math.min(step + 1, BACKOFF_MS.length - 1);
+        }
+        if (!cancelled) {
+          schedule(BACKOFF_MS[step] ?? 15000);
+        }
+      }, delayMs);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !cancelled) {
+        void detailQuery.refetch();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    schedule(BACKOFF_MS[0] ?? 3000);
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [documentId, isDetailProcessing]);
+
+  const hasListProcessing =
+    !documentId && docs.some((d) => d.status === 'uploaded' || d.status === 'extracting');
+
+  // Single-request backoff polling on list view only when any document is still processing
   useEffect(() => {
-    if (!documentId || !detail) return;
-    const isDocBusy = detail.document.status === 'uploaded' || detail.document.status === 'extracting';
-    const isJobBusy =
-      detail.latestJob?.status === 'queued' || detail.latestJob?.status === 'running';
-    if (!isDocBusy && !isJobBusy) return;
+    if (!hasListProcessing) return;
+    const BACKOFF_MS = [3000, 5000, 10000, 15000];
+    let step = 0;
+    let timer: number | undefined;
+    let cancelled = false;
 
-    const timer = setInterval(() => {
-      void loadDetail(documentId, true);
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [documentId, detail, loadDetail]);
+    const schedule = (delayMs: number) => {
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        if (document.visibilityState === 'visible') {
+          const result = await docsQuery.refetch();
+          if (result.error instanceof ApiError && result.error.status === 429) {
+            schedule((result.error.retryAfterSeconds ?? 10) * 1000);
+            return;
+          }
+          step = Math.min(step + 1, BACKOFF_MS.length - 1);
+        }
+        if (!cancelled) {
+          schedule(BACKOFF_MS[step] ?? 15000);
+        }
+      }, delayMs);
+    };
+
+    schedule(BACKOFF_MS[0] ?? 3000);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [hasListProcessing]);
 
   const handleFileUpload = async (rawFile: File) => {
     setUploading(true);
@@ -163,11 +251,12 @@ export function DocumentsPage() {
       });
       setUploadTitle('');
       toast.show({ kind: 'success', title: 'Uploaded — processing document…' });
-      await loadLibrary();
+      await queryClient.invalidateQueries({ queryKey: ['documents', 'list'] });
       navigate(appPath(`/documents/${res.document.id}`));
     } catch (err) {
       toast.show({
         kind: 'error',
+        dedupeKey: 'document-upload-error',
         title: 'Upload failed',
         description: err instanceof ApiError ? err.message : 'Check file type and size.',
       });
@@ -200,7 +289,7 @@ export function DocumentsPage() {
       if (documentId === id) {
         navigate(appPath('/documents'));
       }
-      await loadLibrary();
+      await queryClient.invalidateQueries({ queryKey: ['documents', 'list'] });
     } catch (err) {
       toast.show({
         kind: 'error',
@@ -241,7 +330,20 @@ export function DocumentsPage() {
           ) : null}
         </div>
 
-        {loadingDetail || !detail ? (
+        {detailQuery.isError && !detail ? (
+          <Card className="flex flex-col items-center gap-3 p-6 text-center">
+            <AlertCircle className="h-6 w-6 text-danger" aria-hidden="true" />
+            <p className="text-sm font-medium">
+              {detailQuery.error instanceof ApiError && detailQuery.error.status === 429
+                ? "You're doing that a bit too fast, please wait a few seconds."
+                : 'Could not load this document right now.'}
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => void detailQuery.refetch()}>
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              Retry
+            </Button>
+          </Card>
+        ) : loadingDetail || !detail ? (
           <Skeleton className="h-48 w-full" />
         ) : (
           <>
@@ -307,12 +409,16 @@ export function DocumentsPage() {
               activeMode === 'answer' ? (
                 <PastQuestionsWorkspace
                   detail={detail}
-                  onRefresh={() => loadDetail(detail.document.id, true)}
+                  onRefresh={async () => {
+                    await detailQuery.refetch();
+                  }}
                 />
               ) : (
                 <SlideQuestionsWorkspace
                   detail={detail}
-                  onRefresh={() => loadDetail(detail.document.id, true)}
+                  onRefresh={async () => {
+                    await detailQuery.refetch();
+                  }}
                 />
               )
             ) : null}
@@ -324,22 +430,29 @@ export function DocumentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Study from Documents</h1>
-        <p className="mt-1 text-sm text-muted">
-          Upload past exam papers to get step-by-step worked answers, or upload lecture slides to
-          generate practice questions.
-        </p>
+      <div className="flex items-start gap-4 rounded-2xl border border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-5 shadow-sm dark:border-line/90 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-6">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400">
+          <FileUp className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
+            Study from Documents
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            Upload past exam papers to get step-by-step worked answers, or upload lecture slides to
+            generate practice questions.
+          </p>
+        </div>
       </div>
 
-      <Card className="p-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-1 text-sm">
+      <Card className="p-5 sm:p-6">
+        <div className="grid gap-3.5 sm:grid-cols-3">
+          <label className="space-y-1.5 text-sm">
             <span className="font-medium text-fg">Document type</span>
             <select
               value={uploadType}
               onChange={(e) => setUploadType(e.target.value as DocumentType)}
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg"
+              className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="past_question">Past Question / Exam / Quiz</option>
               <option value="slides">Lecture Slides (PPTX / PDF)</option>
@@ -347,22 +460,22 @@ export function DocumentsPage() {
             </select>
           </label>
 
-          <label className="space-y-1 text-sm">
+          <label className="space-y-1.5 text-sm">
             <span className="font-medium text-fg">Title (optional)</span>
             <input
               value={uploadTitle}
               onChange={(e) => setUploadTitle(e.target.value)}
               placeholder="e.g. CSC 201 Midterm 2025"
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg"
+              className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             />
           </label>
 
-          <label className="space-y-1 text-sm">
+          <label className="space-y-1.5 text-sm">
             <span className="font-medium text-fg">Course (optional)</span>
             <select
               value={uploadCourseId}
               onChange={(e) => setUploadCourseId(e.target.value)}
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg"
+              className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="">No course</option>
               {courses.map((c) => (
@@ -461,12 +574,12 @@ export function DocumentsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search documents…"
-            className="rounded-md border border-line bg-bg px-3 py-1.5 text-sm text-fg"
+            className="rounded-xl border border-line bg-surface2/50 px-3 py-1.5 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           />
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as DocumentType | '')}
-            className="rounded-md border border-line bg-bg px-3 py-1.5 text-sm text-fg"
+            className="rounded-xl border border-line bg-surface2/50 px-3 py-1.5 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="">All types</option>
             <option value="past_question">Past Questions</option>
@@ -476,7 +589,20 @@ export function DocumentsPage() {
         </div>
       </div>
 
-      {loadingList ? (
+      {docsQuery.isError && docs.length === 0 ? (
+        <Card className="flex flex-col items-center gap-3 p-6 text-center">
+          <AlertCircle className="h-6 w-6 text-danger" aria-hidden="true" />
+          <p className="text-sm font-medium">
+            {docsQuery.error instanceof ApiError && docsQuery.error.status === 429
+              ? "You're doing that a bit too fast, please wait a few seconds."
+              : 'Could not load your documents right now.'}
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => void docsQuery.refetch()}>
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            Retry
+          </Button>
+        </Card>
+      ) : loadingList ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Skeleton className="h-36" />
           <Skeleton className="h-36" />
@@ -490,28 +616,35 @@ export function DocumentsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {docs.map((doc) => (
-            <Card key={doc.id} className="flex flex-col justify-between p-4">
+            <Card
+              key={doc.id}
+              className="group flex flex-col justify-between p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:border-primary-400/60 hover:shadow-md"
+            >
               <div>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {doc.type === 'slides' ? (
-                      <Presentation className="h-4 w-4 text-primary-600" />
-                    ) : (
-                      <FileText className="h-4 w-4 text-primary-600" />
-                    )}
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-400">
+                      {doc.type === 'slides' ? (
+                        <Presentation className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <FileText className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </div>
                     <Badge tone={STATUS_TONE[doc.status]}>{doc.status}</Badge>
                   </div>
                   <button
                     type="button"
                     aria-label={`Delete ${doc.title}`}
                     onClick={() => void handleDelete(doc.id)}
-                    className="rounded p-1 text-muted hover:bg-surface2 hover:text-danger"
+                    className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-danger"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
-                <h3 className="mt-2 font-medium text-fg line-clamp-1">{doc.title}</h3>
+                <h3 className="mt-3 font-semibold text-fg line-clamp-1 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                  {doc.title}
+                </h3>
                 <p className="mt-0.5 text-xs text-muted">
                   {TYPE_LABELS[doc.type]} · {formatBytes(doc.sizeBytes)}
                 </p>

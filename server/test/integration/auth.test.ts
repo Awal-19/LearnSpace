@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app';
 import type { EmailService } from '../../src/lib/email';
 import { createLogger } from '../../src/lib/logger';
+import { signAccessToken } from '../../src/lib/tokens';
 import { createAuthService } from '../../src/modules/auth/auth.service';
 import { testEnv } from '../helpers';
 
@@ -51,10 +52,22 @@ interface EmailTokenRow {
   createdAt: Date;
 }
 
+interface OtpRow {
+  id: string;
+  userId: string;
+  purpose: string;
+  codeHash: string;
+  expiresAt: Date;
+  attempts: number;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
 function createInMemoryPrisma() {
   const users: UserRow[] = [];
   const refreshTokens: RefreshRow[] = [];
   const emailTokens: EmailTokenRow[] = [];
+  const otpCodes: OtpRow[] = [];
 
   const db = {
     user: {
@@ -172,6 +185,59 @@ function createInMemoryPrisma() {
         return { count };
       },
     },
+    otpCode: {
+      findFirst: async ({
+        where,
+      }: {
+        where: { userId?: string; purpose?: string; usedAt?: null };
+      }) => {
+        const matches = otpCodes.filter(
+          (r) =>
+            (!where.userId || r.userId === where.userId) &&
+            (!where.purpose || r.purpose === where.purpose) &&
+            (where.usedAt === undefined || r.usedAt === where.usedAt),
+        );
+        return matches[matches.length - 1] ?? null;
+      },
+      create: async ({
+        data,
+      }: {
+        data: { userId: string; purpose: string; codeHash: string; expiresAt: Date };
+      }) => {
+        const row: OtpRow = {
+          id: randomUUID(),
+          ...data,
+          attempts: 0,
+          usedAt: null,
+          createdAt: new Date(),
+        };
+        otpCodes.push(row);
+        return row;
+      },
+      update: async ({ where, data }: { where: { id: string }; data: Partial<OtpRow> }) => {
+        const row = otpCodes.find((r) => r.id === where.id);
+        if (!row) throw new Error('OTP not found');
+        Object.assign(row, data);
+        return row;
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { userId?: string; purpose?: string; usedAt?: null };
+        data: Partial<OtpRow>;
+      }) => {
+        let count = 0;
+        for (const row of otpCodes) {
+          if (where.userId && row.userId !== where.userId) continue;
+          if (where.purpose && row.purpose !== where.purpose) continue;
+          if (where.usedAt === null && row.usedAt !== null) continue;
+          Object.assign(row, data);
+          count += 1;
+        }
+        return { count };
+      },
+    },
     $transaction: async <T>(arg: ((tx: unknown) => Promise<T>) | Promise<unknown>[]) => {
       if (Array.isArray(arg)) {
         return Promise.all(arg);
@@ -180,24 +246,25 @@ function createInMemoryPrisma() {
     },
   };
 
-  return { db: db as unknown as PrismaClient, users, refreshTokens, emailTokens };
+  return { db: db as unknown as PrismaClient, users, refreshTokens, emailTokens, otpCodes };
 }
 
 describe('auth endpoints (T-AUTH-01..13)', () => {
-  let sentVerifyUrl: string | null = null;
+  let sentOtpCode: string | null = null;
   let sentResetUrl: string | null = null;
   let store: ReturnType<typeof createInMemoryPrisma>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
-    sentVerifyUrl = null;
+    sentOtpCode = null;
     sentResetUrl = null;
     store = createInMemoryPrisma();
     const env = testEnv();
     const logger = createLogger(env);
     const email: EmailService = {
-      sendVerificationEmail: vi.fn(async (_to, _name, url) => {
-        sentVerifyUrl = url;
+      sendVerificationEmail: vi.fn(async () => undefined),
+      sendOtpEmail: vi.fn(async ({ code }) => {
+        sentOtpCode = code;
       }),
       sendPasswordResetEmail: vi.fn(async (_to, _name, url) => {
         sentResetUrl = url;
@@ -208,18 +275,35 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     app = createApp(env, { checkDb: async () => undefined, auth }, logger);
   });
 
-  it('signs up a user, hashes password with argon2id, sets httpOnly cookie, and sends verification email', async () => {
+  it('signs up a user as unverified without issuing a session, sends 6-digit OTP, and verifies to unlock session', async () => {
     const res = await request(app)
       .post('/api/v1/auth/signup')
       .send({ name: 'Ama Mensah', email: 'Ama@Uni.edu', password: 'StudyPass1!' });
 
     expect(res.status).toBe(201);
-    expect(res.body.accessToken).toBeTruthy();
-    expect(res.body.user.email).toBe('ama@uni.edu');
-    expect(res.body.user.passwordHash).toBeUndefined();
-    expect(res.headers['set-cookie']?.[0]).toMatch(/ls_refresh=.*;.*HttpOnly/i);
+    expect(res.body.requiresVerification).toBe(true);
+    expect(res.body.email).toBe('ama@uni.edu');
+    expect(res.body.accessToken).toBeUndefined();
+    expect(res.headers['set-cookie']).toBeUndefined();
     expect(store.users[0]?.passwordHash?.startsWith('$argon2id$')).toBe(true);
-    expect(sentVerifyUrl).toMatch(/\/verify-email\?token=/);
+    expect(store.users[0]?.emailVerified).toBe(false);
+    expect(sentOtpCode).toMatch(/^\d{6}$/);
+
+    // Login before verification is blocked with EMAIL_NOT_VERIFIED
+    const unverifiedLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'ama@uni.edu', password: 'StudyPass1!' });
+    expect(unverifiedLogin.status).toBe(403);
+    expect(unverifiedLogin.body.error.code).toBe('EMAIL_NOT_VERIFIED');
+
+    // Verify OTP unlocks full session
+    const verifyRes = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'ama@uni.edu', code: sentOtpCode });
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.accessToken).toBeTruthy();
+    expect(verifyRes.body.user.emailVerified).toBe(true);
+    expect(verifyRes.headers['set-cookie']?.[0]).toMatch(/ls_refresh=.*;.*HttpOnly/i);
   });
 
   it('rejects duplicate signup regardless of email case (T-AUTH-02)', async () => {
@@ -260,10 +344,13 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   });
 
   it('requires X-Requested-With on refresh (T-AUTH-08) and revokes family on token reuse (T-AUTH-07)', async () => {
-    const signup = await request(app)
+    await request(app)
       .post('/api/v1/auth/signup')
       .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
-    const cookie1 = signup.headers['set-cookie']![0]!.split(';')[0]!;
+    const verify = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'ama@uni.edu', code: sentOtpCode });
+    const cookie1 = verify.headers['set-cookie']![0]!.split(';')[0]!;
 
     const noCsrf = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie1);
     expect(noCsrf.status).toBe(403);
@@ -290,26 +377,30 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     expect(afterRevoke.status).toBe(401);
   });
 
-  it('verifies email once and rejects reuse (T-AUTH-11)', async () => {
+  it('verifies OTP once and rejects reuse (T-AUTH-11)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
       .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
-    const token = new URL(sentVerifyUrl!).searchParams.get('token')!;
+    const code = sentOtpCode!;
 
-    const ok = await request(app).post('/api/v1/auth/verify-email').send({ token });
+    const ok = await request(app).post('/api/v1/auth/verify-otp').send({ email: 'ama@uni.edu', code });
     expect(ok.status).toBe(200);
     expect(store.users[0]?.emailVerified).toBe(true);
 
-    const reuse = await request(app).post('/api/v1/auth/verify-email').send({ token });
+    // Reusing the same OTP after verification does not create another OTP; if unverified again, reuse fails
+    store.users[0]!.emailVerified = false;
+    const reuse = await request(app).post('/api/v1/auth/verify-otp').send({ email: 'ama@uni.edu', code });
     expect(reuse.status).toBe(400);
-    expect(reuse.body.error.code).toBe('INVALID_TOKEN');
   });
 
   it('resets password, revokes all sessions, and gives identical forgot-password responses (T-AUTH-12, T-AUTH-13)', async () => {
-    const signup = await request(app)
+    await request(app)
       .post('/api/v1/auth/signup')
       .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
-    const cookie = signup.headers['set-cookie']![0]!.split(';')[0]!;
+    const verify = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'ama@uni.edu', code: sentOtpCode });
+    const cookie = verify.headers['set-cookie']![0]!.split(';')[0]!;
 
     const unknownForgot = await request(app)
       .post('/api/v1/auth/forgot-password')
@@ -351,6 +442,86 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     const res = await request(app).get('/api/v1/auth/providers');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ google: false });
+  });
+
+  it('rejects wrong, over-attempted, and expired OTPs and enforces resend cooldown with generic response', async () => {
+    await request(app)
+      .post('/api/v1/auth/signup')
+      .send({ name: 'Ama', email: 'otp@uni.edu', password: 'StudyPass1!' });
+
+    // Resend within 60s returns 429 cooldown for existing unverified user, generic 200 for unknown email
+    const unknownResend = await request(app)
+      .post('/api/v1/auth/resend-otp')
+      .send({ email: 'nobody@uni.edu' });
+    expect(unknownResend.status).toBe(200);
+    expect(unknownResend.body.ok).toBe(true);
+
+    const cooldownRes = await request(app)
+      .post('/api/v1/auth/resend-otp')
+      .send({ email: 'otp@uni.edu' });
+    expect(cooldownRes.status).toBe(429);
+
+    // 5 wrong attempts invalidate the OTP
+    for (let i = 0; i < 4; i += 1) {
+      const wrong = await request(app)
+        .post('/api/v1/auth/verify-otp')
+        .send({ email: 'otp@uni.edu', code: '000000' });
+      expect(wrong.status).toBe(400);
+    }
+    const fifth = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'otp@uni.edu', code: '000000' });
+    expect(fifth.status).toBe(429);
+
+    // Even the real code now fails because it was invalidated
+    const afterLock = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'otp@uni.edu', code: sentOtpCode });
+    expect(afterLock.status).toBe(400);
+  });
+
+  it('blocks unverified users with 403 EMAIL_NOT_VERIFIED across all protected endpoints', async () => {
+    await request(app)
+      .post('/api/v1/auth/signup')
+      .send({ name: 'Ama', email: 'blocked@uni.edu', password: 'StudyPass1!' });
+    const unverifiedUser = store.users.find((u) => u.email === 'blocked@uni.edu')!;
+    const { token } = signAccessToken(
+      unverifiedUser.id,
+      testEnv().JWT_SECRET,
+      300,
+    );
+
+    const protectedApp = createApp(
+      testEnv(),
+      {
+        checkDb: async () => undefined,
+        isEmailVerified: async (userId) =>
+          Boolean(store.users.find((u) => u.id === userId)?.emailVerified),
+      },
+      createLogger(testEnv()),
+    );
+
+    const endpoints = [
+      '/api/v1/users/me',
+      '/api/v1/courses',
+      '/api/v1/notes',
+      '/api/v1/tasks',
+      '/api/v1/focus/sessions',
+      '/api/v1/decks',
+      '/api/v1/quizzes',
+      '/api/v1/documents',
+      '/api/v1/conversations',
+      '/api/v1/dashboard',
+      '/api/v1/announcements/active',
+    ];
+
+    for (const ep of endpoints) {
+      const res = await request(protectedApp)
+        .get(ep)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('EMAIL_NOT_VERIFIED');
+    }
   });
 });
 

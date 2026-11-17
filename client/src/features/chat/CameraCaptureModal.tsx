@@ -1,5 +1,5 @@
-import { Camera, RefreshCw, RotateCcw, Check } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Check, RefreshCw, RotateCcw } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Modal } from '../../design';
 
 interface CameraCaptureModalProps {
@@ -8,9 +8,14 @@ interface CameraCaptureModalProps {
   onCapture: (file: File) => void;
 }
 
-export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureModalProps) {
+export const CameraCaptureModal = memo(function CameraCaptureModal({
+  open,
+  onClose,
+  onCapture,
+}: CameraCaptureModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const capturedUrlRef = useRef<string | null>(null);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [error, setError] = useState<string | null>(null);
@@ -20,10 +25,28 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
-  const startCamera = useCallback(async () => {
-    stopStream();
+  const clearCaptured = useCallback(() => {
+    if (capturedUrlRef.current) {
+      URL.revokeObjectURL(capturedUrlRef.current);
+      capturedUrlRef.current = null;
+    }
+    setCapturedUrl(null);
+    setCapturedBlob(null);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      stopStream();
+      clearCaptured();
+      return;
+    }
+
+    let cancelled = false;
     setError(null);
 
     if (!window.isSecureContext && window.location.hostname !== 'localhost') {
@@ -36,40 +59,39 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
       return;
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode }, width: { ideal: 1600 }, height: { ideal: 1200 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+    void (async () => {
+      stopStream();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode }, width: { ideal: 1600 }, height: { ideal: 1200 } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const name = err instanceof DOMException ? err.name : '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          setError('Camera permission was denied. Allow camera access in your browser settings and try again.');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          setError('No camera was found on this device. Use "Upload image" instead.');
+        } else {
+          setError('Could not start the camera right now.');
+        }
       }
-    } catch (err) {
-      const name = err instanceof DOMException ? err.name : '';
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setError('Camera permission was denied. Allow camera access in your browser settings and try again.');
-      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        setError('No camera was found on this device. Use "Upload image" instead.');
-      } else {
-        setError('Could not start the camera right now.');
-      }
-    }
-  }, [facingMode, stopStream]);
+    })();
 
-  useEffect(() => {
-    if (open && !capturedUrl) {
-      void startCamera();
-    }
     return () => {
-      if (!open) {
-        stopStream();
-        if (capturedUrl) URL.revokeObjectURL(capturedUrl);
-        setCapturedUrl(null);
-        setCapturedBlob(null);
-      }
+      cancelled = true;
+      stopStream();
     };
-  }, [open, capturedUrl, startCamera, stopStream]);
+  }, [open, facingMode, stopStream, clearCaptured]);
 
   const handleCapture = () => {
     const video = videoRef.current;
@@ -85,9 +107,13 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
-        stopStream();
+        if (capturedUrlRef.current) {
+          URL.revokeObjectURL(capturedUrlRef.current);
+        }
+        const url = URL.createObjectURL(blob);
+        capturedUrlRef.current = url;
         setCapturedBlob(blob);
-        setCapturedUrl(URL.createObjectURL(blob));
+        setCapturedUrl(url);
       },
       'image/jpeg',
       0.85,
@@ -95,22 +121,20 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
   };
 
   const handleRetake = () => {
-    if (capturedUrl) URL.revokeObjectURL(capturedUrl);
-    setCapturedUrl(null);
-    setCapturedBlob(null);
+    clearCaptured();
   };
 
   const handleUsePhoto = () => {
     if (!capturedBlob) return;
     const file = new File([capturedBlob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
     onCapture(file);
-    handleRetake();
+    clearCaptured();
     onClose();
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Take a photo" className="max-w-lg">
-      <div className="p-5 pt-3 sm:p-6 sm:pt-3 space-y-4">
+      <div className="space-y-4 p-5 pt-3 sm:p-6 sm:pt-3">
         {error ? (
           <div
             role="alert"
@@ -118,21 +142,22 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
           >
             {error}
           </div>
-        ) : capturedUrl ? (
-          <img
-            src={capturedUrl}
-            alt="Captured preview"
-            className="w-full max-h-80 rounded-lg object-contain bg-black"
-          />
         ) : (
-          <div className="relative overflow-hidden rounded-lg bg-black">
+          <div className="relative h-72 w-full overflow-hidden rounded-lg bg-black sm:h-80">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className="w-full max-h-80 object-contain"
+              className={capturedUrl ? 'hidden' : 'h-full w-full object-contain'}
             />
+            {capturedUrl ? (
+              <img
+                src={capturedUrl}
+                alt="Captured preview"
+                className="h-full w-full object-contain"
+              />
+            ) : null}
           </div>
         )}
 
@@ -166,16 +191,15 @@ export function CameraCaptureModal({ open, onClose, onCapture }: CameraCaptureMo
                   Use photo
                 </Button>
               </>
-            ) : !error ? (
-              <Button type="button" onClick={handleCapture}>
+            ) : (
+              <Button type="button" disabled={Boolean(error)} onClick={handleCapture}>
                 <Camera className="h-4 w-4" aria-hidden="true" />
                 Capture
               </Button>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
     </Modal>
   );
-}
-
+});

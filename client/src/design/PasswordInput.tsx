@@ -1,5 +1,5 @@
 import { Eye, EyeOff } from 'lucide-react';
-import { forwardRef, useId, useState, type InputHTMLAttributes } from 'react';
+import { forwardRef, useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from './cn';
 
 export interface PasswordInputProps
@@ -8,11 +8,12 @@ export interface PasswordInputProps
   label: string;
   hint?: string;
   error?: string;
+  leftIcon?: ReactNode;
 }
 
 /** Labelled password field with an accessible show/hide toggle. */
 export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(function PasswordInput(
-  { id, label, hint, error, className, ...rest },
+  { id, label, hint, error, leftIcon, className, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -23,10 +24,18 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={inputId} className="block text-sm font-medium text-fg">
+      <label htmlFor={inputId} className="block text-[13px] font-medium text-fg">
         {label}
       </label>
       <div className="relative">
+        {leftIcon ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-muted"
+          >
+            {leftIcon}
+          </span>
+        ) : null}
         <input
           ref={ref}
           id={inputId}
@@ -34,10 +43,13 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'h-11 w-full rounded-md border bg-surface pl-3 pr-11 text-fg placeholder:text-muted/70',
-            'transition duration-fast ease-soft focus-visible:ring-offset-0',
-            error ? 'border-danger' : 'border-line hover:border-primary-300',
+            'h-11 w-full rounded-xl border bg-surface2/40 pl-3.5 pr-11 text-sm text-fg placeholder:text-muted/65',
+            'transition duration-fast ease-soft focus:bg-surface focus-visible:ring-offset-0',
+            error
+              ? 'border-danger focus:border-danger'
+              : 'border-line hover:border-primary-300 focus:border-primary-500',
             'disabled:cursor-not-allowed disabled:opacity-60',
+            leftIcon ? 'pl-10' : '',
             className,
           )}
           {...rest}
@@ -47,7 +59,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? 'Hide password' : 'Show password'}
           aria-pressed={visible}
-          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-muted transition duration-fast hover:text-fg"
+          className="absolute inset-y-1.5 right-2 flex w-8 items-center justify-center rounded-full text-muted transition duration-fast hover:bg-surface2 hover:text-fg"
         >
           {visible ? (
             <EyeOff className="h-4 w-4" aria-hidden="true" />

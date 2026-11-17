@@ -7,7 +7,10 @@ import { ToastProvider } from '../../design';
 import { setAccessToken } from '../../lib/apiClient';
 import { ChatPage } from './ChatPage';
 import { Composer } from './Composer';
+import { ConversationList } from './ConversationList';
 import { MarkdownContent } from './MarkdownContent';
+import { MessageList } from './MessageList';
+import { registerAttachmentPreview } from './previewCache';
 import { parseSseEvents } from './useChatStream';
 
 const verifiedUser: AuthUser = {
@@ -197,6 +200,102 @@ describe('ChatPage', () => {
     expect(screen.getByRole('button', { name: 'Explain this' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Solve this problem' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Quiz me on this' })).toBeInTheDocument();
+  });
+
+  it('keeps failed attachments visible with a Retry button and triggers onRetryAttachment', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const file = new File(['img'], 'photo.jpg', { type: 'image/jpeg' });
+    render(
+      <Composer
+        isStreaming={false}
+        attachments={[
+          {
+            localId: 'err-1',
+            file,
+            previewUrl: 'blob:http://localhost/err-1',
+            kind: 'image',
+            progress: 40,
+            status: 'error',
+            error: 'Network timeout',
+          },
+        ]}
+        onFilesSelected={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onRetryAttachment={onRetry}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Network timeout')).toBeInTheDocument();
+    const retryBtn = screen.getByRole('button', { name: 'Retry photo.jpg' });
+    await user.click(retryBtn);
+    expect(onRetry).toHaveBeenCalledWith('err-1');
+  });
+
+  it('renders sent image attachment immediately from previewCache without Loading flash', () => {
+    registerAttachmentPreview('att-cached-1', 'blob:http://localhost/cached-photo');
+    render(
+      <MessageList
+        messages={[
+          {
+            id: 'm1',
+            role: 'user',
+            content: 'Check this',
+            status: 'complete',
+            action: null,
+            createdAt: new Date().toISOString(),
+            attachments: [
+              {
+                id: 'att-cached-1',
+                kind: 'image',
+                originalName: 'notes-photo.jpg',
+                mimeType: 'image/jpeg',
+                sizeBytes: 1024,
+                truncated: false,
+                createdAt: new Date().toISOString(),
+                url: '/api/v1/ai/attachments/att-cached-1/content',
+              },
+            ],
+          },
+        ]}
+        isStreaming={false}
+        onQuickAction={vi.fn()}
+        onRetryLast={vi.fn()}
+      />,
+    );
+
+    const img = screen.getByAltText('notes-photo.jpg') as HTMLImageElement;
+    expect(img).toBeInTheDocument();
+    expect(img.src).toBe('blob:http://localhost/cached-photo');
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+  });
+
+  it('displays Unlimited when daily AI tokenLimit is null', () => {
+    render(
+      <ConversationList
+        conversations={[]}
+        activeId={null}
+        search=""
+        onSearchChange={vi.fn()}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onRename={vi.fn(async () => undefined)}
+        onDelete={vi.fn(async () => undefined)}
+        isLoading={false}
+        isCreating={false}
+        usage={{
+          day: '2026-11-17',
+          tokensUsed: 15420,
+          tokenLimit: null,
+          requestsPerMinute: 20,
+          resetsAt: '2026-11-18T00:00:00.000Z',
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/15,420 · Unlimited/)).toBeInTheDocument();
   });
 });
 

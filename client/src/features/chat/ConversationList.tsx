@@ -1,6 +1,19 @@
-import { MessageSquarePlus, Pencil, Search, Trash2, Check, X } from 'lucide-react';
-import { useState } from 'react';
-import { Button, Skeleton } from '../../design';
+import {
+  Check,
+  MessageSquarePlus,
+  PanelLeftClose,
+  Pencil,
+  Search,
+  Settings,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
+import type { AuthUser } from '../../app/AuthContext';
+import { useAppPath } from '../../app/basePath';
+import { Avatar, Button, Skeleton, VerifiedBadge } from '../../design';
 import type { AiUsage, Conversation } from './chatApi';
 
 interface ConversationListProps {
@@ -15,6 +28,37 @@ interface ConversationListProps {
   isLoading: boolean;
   isCreating: boolean;
   usage?: AiUsage;
+  user?: AuthUser | null;
+  onToggleCollapse?: () => void;
+  onMobileClose?: () => void;
+}
+
+function SafeLink({
+  to,
+  className,
+  'aria-label': ariaLabel,
+  title,
+  children,
+}: {
+  to: string;
+  className?: string;
+  'aria-label'?: string;
+  title?: string;
+  children: ReactNode;
+}) {
+  const inRouter = useInRouterContext();
+  if (inRouter) {
+    return (
+      <Link to={to} className={className} aria-label={ariaLabel} title={title}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <a href={to} className={className} aria-label={ariaLabel} title={title}>
+      {children}
+    </a>
+  );
 }
 
 export function ConversationList({
@@ -29,7 +73,11 @@ export function ConversationList({
   isLoading,
   isCreating,
   usage,
+  user,
+  onToggleCollapse,
+  onMobileClose,
 }: ConversationListProps) {
+  const path = useAppPath();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
 
@@ -48,29 +96,73 @@ export function ConversationList({
     setEditingId(null);
   };
 
-  const usagePercent = usage
-    ? Math.min(100, Math.round((usage.tokensUsed / Math.max(1, usage.tokenLimit)) * 100))
-    : 0;
+  const usagePercent =
+    usage && usage.tokenLimit !== null && usage.tokenLimit > 0
+      ? Math.min(100, Math.round((usage.tokensUsed / usage.tokenLimit) * 100))
+      : 0;
 
   return (
     <aside
       aria-label="Conversations"
-      className="flex h-full w-full flex-col border-r border-line bg-surface"
+      className="flex h-full w-full flex-col border-r border-black/[0.07] bg-white/80 backdrop-blur-xl dark:border-white/[0.08] dark:bg-surface/80"
     >
-      <div className="space-y-3 border-b border-line p-3">
+      {/* Logo & Collapse Header */}
+      <div className="flex items-center justify-between px-3.5 pt-3.5 pb-2">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl liquid-glass-subtle text-primary-600 dark:text-primary-400">
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-display text-sm font-semibold tracking-tight text-fg">
+              LearnSpace
+            </span>
+            <span className="rounded-md bg-black/[0.05] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted dark:bg-white/[0.08]">
+              AI
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {onToggleCollapse ? (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+              className="hidden h-8 w-8 items-center justify-center rounded-xl text-muted transition-colors hover:bg-black/[0.05] hover:text-fg dark:hover:bg-white/[0.08] md:inline-flex"
+            >
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+          {onMobileClose ? (
+            <button
+              type="button"
+              onClick={onMobileClose}
+              aria-label="Close sidebar"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-muted transition-colors hover:bg-black/[0.05] hover:text-fg dark:hover:bg-white/[0.08] md:hidden"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* New Chat & Search */}
+      <div className="space-y-2.5 px-3 py-2">
         <Button
           type="button"
-          className="w-full justify-center"
+          variant="secondary"
+          className="w-full justify-start gap-2.5 rounded-xl border border-black/[0.07] bg-white/80 px-3 py-2 text-sm font-medium text-fg shadow-sm transition-all hover:bg-white dark:border-white/[0.09] dark:bg-white/[0.06] dark:hover:bg-white/[0.1]"
           loading={isCreating}
           onClick={onCreate}
         >
-          <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+          <MessageSquarePlus className="h-4 w-4 text-primary-600 dark:text-primary-400" aria-hidden="true" />
           New chat
         </Button>
 
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-neutral-400"
+            className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-muted"
             aria-hidden="true"
           />
           <input
@@ -79,17 +171,22 @@ export function ConversationList({
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search chats..."
             aria-label="Search conversations"
-            className="w-full rounded-lg border border-line bg-bg py-1.5 pl-8 pr-3 text-sm text-fg placeholder:text-muted focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-xl border border-black/[0.06] bg-black/[0.03] py-1.5 pl-8 pr-3 text-xs text-fg placeholder:text-muted transition-colors focus:border-primary-500/40 focus:bg-white/90 focus:outline-none dark:border-white/[0.07] dark:bg-white/[0.04] dark:focus:bg-white/[0.08]"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      {/* Chat History List */}
+      <div className="flex-1 overflow-y-auto px-2.5 py-2 space-y-0.5">
+        <p className="px-2.5 pb-1.5 text-[11px] font-medium text-muted/80">
+          Recent
+        </p>
+
         {isLoading ? (
-          <div className="space-y-2 p-2">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
+          <div className="space-y-2 px-1">
+            <Skeleton className="h-9 w-full rounded-xl" />
+            <Skeleton className="h-9 w-full rounded-xl" />
+            <Skeleton className="h-9 w-full rounded-xl" />
           </div>
         ) : conversations.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted">
@@ -102,7 +199,10 @@ export function ConversationList({
 
             if (editing) {
               return (
-                <div key={conv.id} className="flex items-center gap-1 rounded-lg bg-surface2 p-1.5">
+                <div
+                  key={conv.id}
+                  className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1.5 shadow-sm"
+                >
                   <input
                     type="text"
                     value={draftTitle}
@@ -112,23 +212,23 @@ export function ConversationList({
                       if (e.key === 'Escape') setEditingId(null);
                     }}
                     aria-label="Rename conversation"
-                    className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-1 text-sm text-fg focus:outline-none"
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-app px-2 py-1 text-xs text-fg focus:outline-none"
                   />
                   <button
                     type="button"
                     aria-label="Save title"
                     onClick={() => void commitEdit(conv.id)}
-                    className="rounded p-1 text-emerald-600 hover:bg-surface"
+                    className="rounded-lg p-1 text-emerald-600 transition-colors hover:bg-surface2"
                   >
-                    <Check className="h-4 w-4" />
+                    <Check className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     aria-label="Cancel rename"
                     onClick={() => setEditingId(null)}
-                    className="rounded p-1 text-muted hover:bg-surface"
+                    className="rounded-lg p-1 text-muted transition-colors hover:bg-surface2"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               );
@@ -137,35 +237,35 @@ export function ConversationList({
             return (
               <div
                 key={conv.id}
-                className={`group flex items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                className={`group flex items-center justify-between rounded-xl px-2.5 py-2 text-[13px] transition-colors ${
                   active
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
-                    : 'text-fg hover:bg-surface2'
+                    ? 'bg-black/[0.06] font-medium text-fg dark:bg-white/[0.1]'
+                    : 'text-fg/80 hover:bg-black/[0.04] hover:text-fg dark:hover:bg-white/[0.05]'
                 }`}
               >
                 <button
                   type="button"
                   onClick={() => onSelect(conv.id)}
-                  className="min-w-0 flex-1 truncate text-left font-medium"
+                  className="min-w-0 flex-1 truncate text-left"
                 >
                   {conv.title}
                 </button>
-                <div className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                <div className="ml-1.5 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     aria-label={`Rename ${conv.title}`}
                     onClick={() => startEdit(conv)}
-                    className="rounded p-1 text-muted hover:bg-surface hover:text-fg"
+                    className="rounded-lg p-1 text-muted transition-colors hover:bg-surface hover:text-fg"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-3 w-3" />
                   </button>
                   <button
                     type="button"
                     aria-label={`Delete ${conv.title}`}
                     onClick={() => void onDelete(conv.id)}
-                    className="rounded p-1 text-muted hover:bg-surface hover:text-red-600"
+                    className="rounded-lg p-1 text-muted transition-colors hover:bg-surface hover:text-danger"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3 w-3" />
                   </button>
                 </div>
               </div>
@@ -174,22 +274,52 @@ export function ConversationList({
         )}
       </div>
 
-      {usage ? (
-        <div className="border-t border-line p-3 text-xs text-muted">
-          <div className="flex items-center justify-between">
-            <span>Daily AI tokens</span>
-            <span>
-              {usage.tokensUsed.toLocaleString()} / {usage.tokenLimit.toLocaleString()}
-            </span>
+      {/* Usage & User Footer */}
+      <div className="border-t border-black/[0.06] p-3 space-y-2.5 dark:border-white/[0.07]">
+        {usage ? (
+          <div className="px-1 text-[11px] text-muted">
+            <div className="flex items-center justify-between gap-2">
+              <span>Daily AI tokens</span>
+              <span className="tabular-nums">
+                {usage.tokenLimit === null
+                  ? `${usage.tokensUsed.toLocaleString()} · Unlimited`
+                  : `${usage.tokensUsed.toLocaleString()} / ${usage.tokenLimit.toLocaleString()}`}
+              </span>
+            </div>
+            {usage.tokenLimit !== null ? (
+              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-primary-600/80 transition-all duration-slow dark:bg-primary-400/80"
+                  style={{ width: `${usagePercent}%` }}
+                />
+              </div>
+            ) : null}
           </div>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface2">
-            <div
-              className="h-full rounded-full bg-primary-600 transition-all"
-              style={{ width: `${usagePercent}%` }}
-            />
+        ) : null}
+
+        {user ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]">
+            <SafeLink to={path('/profile')} className="flex min-w-0 flex-1 items-center gap-2.5">
+              <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+              <div className="min-w-0">
+                <p className="flex items-center gap-1 truncate text-xs font-medium text-fg">
+                  <span className="truncate">{user.name}</span>
+                  {user.emailVerified ? <VerifiedBadge className="h-3.5 w-3.5" /> : null}
+                </p>
+                <p className="truncate text-[11px] text-muted">{user.email}</p>
+              </div>
+            </SafeLink>
+            <SafeLink
+              to={path('/settings')}
+              aria-label="Open settings"
+              title="Settings"
+              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-black/[0.05] hover:text-fg dark:hover:bg-white/[0.08]"
+            >
+              <Settings className="h-4 w-4" aria-hidden="true" />
+            </SafeLink>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </aside>
   );
 }

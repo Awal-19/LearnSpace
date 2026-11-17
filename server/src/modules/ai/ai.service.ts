@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import { AppError } from '../../lib/errors';
 import type { LLMContentPart, LLMMessage, LLMProvider, TokenUsage } from '../../lib/llm/provider';
 import type { StorageService } from '../../lib/storage';
+import { recordUsageEvent } from '../admin/admin.logging';
 import { formatRagContext, type RagService } from '../rag/rag.service';
 import {
   toPublicAttachment,
@@ -46,7 +47,7 @@ export interface PublicMessage {
 export interface AiUsageInfo {
   day: string;
   tokensUsed: number;
-  tokenLimit: number;
+  tokenLimit: number | null;
   requestsPerMinute: number;
   resetsAt: string;
 }
@@ -100,7 +101,7 @@ export interface AiServiceDeps {
   rag?: RagService;
   attachments?: AttachmentsService;
   storage?: StorageService;
-  dailyTokenLimit?: number;
+  dailyTokenLimit?: number | null;
 }
 
 export interface AiService {
@@ -253,7 +254,7 @@ export function createAiService({
         where: { userId_day: { userId, day: dayDate } },
       });
       const usedToday = (usageRow?.inputTokens ?? 0) + (usageRow?.outputTokens ?? 0);
-      if (usedToday >= dailyTokenLimit) {
+      if (dailyTokenLimit !== null && dailyTokenLimit > 0 && usedToday >= dailyTokenLimit) {
         throw new AppError('AI_BUDGET_EXCEEDED', 'Daily AI token limit reached', { resetsAt });
       }
 
@@ -372,6 +373,7 @@ export function createAiService({
 
       let fullText = '';
       let usage: TokenUsage | null = null;
+      const startedAt = Date.now();
 
       try {
         for await (const chunk of llm.stream(llmMessages, {
@@ -448,6 +450,16 @@ export function createAiService({
           usage: finalUsage,
           ...(nextTitle ? { title: nextTitle } : {}),
         });
+        void recordUsageEvent(prisma, {
+          userId,
+          feature: 'chat',
+          model: llm.modelName,
+          tokensIn: finalUsage.inputTokens,
+          tokensOut: finalUsage.outputTokens,
+          durationMs: Date.now() - startedAt,
+          status: 'success',
+          route: '/api/v1/conversations/:id/messages',
+        });
       } catch (err) {
         if (signal.aborted) {
           await prisma.message.update({
@@ -461,6 +473,17 @@ export function createAiService({
         const message =
           err instanceof AppError ? err.message : 'The AI service had a problem. Please try again.';
         logger.warn({ err, conversationId: conv.id }, 'AI stream failed');
+        void recordUsageEvent(prisma, {
+          userId,
+          feature: 'chat',
+          model: llm.modelName,
+          tokensIn: 0,
+          tokensOut: 0,
+          durationMs: Date.now() - startedAt,
+          status: 'error',
+          errorCode: code,
+          route: '/api/v1/conversations/:id/messages',
+        });
 
         await prisma.message.update({
           where: { id: assistantMessage.id },
