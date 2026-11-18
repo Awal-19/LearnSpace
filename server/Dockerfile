@@ -28,6 +28,7 @@ CMD ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
 
 # ---- production build ----
 FROM dev AS build
+WORKDIR /app
 RUN npm run build -w server
 
 FROM base AS prod
