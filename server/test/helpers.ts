@@ -11,4 +11,3 @@ export const baseEnv = {
 export function testEnv(overrides: Record<string, string | undefined> = {}): Env {
   return loadEnv({ ...baseEnv, ...overrides });
 }
-

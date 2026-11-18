@@ -1,15 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Cpu, DollarSign, Save, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Button, Card, EmptyState, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { fetchAdminAiUsage, updateAdminAiLimits, type AdminRange } from './adminApi';
@@ -204,7 +196,10 @@ export function AdminAiUsagePage() {
         <Card className="p-5 sm:p-6">
           <h2 className="font-display text-base font-semibold">Daily Requests</h2>
           {daily.length === 0 ? (
-            <EmptyState title="No daily data yet" description="Requests over time will appear here." />
+            <EmptyState
+              title="No daily data yet"
+              description="Requests over time will appear here."
+            />
           ) : (
             <div className="mt-4 h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -254,7 +249,9 @@ export function AdminAiUsagePage() {
         </Card>
 
         <Card className="p-5 sm:p-6">
-          <h2 className="font-display text-base font-semibold">Global Limits &amp; Alert Threshold</h2>
+          <h2 className="font-display text-base font-semibold">
+            Global Limits &amp; Alert Threshold
+          </h2>
           <form onSubmit={saveLimits} className="mt-4 space-y-3.5 text-sm">
             <label className="block space-y-1.5">
               <span className="font-medium">Daily AI message limit per user</span>
@@ -308,4 +305,3 @@ export function AdminAiUsagePage() {
     </div>
   );
 }
-

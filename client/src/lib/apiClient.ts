@@ -54,6 +54,11 @@ export function setRefreshHandler(handler: (() => Promise<boolean>) | null): voi
   refreshHandler = handler;
 }
 
+export async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshHandler) return false;
+  return refreshHandler();
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -145,4 +150,3 @@ async function executeRequest<T>(
 
   return payload as T;
 }
-

@@ -43,4 +43,3 @@ export default async function handler(request: Request, context: Context): Promi
 export const config: Config = {
   path: '/api/edge/status',
 };
-

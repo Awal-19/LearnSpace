@@ -71,9 +71,9 @@ function makeFakePrisma() {
         };
       }) =>
         Array.from(tasks.values())
-          .filter((t) => (!where.userId || t.userId === where.userId))
-          .filter((t) => (!where.status || t.status === where.status))
-          .filter((t) => (!where.remindAt?.lte || (t.remindAt && t.remindAt <= where.remindAt.lte)))
+          .filter((t) => !where.userId || t.userId === where.userId)
+          .filter((t) => !where.status || t.status === where.status)
+          .filter((t) => !where.remindAt?.lte || (t.remindAt && t.remindAt <= where.remindAt.lte))
           .filter((t) => (where.reminderSentAt === null ? t.reminderSentAt === null : true))
           .map((t) => ({
             ...t,
@@ -151,7 +151,13 @@ function makeFakePrisma() {
         notifications.set(key, row);
         return row;
       },
-      updateMany: async ({ where, data }: { where: { userId: string; id?: string; readAt: null }; data: { readAt: Date } }) => {
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { userId: string; id?: string; readAt: null };
+        data: { readAt: Date };
+      }) => {
         let count = 0;
         for (const n of notifications.values()) {
           if (n.userId === where.userId && (!where.id || n.id === where.id) && n.readAt === null) {
@@ -169,7 +175,11 @@ function makeFakePrisma() {
         create,
       }: {
         where: { userId_startedAt: { userId: string; startedAt: Date } };
-        create: Partial<StudySessionRow> & { userId: string; startedAt: Date; durationSeconds: number };
+        create: Partial<StudySessionRow> & {
+          userId: string;
+          startedAt: Date;
+          durationSeconds: number;
+        };
       }) => {
         const existing = studySessions.find(
           (s) =>
@@ -220,6 +230,8 @@ describe('planner & focus integration', () => {
       sendOtpEmail: vi.fn(async () => undefined),
       sendPasswordResetEmail: vi.fn(async () => undefined),
       sendTaskReminderEmail: vi.fn(async () => undefined),
+      sendClassReminderEmail: vi.fn(async () => undefined),
+      sendExamReminderEmail: vi.fn(async () => undefined),
     };
     planner = createPlannerService({ prisma: db.prisma, email, logger, clientUrl: env.CLIENT_URL });
     const focus = createFocusService(db.prisma);
@@ -280,4 +292,3 @@ describe('planner & focus integration', () => {
     expect(tooShort.status).toBe(400);
   });
 });
-

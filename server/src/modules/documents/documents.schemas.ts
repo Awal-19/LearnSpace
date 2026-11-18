@@ -10,11 +10,19 @@ export const uploadDocumentMetaSchema = z.object({
 
 export const listDocumentsQuerySchema = z.object({
   type: documentTypeSchema.optional(),
-  courseId: z.string().uuid().optional(),
+  courseId: z.union([z.literal('none'), z.string().uuid()]).optional(),
   q: z.string().trim().max(120).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+export const updateDocumentSchema = z
+  .object({
+    title: z.string().trim().min(1, 'Title is required').max(200).optional(),
+    type: documentTypeSchema.optional(),
+    courseId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
 
 export const detectedQuestionItemSchema = z.object({
   section: z.string().trim().max(120).nullable().optional(),
@@ -202,4 +210,3 @@ export function chunkDocumentPages(
   flush();
   return chunks;
 }
-

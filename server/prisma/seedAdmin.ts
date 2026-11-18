@@ -5,7 +5,9 @@ import { estimateCostUsd } from '../src/modules/admin/admin.logging';
 async function main() {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (!adminEmail) {
-    console.error('ERROR: Set ADMIN_EMAIL in server/.env (or environment) before running admin:seed.');
+    console.error(
+      'ERROR: Set ADMIN_EMAIL in server/.env (or environment) before running admin:seed.',
+    );
     process.exit(1);
   }
 
@@ -82,11 +84,22 @@ async function main() {
       const [users, notes, docs, attempts] = await Promise.all([
         prisma.user.findMany({ select: { id: true, createdAt: true }, take: 1000 }),
         prisma.note.findMany({ select: { userId: true, id: true, createdAt: true }, take: 1000 }),
-        prisma.document.findMany({ select: { userId: true, id: true, createdAt: true }, take: 1000 }),
-        prisma.quizAttempt.findMany({ select: { userId: true, quizId: true, takenAt: true }, take: 1000 }),
+        prisma.document.findMany({
+          select: { userId: true, id: true, createdAt: true },
+          take: 1000,
+        }),
+        prisma.quizAttempt.findMany({
+          select: { userId: true, quizId: true, takenAt: true },
+          take: 1000,
+        }),
       ]);
       const rows = [
-        ...users.map((u) => ({ userId: u.id, action: 'signup', metadataJson: {}, createdAt: u.createdAt })),
+        ...users.map((u) => ({
+          userId: u.id,
+          action: 'signup',
+          metadataJson: {},
+          createdAt: u.createdAt,
+        })),
         ...notes.map((n) => ({
           userId: n.userId,
           action: 'note',
@@ -120,4 +133,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

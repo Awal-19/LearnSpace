@@ -1,14 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { GraduationCap } from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, EmptyState, Skeleton } from '../../design';
 import { fetchAdminLearning } from './adminApi';
 
@@ -40,27 +32,62 @@ export function AdminLearningPage() {
             Learning Content &amp; Engagement
           </h1>
           <p className="mt-0.5 text-sm text-muted">
-            Quizzes, flashcards, notes, planner completion, study hours, and student demographics.
+            Courses, timetable schedules, exams &amp; revision plans, quizzes, SM-2 flashcards,
+            study documents, GPA tracking, notes, tasks, and student demographics.
           </p>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
-          { label: 'Quizzes / Attempts', value: `${totals.totalQuizzes} / ${totals.totalQuizAttempts}` },
+          {
+            label: 'Quizzes / Attempts',
+            value: `${totals.totalQuizzes} / ${totals.totalQuizAttempts}`,
+          },
           { label: 'Avg Quiz Score', value: `${totals.avgQuizScorePct}%` },
-          { label: 'Decks / Flashcards', value: `${totals.totalDecks} / ${totals.totalCards}` },
+          {
+            label: 'Decks / Cards / Reviews',
+            value: `${totals.totalDecks} / ${totals.totalCards} / ${totals.totalFlashcardReviews}`,
+          },
           { label: 'Notes Created', value: totals.totalNotes },
-          { label: 'Study Hours', value: `${totals.totalStudyHours}h (Tasks ${totals.taskCompletionRatePct}%)` },
+          {
+            label: 'Study Hours',
+            value: `${totals.totalStudyHours}h (Tasks ${totals.taskCompletionRatePct}%)`,
+          },
         ].map((k) => (
           <Card
             key={k.label}
             className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md"
           >
             <p className="text-xs font-medium text-muted">{k.label}</p>
-            <p className="mt-1.5 font-display text-xl font-bold text-fg tabular-nums">
-              {k.value}
-            </p>
+            <p className="mt-1.5 font-display text-xl font-bold text-fg tabular-nums">{k.value}</p>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          { label: 'Courses Created', value: totals.totalCourses },
+          { label: 'Timetable Classes', value: totals.totalTimetableEntries },
+          {
+            label: 'Exams / Revision Plans',
+            value: `${totals.totalExams} / ${totals.totalRevisionPlans}`,
+          },
+          {
+            label: 'Study Docs / Practice Runs',
+            value: `${totals.totalDocuments} / ${totals.totalPracticeAttempts}`,
+          },
+          {
+            label: 'GPA Scales / Grade Records',
+            value: `${totals.totalGradingScales} / ${totals.totalGradeRecords}`,
+          },
+        ].map((k) => (
+          <Card
+            key={k.label}
+            className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <p className="text-xs font-medium text-muted">{k.label}</p>
+            <p className="mt-1.5 font-display text-xl font-bold text-fg tabular-nums">{k.value}</p>
           </Card>
         ))}
       </div>
@@ -124,4 +151,3 @@ export function AdminLearningPage() {
     </div>
   );
 }
-

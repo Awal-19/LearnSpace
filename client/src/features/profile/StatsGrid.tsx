@@ -98,4 +98,3 @@ export function StatsGrid({ stats, isLoading, isError, onRetry }: StatsGridProps
     </section>
   );
 }
-

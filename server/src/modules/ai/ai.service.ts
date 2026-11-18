@@ -1,4 +1,10 @@
-import type { AiAction, Conversation, Message, MessageAttachment, PrismaClient } from '@prisma/client';
+import type {
+  AiAction,
+  Conversation,
+  Message,
+  MessageAttachment,
+  PrismaClient,
+} from '@prisma/client';
 import type { Logger } from 'pino';
 import { AppError } from '../../lib/errors';
 import type { LLMContentPart, LLMMessage, LLMProvider, TokenUsage } from '../../lib/llm/provider';
@@ -30,6 +36,7 @@ export const AI_REQUESTS_PER_MINUTE = 20;
 export interface PublicConversation {
   id: string;
   title: string;
+  courseId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +75,7 @@ function toPublicConversation(c: Conversation): PublicConversation {
   return {
     id: c.id,
     title: c.title,
+    courseId: (c as { courseId?: string | null }).courseId ?? null,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };
@@ -150,9 +158,17 @@ export function createAiService({
 
   return {
     async listConversations(userId, query) {
+      const courseFilter =
+        query.courseId === 'none'
+          ? { courseId: null }
+          : query.courseId
+            ? { courseId: query.courseId }
+            : {};
+
       const rows = await prisma.conversation.findMany({
         where: {
           userId,
+          ...courseFilter,
           ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
         },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -169,10 +185,15 @@ export function createAiService({
     },
 
     async createConversation(userId, input) {
+      if (input.courseId) {
+        const course = await prisma.course.findFirst({ where: { id: input.courseId, userId } });
+        if (!course) throw new AppError('NOT_FOUND', 'Course not found');
+      }
       const conv = await prisma.conversation.create({
         data: {
           userId,
           title: input.title ?? 'New chat',
+          ...(input.courseId !== undefined ? { courseId: input.courseId } : {}),
         },
       });
       return toPublicConversation(conv);
@@ -212,9 +233,16 @@ export function createAiService({
 
     async renameConversation(userId, conversationId, input) {
       await requireOwnedConversation(userId, conversationId);
+      if (input.courseId) {
+        const course = await prisma.course.findFirst({ where: { id: input.courseId, userId } });
+        if (!course) throw new AppError('NOT_FOUND', 'Course not found');
+      }
       const updated = await prisma.conversation.update({
         where: { id: conversationId },
-        data: { title: input.title },
+        data: {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.courseId !== undefined ? { courseId: input.courseId } : {}),
+        },
       });
       return toPublicConversation(updated);
     },
@@ -264,7 +292,9 @@ export function createAiService({
       });
 
       if (!input.content && input.action) {
-        const hasAssistant = historyRows.some((m) => m.role === 'assistant' && m.content.length > 0);
+        const hasAssistant = historyRows.some(
+          (m) => m.role === 'assistant' && m.content.length > 0,
+        );
         if (!hasAssistant) {
           throw new AppError(
             'VALIDATION_ERROR',
@@ -319,9 +349,10 @@ export function createAiService({
         },
       });
 
+      const convCourseId = (conv as { courseId?: string | null }).courseId ?? null;
       const retrievedChunks =
         rag && input.content.trim().length > 0
-          ? await rag.retrieveRelevantChunks(userId, input.content, 4)
+          ? await rag.retrieveRelevantChunks(userId, input.content, 4, convCourseId)
           : [];
       const sources = retrievedChunks.map((c) => ({
         filename: c.filename,
@@ -355,7 +386,9 @@ export function createAiService({
       let userLlmContent: string | LLMContentPart[] = combinedText;
 
       if (imageAttachments.length > 0 && storage) {
-        const parts: LLMContentPart[] = [{ type: 'text', text: combinedText || 'Please examine the attached image(s).' }];
+        const parts: LLMContentPart[] = [
+          { type: 'text', text: combinedText || 'Please examine the attached image(s).' },
+        ];
         for (const img of imageAttachments) {
           const bytes = await storage.readAttachmentBytes(img.storageKey, img.storageUrl, 'image');
           parts.push({
@@ -498,4 +531,3 @@ export function createAiService({
     },
   };
 }
-

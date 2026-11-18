@@ -95,6 +95,8 @@ interface ComposerProps {
   disabled?: boolean;
   isStreaming: boolean;
   attachments: DraftAttachment[];
+  prefillText?: string;
+  onPrefillConsumed?: () => void;
   onFilesSelected: (files: File[]) => void;
   onRemoveAttachment: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
@@ -120,29 +122,25 @@ const DraftAttachmentChip = memo(function DraftAttachmentChip({
       : att.status === 'uploading'
         ? `Uploading ${att.progress}%`
         : att.status === 'error'
-          ? att.error ?? 'Upload failed'
+          ? (att.error ?? 'Upload failed')
           : formatBytes(att.file.size);
 
   return (
     <div
-      className={`motion-safe:animate-fade-up relative flex h-14 items-center gap-2.5 rounded-xl border px-2 py-1.5 text-xs ${
+      className={`motion-safe:animate-fade-up relative flex h-14 items-center gap-2.5 rounded-xl border px-2 py-1.5 text-xs shadow-sm ${
         att.status === 'error'
           ? 'border-danger/50 bg-danger/10 text-danger'
-          : 'liquid-glass-subtle text-fg'
+          : 'border-line/80 bg-app text-fg dark:bg-surface'
       }`}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface2">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 dark:bg-surface2">
         {att.previewUrl ? (
-          <img
-            src={att.previewUrl}
-            alt={att.file.name}
-            className="h-full w-full object-cover"
-          />
+          <img src={att.previewUrl} alt={att.file.name} className="h-full w-full object-cover" />
         ) : (
-          <FileText className="h-5 w-5 text-primary-600" aria-hidden="true" />
+          <FileText className="h-5 w-5 text-primary-600 dark:text-primary-400" aria-hidden="true" />
         )}
         {isBusy ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/45 px-1">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/55 px-1">
             <span className="text-[10px] font-semibold text-white tabular-nums">
               {att.status === 'preparing' && att.showPreparing ? '...' : `${att.progress}%`}
             </span>
@@ -156,7 +154,7 @@ const DraftAttachmentChip = memo(function DraftAttachmentChip({
         ) : null}
       </div>
 
-      <div className="min-w-0 w-[132px]">
+      <div className="w-[132px] min-w-0">
         <p className="truncate font-medium">{att.file.name}</p>
         <p className="truncate text-[11px] text-muted" title={statusText}>
           {statusText}
@@ -169,7 +167,7 @@ const DraftAttachmentChip = memo(function DraftAttachmentChip({
             type="button"
             aria-label={`Retry ${att.file.name}`}
             onClick={() => onRetry(att.localId)}
-            className="rounded p-1 text-danger hover:bg-danger/15"
+            className="rounded-lg p-1 text-danger hover:bg-danger/15"
             title="Retry upload"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -179,7 +177,7 @@ const DraftAttachmentChip = memo(function DraftAttachmentChip({
           type="button"
           aria-label={`Remove ${att.file.name}`}
           onClick={() => onRemove(att.localId)}
-          className="rounded p-1 text-muted hover:bg-surface2 hover:text-fg"
+          className="rounded-lg p-1 text-muted hover:bg-surface2 hover:text-fg"
           title={isBusy ? 'Cancel upload' : 'Remove'}
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -198,6 +196,8 @@ export function Composer({
   disabled,
   isStreaming,
   attachments,
+  prefillText,
+  onPrefillConsumed,
   onFilesSelected,
   onRemoveAttachment,
   onRetryAttachment,
@@ -209,6 +209,12 @@ export function Composer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [listening, setListening] = useState(false);
+
+  useEffect(() => {
+    if (!prefillText) return;
+    setText(prefillText);
+    onPrefillConsumed?.();
+  }, [prefillText, onPrefillConsumed]);
 
   const docInputRef = useRef<HTMLInputElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
@@ -251,7 +257,9 @@ export function Composer({
     };
   }, [menuOpen]);
 
-  const hasUploading = attachments.some((a) => a.status === 'uploading' || a.status === 'preparing');
+  const hasUploading = attachments.some(
+    (a) => a.status === 'uploading' || a.status === 'preparing',
+  );
   const hasReadyAttachment = attachments.some((a) => a.status === 'ready');
   const canSend =
     !disabled &&
@@ -345,10 +353,14 @@ export function Composer({
   return (
     <form
       onSubmit={handleSubmit}
-      className="shrink-0 bg-gradient-to-t from-app via-app/95 to-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4"
+      className="shrink-0 bg-gradient-to-t from-surface via-surface/95 to-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4"
     >
-      <div className="mx-auto w-full max-w-3xl space-y-2">
-        <div className="flex flex-wrap justify-center gap-1.5" role="group" aria-label="Quick actions">
+      <div className="mx-auto w-full max-w-3xl space-y-2.5">
+        <div
+          className="flex flex-wrap justify-center gap-1.5"
+          role="group"
+          aria-label="Quick actions"
+        >
           {ACTION_OPTIONS.map((opt) => {
             const selected = action === opt.id;
             return (
@@ -358,10 +370,10 @@ export function Composer({
                 disabled={disabled || isStreaming}
                 aria-pressed={selected}
                 onClick={() => setAction(selected ? null : opt.id)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
                   selected
-                    ? 'bg-fg text-app shadow-sm'
-                    : 'liquid-glass-subtle text-muted hover:text-fg'
+                    ? 'border-primary-600 bg-primary-600 text-white shadow-sm'
+                    : 'border-line/80 bg-surface text-muted shadow-sm hover:border-primary-300 hover:text-primary-600 dark:bg-surface2 dark:hover:text-primary-300'
                 }`}
               >
                 {opt.label}
@@ -370,7 +382,7 @@ export function Composer({
           })}
         </div>
 
-        <div className="liquid-glass rounded-[26px] p-2.5 transition-shadow focus-within:ring-2 focus-within:ring-primary-500/35 sm:p-3">
+        <div className="rounded-[24px] border border-line/90 bg-surface p-2.5 shadow-[0_8px_30px_-10px_rgba(15,23,42,0.09)] transition-all focus-within:border-primary-400 focus-within:ring-4 focus-within:ring-primary-500/10 dark:bg-surface2/80 sm:p-3">
           {attachments.length > 0 ? (
             <div className="mb-2.5 space-y-2 px-1">
               <div className="flex flex-wrap gap-2" aria-label="Selected attachments">
@@ -396,7 +408,7 @@ export function Composer({
                         setText('');
                         setAction(null);
                       }}
-                      className="rounded-full border border-primary-300/60 bg-primary-50/70 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-800/70 dark:bg-primary-950/40 dark:text-primary-300"
+                      className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
                     >
                       {prompt}
                     </button>
@@ -416,7 +428,7 @@ export function Composer({
             disabled={disabled || isStreaming}
             placeholder="Ask AWAL anything, paste an image, or drop files..."
             aria-label="Message to AWAL"
-            className="min-h-[42px] max-h-44 w-full resize-none border-0 bg-transparent px-2 py-1.5 text-[15px] leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60"
+            className="min-h-[44px] max-h-44 w-full resize-none border-0 bg-transparent px-2.5 py-1.5 text-[15px] leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60"
           />
 
           <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
@@ -427,7 +439,7 @@ export function Composer({
                 aria-label="Attach file, image, or photo"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-black/[0.05] hover:text-fg disabled:opacity-40 dark:hover:bg-white/[0.08]"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-primary-50 hover:text-primary-600 disabled:opacity-40 dark:hover:bg-white/[0.08] dark:hover:text-primary-400"
               >
                 <Paperclip className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
@@ -436,7 +448,7 @@ export function Composer({
                 <div
                   role="menu"
                   aria-label="Attachment options"
-                  className="liquid-glass absolute bottom-full left-0 z-20 mb-2 max-h-60 w-56 overflow-y-auto rounded-2xl p-1.5"
+                  className="absolute bottom-full left-0 z-20 mb-2 max-h-60 w-56 overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 shadow-xl dark:bg-surface2"
                 >
                   <button
                     type="button"
@@ -445,9 +457,12 @@ export function Composer({
                       setMenuOpen(false);
                       docInputRef.current?.click();
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-primary-50/70 hover:text-primary-700 dark:hover:bg-white/[0.08]"
                   >
-                    <FileText className="h-4 w-4 text-primary-600 dark:text-primary-400" aria-hidden="true" />
+                    <FileText
+                      className="h-4 w-4 text-primary-600 dark:text-primary-400"
+                      aria-hidden="true"
+                    />
                     Upload file (PDF, DOCX...)
                   </button>
                   <button
@@ -457,18 +472,21 @@ export function Composer({
                       setMenuOpen(false);
                       imgInputRef.current?.click();
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-primary-50/70 hover:text-primary-700 dark:hover:bg-white/[0.08]"
                   >
-                    <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                    <ImageIcon
+                      className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                      aria-hidden="true"
+                    />
                     Upload image
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={handleTakePhoto}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-primary-50/70 hover:text-primary-700 dark:hover:bg-white/[0.08]"
                   >
-                    <Camera className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                    <Camera className="h-4 w-4 text-sky-600 dark:text-sky-400" aria-hidden="true" />
                     Take photo
                   </button>
                 </div>
@@ -526,7 +544,7 @@ export function Composer({
                   className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
                     listening
                       ? 'bg-danger/15 text-danger animate-pulse'
-                      : 'text-muted hover:bg-black/[0.05] hover:text-fg dark:hover:bg-white/[0.08]'
+                      : 'text-muted hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-white/[0.08] dark:hover:text-primary-400'
                   }`}
                 >
                   {listening ? (
@@ -542,7 +560,7 @@ export function Composer({
                   type="button"
                   onClick={onStop}
                   aria-label="Stop generating"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-fg text-app shadow-sm transition-opacity hover:opacity-90"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm transition-opacity hover:bg-primary-700"
                 >
                   <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
                 </button>
@@ -553,8 +571,8 @@ export function Composer({
                   aria-label="Send message"
                   className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
                     canSend
-                      ? 'bg-fg text-app shadow-sm hover:scale-[1.03] hover:opacity-90'
-                      : 'bg-black/[0.06] text-muted/60 dark:bg-white/[0.08]'
+                      ? 'bg-primary-600 text-white shadow-[0_4px_12px_rgba(37,99,235,0.32)] hover:scale-[1.03] hover:bg-primary-700'
+                      : 'bg-surface2 text-muted/60 dark:bg-white/[0.08]'
                   }`}
                 >
                   <ArrowUp className="h-4 w-4" aria-hidden="true" />

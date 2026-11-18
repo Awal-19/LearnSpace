@@ -6,6 +6,7 @@ import { createApp } from '../../src/app';
 import type { LLMProvider } from '../../src/lib/llm/provider';
 import { createLogger } from '../../src/lib/logger';
 import { signAccessToken } from '../../src/lib/tokens';
+import { createCoursesService } from '../../src/modules/courses/courses.service';
 import { createNotesService } from '../../src/modules/notes/notes.service';
 import { testEnv } from '../helpers';
 
@@ -60,7 +61,11 @@ function makeFakePrisma() {
         }
         return null;
       },
-      create: async ({ data }: { data: { userId: string; name: string; color: string | null } }) => {
+      create: async ({
+        data,
+      }: {
+        data: { userId: string; name: string; color: string | null };
+      }) => {
         const row: CourseRow = {
           id: randomUUID(),
           userId: data.userId,
@@ -156,11 +161,13 @@ describe('courses and notes integration', () => {
       stream: async function* () {},
       generateText: async () => ({ text: '- Key point 1\n- Key point 2' }),
     };
+    const courses = createCoursesService({ prisma: db.prisma, logger });
     const notes = createNotesService({ prisma: db.prisma, llm, logger });
     app = createApp(
       env,
       {
         checkDb: async () => undefined,
+        courses,
         notes: { service: notes, isEmailVerified: async () => true },
       },
       logger,
@@ -206,7 +213,8 @@ describe('courses and notes integration', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(tooShortRes.status).toBe(400);
 
-    const longBody = 'Dynamic programming breaks overlapping subproblems into memoized steps for optimal substructure.';
+    const longBody =
+      'Dynamic programming breaks overlapping subproblems into memoized steps for optimal substructure.';
     const longNote = await request(app)
       .post('/api/v1/notes')
       .set('Authorization', `Bearer ${token}`)
@@ -221,4 +229,3 @@ describe('courses and notes integration', () => {
     expect(db.notes.get(longNote.body.id)?.aiSummary).toContain('Key point 1');
   });
 });
-

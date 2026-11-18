@@ -21,8 +21,20 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
+    }
+    if (!open && dialog.open) {
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
+    }
   }, [open]);
 
   return (
@@ -31,7 +43,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       onClose={onClose}
       aria-labelledby={titleId}
       className={cn(
-        'w-[calc(100%-2rem)] max-w-md rounded-xl border border-line bg-surface p-0 text-fg shadow-lg',
+        'w-[calc(100%-2rem)] rounded-xl border border-line bg-surface p-0 text-fg shadow-lg',
+        !className?.includes('max-w-') && 'max-w-md',
         'backdrop:bg-black/50 backdrop:backdrop-blur-sm',
         className,
       )}
@@ -53,4 +66,3 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     </dialog>
   );
 }
-

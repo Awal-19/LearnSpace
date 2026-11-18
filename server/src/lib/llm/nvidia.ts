@@ -66,8 +66,7 @@ export function createNvidiaProvider(env: Env, logger: Logger): LLMProvider {
       }
 
       const hasImages = messages.some(
-        (m) =>
-          Array.isArray(m.content) && m.content.some((part) => part.type === 'image_url'),
+        (m) => Array.isArray(m.content) && m.content.some((part) => part.type === 'image_url'),
       );
       const activeModel = hasImages ? visionModelName : modelName;
 
@@ -101,9 +100,14 @@ export function createNvidiaProvider(env: Env, logger: Logger): LLMProvider {
       }
 
       if (!response.ok || !response.body) {
-        logger.warn({ status: response.status, model: activeModel }, 'NVIDIA GLM returned non-OK status');
+        logger.warn(
+          { status: response.status, model: activeModel },
+          'NVIDIA GLM returned non-OK status',
+        );
         throw new AppError(
-          response.status === 404 || response.status === 503 ? 'AI_UNAVAILABLE' : 'AI_PROVIDER_ERROR',
+          response.status === 404 || response.status === 503
+            ? 'AI_UNAVAILABLE'
+            : 'AI_PROVIDER_ERROR',
           'AWAL is currently unavailable. Please try again shortly.',
         );
       }
@@ -214,7 +218,9 @@ export function createNvidiaProvider(env: Env, logger: Logger): LLMProvider {
       if (!response.ok) {
         logger.warn({ status: response.status, model: modelName }, 'NVIDIA generateText non-OK');
         throw new AppError(
-          response.status === 404 || response.status === 503 ? 'AI_UNAVAILABLE' : 'AI_PROVIDER_ERROR',
+          response.status === 404 || response.status === 503
+            ? 'AI_UNAVAILABLE'
+            : 'AI_PROVIDER_ERROR',
           'The NVIDIA AI service returned an error',
         );
       }
@@ -237,4 +243,3 @@ export function createNvidiaProvider(env: Env, logger: Logger): LLMProvider {
     },
   };
 }
-

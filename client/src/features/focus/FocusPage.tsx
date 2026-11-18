@@ -1,8 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pause, Play, RotateCcw, Timer, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Skeleton, useToast } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
+import { CourseBadge } from '../courses/CourseBadge';
+import { CourseSelect } from '../courses/CourseSelect';
+import { listCourses } from '../courses/coursesApi';
 
 type Mode = 'focus' | 'short' | 'long';
 
@@ -15,6 +18,7 @@ interface UserSettings {
 interface StudySession {
   id: string;
   taskId: string | null;
+  courseId: string | null;
   startedAt: string;
   durationSeconds: number;
   source: 'pomodoro' | 'manual';
@@ -23,6 +27,7 @@ interface StudySession {
 interface Task {
   id: string;
   title: string;
+  courseId?: string | null;
 }
 
 function formatClock(totalSeconds: number): string {
@@ -40,36 +45,63 @@ export function FocusPage() {
     queryFn: () => request<UserSettings>('/users/me/settings'),
   });
 
+  const focusMin = settingsQuery.data?.focusMinutes ?? 25;
+  const shortMin = settingsQuery.data?.shortBreakMinutes ?? 5;
+  const longMin = settingsQuery.data?.longBreakMinutes ?? 15;
+  const durations = useMemo(
+    () => ({
+      focus: focusMin * 60,
+      short: shortMin * 60,
+      long: longMin * 60,
+    }),
+    [focusMin, shortMin, longMin],
+  );
+
+  const [mode, setMode] = useState<Mode>('focus');
+  const [remaining, setRemaining] = useState(durations.focus);
+  const [running, setRunning] = useState(false);
+  const [taskId, setTaskId] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [sessionCourseFilter, setSessionCourseFilter] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const coursesQuery = useQuery({
+    queryKey: ['courses', 'active'],
+    queryFn: () => listCourses({ archived: 'active' }).catch(() => []),
+  });
+  const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+  const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
+
   const tasksQuery = useQuery({
     queryKey: ['tasks', 'todo-for-focus'],
     queryFn: () => request<{ items: Task[] }>('/tasks?view=all&limit=25'),
   });
 
   const sessionsQuery = useQuery({
-    queryKey: ['study-sessions'],
-    queryFn: () => request<{ items: StudySession[]; totalSeconds: number }>('/study-sessions'),
+    queryKey: ['study-sessions', sessionCourseFilter],
+    queryFn: () => {
+      const sp = new URLSearchParams();
+      if (sessionCourseFilter) sp.set('courseId', sessionCourseFilter);
+      const qs = sp.toString();
+      return request<{ items: StudySession[]; totalSeconds: number }>(
+        qs ? `/study-sessions?${qs}` : '/study-sessions',
+      );
+    },
   });
-
-  const durations = {
-    focus: (settingsQuery.data?.focusMinutes ?? 25) * 60,
-    short: (settingsQuery.data?.shortBreakMinutes ?? 5) * 60,
-    long: (settingsQuery.data?.longBreakMinutes ?? 15) * 60,
-  };
-
-  const [mode, setMode] = useState<Mode>('focus');
-  const [remaining, setRemaining] = useState(durations.focus);
-  const [running, setRunning] = useState(false);
-  const [taskId, setTaskId] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const startedAtRef = useRef<number | null>(null);
   const targetEndRef = useRef<number | null>(null);
+  const runningRef = useRef(running);
+  runningRef.current = running;
+  const lastDurationsRef = useRef(durations);
 
   useEffect(() => {
-    if (!running) {
+    if (lastDurationsRef.current === durations) return;
+    lastDurationsRef.current = durations;
+    if (!runningRef.current) {
       setRemaining(durations[mode]);
     }
-  }, [settingsQuery.data?.focusMinutes, settingsQuery.data?.shortBreakMinutes, settingsQuery.data?.longBreakMinutes]);
+  }, [durations, mode]);
 
   const logFocusSession = async (durationSec: number, startedMs: number) => {
     if (mode !== 'focus' || durationSec < 60) return;
@@ -82,11 +114,15 @@ export function FocusPage() {
           durationSeconds: Math.min(14400, Math.round(durationSec)),
           source: 'pomodoro',
           taskId: taskId || null,
+          courseId: courseId || null,
         },
       });
-      await qc.invalidateQueries({ queryKey: ['study-sessions'] });
-      await qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] });
-      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['study-sessions'] }),
+        qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
       toast.show({
         kind: 'success',
         title: 'Focus session logged',
@@ -103,6 +139,9 @@ export function FocusPage() {
     }
   };
 
+  const timerStateRef = useRef({ durations, logFocusSession });
+  timerStateRef.current = { durations, logFocusSession };
+
   useEffect(() => {
     if (!running) return;
     const id = window.setInterval(() => {
@@ -112,11 +151,12 @@ export function FocusPage() {
       if (secs <= 0) {
         setRunning(false);
         window.clearInterval(id);
-        const startedMs = startedAtRef.current ?? Date.now() - durations[mode] * 1000;
+        const { durations: curDurations, logFocusSession: logSession } = timerStateRef.current;
+        const startedMs = startedAtRef.current ?? Date.now() - curDurations[mode] * 1000;
         startedAtRef.current = null;
         targetEndRef.current = null;
-        void logFocusSession(durations[mode], startedMs);
-        setRemaining(durations[mode]);
+        void logSession(curDurations[mode], startedMs);
+        setRemaining(curDurations[mode]);
       }
     }, 500);
     return () => window.clearInterval(id);
@@ -156,7 +196,11 @@ export function FocusPage() {
     if (mode !== 'focus') return;
     const elapsed = durations.focus - remaining;
     if (elapsed < 60) {
-      toast.show({ kind: 'info', title: 'Keep going', description: 'Focus for at least 1 minute to log a session.' });
+      toast.show({
+        kind: 'info',
+        title: 'Keep going',
+        description: 'Focus for at least 1 minute to log a session.',
+      });
       return;
     }
     const startedMs = startedAtRef.current ?? Date.now() - elapsed * 1000;
@@ -166,9 +210,12 @@ export function FocusPage() {
 
   const handleDeleteSession = async (id: string) => {
     await request<void>(`/study-sessions/${id}`, { method: 'DELETE' });
-    await qc.invalidateQueries({ queryKey: ['study-sessions'] });
-    await qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] });
-    await qc.invalidateQueries({ queryKey: ['dashboard'] });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['study-sessions'] }),
+      qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] }),
+      qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      qc.invalidateQueries({ queryKey: ['courses'] }),
+    ]);
   };
 
   const totalSeconds = Math.max(1, durations[mode]);
@@ -247,23 +294,44 @@ export function FocusPage() {
         </div>
 
         {mode === 'focus' ? (
-          <div className="mx-auto max-w-xs text-left">
-            <label htmlFor="focus-task" className="mb-1.5 block text-xs font-medium text-muted">
-              Link to task (optional)
-            </label>
-            <select
-              id="focus-task"
-              value={taskId}
-              onChange={(e) => setTaskId(e.target.value)}
-              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
-            >
-              <option value="">General study</option>
-              {(tasksQuery.data?.items ?? []).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+          <div className="mx-auto grid max-w-xl gap-3 text-left sm:grid-cols-2">
+            <div>
+              <label htmlFor="focus-task" className="mb-1.5 block text-xs font-medium text-muted">
+                Link to task (optional)
+              </label>
+              <select
+                id="focus-task"
+                value={taskId}
+                onChange={(e) => {
+                  const nextTaskId = e.target.value;
+                  setTaskId(nextTaskId);
+                  const picked = (tasksQuery.data?.items ?? []).find((t) => t.id === nextTaskId);
+                  if (picked?.courseId) setCourseId(picked.courseId);
+                }}
+                className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
+              >
+                <option value="">General study</option>
+                {(tasksQuery.data?.items ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="focus-course" className="mb-1.5 block text-xs font-medium text-muted">
+                Course (optional)
+              </label>
+              <CourseSelect
+                id="focus-course"
+                ariaLabel="Course (optional)"
+                mode="assign"
+                value={courseId}
+                onChange={setCourseId}
+                courses={courses}
+                className="w-full"
+              />
+            </div>
           </div>
         ) : null}
 
@@ -299,13 +367,23 @@ export function FocusPage() {
       </Card>
 
       <Card className="p-6 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-fg">Recent focus sessions</h2>
-          {sessionsQuery.data ? (
-            <span className="text-sm text-muted">
-              Total: {Math.round(sessionsQuery.data.totalSeconds / 60)} min
-            </span>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <CourseSelect
+              ariaLabel="Filter focus sessions by course"
+              mode="filter"
+              value={sessionCourseFilter}
+              onChange={setSessionCourseFilter}
+              courses={courses}
+              className="h-9 text-xs"
+            />
+            {sessionsQuery.data ? (
+              <span className="text-sm text-muted">
+                Total: {Math.round(sessionsQuery.data.totalSeconds / 60)} min
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {sessionsQuery.isLoading ? (
@@ -319,14 +397,15 @@ export function FocusPage() {
         ) : (
           <div className="divide-y divide-line">
             {sessionsQuery.data!.items.slice(0, 10).map((s) => (
-              <div key={s.id} className="flex items-center justify-between py-2.5 text-sm">
-                <div>
-                  <p className="font-medium text-fg">
-                    {Math.round(s.durationSeconds / 60)} min focus
-                  </p>
-                  <p className="text-xs text-muted">
-                    {new Date(s.startedAt).toLocaleString()}
-                  </p>
+              <div key={s.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-fg">
+                      {Math.round(s.durationSeconds / 60)} min focus
+                    </p>
+                    {s.courseId ? <CourseBadge course={courseById.get(s.courseId)} link /> : null}
+                  </div>
+                  <p className="text-xs text-muted">{new Date(s.startedAt).toLocaleString()}</p>
                 </div>
                 <button
                   type="button"
@@ -344,4 +423,3 @@ export function FocusPage() {
     </div>
   );
 }
-

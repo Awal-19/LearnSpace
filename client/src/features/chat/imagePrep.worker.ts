@@ -41,4 +41,3 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     bitmap?.close();
   }
 };
-

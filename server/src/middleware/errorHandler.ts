@@ -84,4 +84,3 @@ export function createErrorHandler(prisma?: PrismaClient): ErrorRequestHandler {
 }
 
 export const errorHandler: ErrorRequestHandler = createErrorHandler();
-

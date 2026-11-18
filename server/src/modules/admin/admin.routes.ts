@@ -5,7 +5,12 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
-import { requireAdmin, requireAuth, requirePermission, requireSuperAdmin } from '../../middleware/auth';
+import {
+  requireAdmin,
+  requireAuth,
+  requirePermission,
+  requireSuperAdmin,
+} from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
 import { recordAuditLog } from './admin.logging';
@@ -98,11 +103,11 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       if (!timingSafeEqual(a, b)) {
         throw new AppError('FORBIDDEN', 'Incorrect admin console password');
       }
-      const token = jwt.sign(
-        { purpose: 'admin_console_unlock' },
-        env.JWT_SECRET,
-        { algorithm: 'HS256', subject: req.user!.id, expiresIn: '2h' },
-      );
+      const token = jwt.sign({ purpose: 'admin_console_unlock' }, env.JWT_SECRET, {
+        algorithm: 'HS256',
+        subject: req.user!.id,
+        expiresIn: '2h',
+      });
       res.cookie(ADMIN_UNLOCK_COOKIE, token, {
         httpOnly: true,
         sameSite: 'lax',
@@ -165,7 +170,13 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
       const body = req.body as z.infer<typeof updateUserStatusSchema>;
-      const updated = await admin.setUserStatus(req.user!.id, id.data, body.status, body.reason, req.ip);
+      const updated = await admin.setUserStatus(
+        req.user!.id,
+        id.data,
+        body.status,
+        body.reason,
+        req.ip,
+      );
       res.json({ user: updated });
     }),
   );
@@ -208,7 +219,13 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
       const body = req.body as z.infer<typeof updateUserRoleSchema>;
-      const updated = await admin.setUserRole(req.user!.id, id.data, body.role, body.reason, req.ip);
+      const updated = await admin.setUserRole(
+        req.user!.id,
+        id.data,
+        body.role,
+        body.reason,
+        req.ip,
+      );
       res.json({ user: updated });
     }),
   );
@@ -277,7 +294,12 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'Conversation not found');
       const body = req.body as z.infer<typeof inspectContentSchema>;
-      const conversation = await admin.inspectConversation(req.user!.id, id.data, body.reason, req.ip);
+      const conversation = await admin.inspectConversation(
+        req.user!.id,
+        id.data,
+        body.reason,
+        req.ip,
+      );
       res.json({ conversation });
     }),
   );
@@ -545,11 +567,11 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
     asyncHandler(async (req, res) => {
       const body = req.body as z.infer<typeof stepUpVerifySchema>;
       await admin.verifyStepUp(req.user!.id, body);
-      const token = jwt.sign(
-        { purpose: 'super_step_up' },
-        env.JWT_SECRET,
-        { algorithm: 'HS256', subject: req.user!.id, expiresIn: '10m' },
-      );
+      const token = jwt.sign({ purpose: 'super_step_up' }, env.JWT_SECRET, {
+        algorithm: 'HS256',
+        subject: req.user!.id,
+        expiresIn: '10m',
+      });
       res.cookie(SUPER_STEP_UP_COOKIE, token, {
         httpOnly: true,
         sameSite: 'lax',
@@ -756,4 +778,3 @@ export function studentEngagementRouter(admin: AdminService, env: Env): Router {
 
   return router;
 }
-

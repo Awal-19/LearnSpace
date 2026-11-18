@@ -79,7 +79,9 @@ describe('global behaviour (T-X-02, T-X-03)', () => {
   });
 
   it('does not grant CORS to other origins', async () => {
-    const res = await request(makeApp()).get('/api/v1/health').set('Origin', 'https://evil.example');
+    const res = await request(makeApp())
+      .get('/api/v1/health')
+      .set('Origin', 'https://evil.example');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 
@@ -113,4 +115,3 @@ describe('global behaviour (T-X-02, T-X-03)', () => {
     }
   });
 });
-

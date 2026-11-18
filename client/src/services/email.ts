@@ -87,4 +87,3 @@ export function useEmailSender() {
 
   return { sending, error, sendWithToast };
 }
-

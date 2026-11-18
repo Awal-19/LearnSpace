@@ -37,4 +37,3 @@ describe('Theme (T-UI-04)', () => {
     expect(document.documentElement).toHaveClass('dark');
   });
 });
-

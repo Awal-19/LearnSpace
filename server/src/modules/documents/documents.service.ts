@@ -112,7 +112,13 @@ export interface DocumentsService {
 
   list(
     userId: string,
-    filters: { type?: DocumentType; courseId?: string; q?: string; page?: number; pageSize?: number },
+    filters: {
+      type?: DocumentType;
+      courseId?: string;
+      q?: string;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<{ documents: PublicDocument[]; total: number; page: number; pageSize: number }>;
 
   getDetail(
@@ -124,6 +130,12 @@ export interface DocumentsService {
     extractedQuestions: ExtractedQuestion[];
     questionSets: GeneratedQuestionSet[];
   }>;
+
+  updateMetadata(
+    userId: string,
+    documentId: string,
+    input: { title?: string; type?: DocumentType; courseId?: string | null },
+  ): Promise<PublicDocument>;
 
   getOwnedDocument(userId: string, documentId: string): Promise<Document>;
 
@@ -300,10 +312,11 @@ export function createDocumentsService(deps: {
       }
 
       const safeName = sanitizeFilename(filename);
-      const docTitle = (title?.trim() || safeName.replace(/\.[^.]+$/, '') || 'Untitled document').slice(
-        0,
-        200,
-      );
+      const docTitle = (
+        title?.trim() ||
+        safeName.replace(/\.[^.]+$/, '') ||
+        'Untitled document'
+      ).slice(0, 200);
 
       const uploaded = await storage.uploadAttachment(
         storedBuffer,
@@ -340,7 +353,8 @@ export function createDocumentsService(deps: {
     async list(userId, { type, courseId, q, page = 1, pageSize = 20 }) {
       const where: Prisma.DocumentWhereInput = { userId };
       if (type) where.type = type;
-      if (courseId) where.courseId = courseId;
+      if (courseId === 'none') where.courseId = null;
+      else if (courseId) where.courseId = courseId;
       if (q) {
         where.OR = [
           { title: { contains: q, mode: 'insensitive' } },
@@ -374,6 +388,31 @@ export function createDocumentsService(deps: {
         prisma.document.count({ where }),
       ]);
       return { documents: docs.map(toPublicDocument), total, page, pageSize };
+    },
+
+    async updateMetadata(userId, documentId, input) {
+      const existing = await prisma.document.findFirst({ where: { id: documentId, userId } });
+      if (!existing) {
+        throw new AppError('NOT_FOUND', 'Document not found');
+      }
+      if (input.courseId) {
+        const course = await prisma.course.findFirst({
+          where: { id: input.courseId, userId },
+          select: { id: true },
+        });
+        if (!course) {
+          throw new AppError('NOT_FOUND', 'Course not found');
+        }
+      }
+      const updated = await prisma.document.update({
+        where: { id: documentId },
+        data: {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.type !== undefined ? { type: input.type } : {}),
+          ...(input.courseId !== undefined ? { courseId: input.courseId } : {}),
+        },
+      });
+      return toPublicDocument(updated);
     },
 
     async getOwnedDocument(userId, documentId) {
@@ -531,7 +570,10 @@ export function createDocumentsService(deps: {
       });
       const usedTokens = (usageRow?.inputTokens ?? 0) + (usageRow?.outputTokens ?? 0);
       if (dailyTokenLimit !== null && dailyTokenLimit > 0 && usedTokens >= dailyTokenLimit) {
-        throw new AppError('AI_BUDGET_EXCEEDED', 'Daily AI token limit reached. Try again tomorrow.');
+        throw new AppError(
+          'AI_BUDGET_EXCEEDED',
+          'Daily AI token limit reached. Try again tomorrow.',
+        );
       }
 
       let courseContext = '';
@@ -573,9 +615,7 @@ export function createDocumentsService(deps: {
         const top = scoredPages.slice(0, 6);
         if (top.length > 0) {
           citedSources.push(...top.map((t) => t.label));
-          courseContext = top
-            .map((t) => `[Source: ${t.label}]\n${t.text}`)
-            .join('\n\n');
+          courseContext = top.map((t) => `[Source: ${t.label}]\n${t.text}`).join('\n\n');
         }
       }
 
@@ -598,7 +638,10 @@ export function createDocumentsService(deps: {
       if (courseContext) {
         textLines.push('', `<course_material>\n${courseContext}\n</course_material>`);
       } else if (useCourseNotes) {
-        textLines.push('', '<course_material>No course slides or notes found for this course.</course_material>');
+        textLines.push(
+          '',
+          '<course_material>No course slides or notes found for this course.</course_material>',
+        );
       }
 
       userParts.push({ type: 'text', text: textLines.join('\n') });
@@ -611,7 +654,10 @@ export function createDocumentsService(deps: {
             image_url: { url: `data:${doc.mimeType};base64,${bytes.toString('base64')}` },
           });
         } catch (err) {
-          logger.warn({ err, documentId: doc.id }, 'Could not attach image bytes for question answer');
+          logger.warn(
+            { err, documentId: doc.id },
+            'Could not attach image bytes for question answer',
+          );
         }
       }
 
@@ -620,19 +666,16 @@ export function createDocumentsService(deps: {
       let outputTokens = 0;
 
       try {
-        const stream = llm.stream(
-          [{ role: 'user', content: userParts }],
-          {
-            systemPrompt: buildPastQuestionSystemPrompt({
-              mode,
-              useCourseNotes,
-              refinement,
-            }),
-            signal,
-            maxOutputTokens: 3500,
-            temperature: 0.25,
-          },
-        );
+        const stream = llm.stream([{ role: 'user', content: userParts }], {
+          systemPrompt: buildPastQuestionSystemPrompt({
+            mode,
+            useCourseNotes,
+            refinement,
+          }),
+          signal,
+          maxOutputTokens: 3500,
+          temperature: 0.25,
+        });
         for await (const chunk of stream) {
           if (chunk.type === 'delta') {
             rawAnswer += chunk.text;
@@ -809,8 +852,7 @@ export function createDocumentsService(deps: {
           systemPrompt,
           generatedSetJsonSchema,
         );
-        const startPos =
-          set.questions.reduce((max, q) => Math.max(max, q.position), 0) + 1;
+        const startPos = set.questions.reduce((max, q) => Math.max(max, q.position), 0) + 1;
         const added: GeneratedQuestion[] = [];
         for (let i = 0; i < data.questions.slice(0, 2).length; i++) {
           const item = data.questions[i]!;
@@ -892,7 +934,12 @@ export function createDocumentsService(deps: {
 
       for (const q of set.questions) {
         const userAns = (answers[q.id] ?? '').trim();
-        if (q.type === 'mcq' || q.type === 'true_false' || q.type === 'fill_blank' || q.type === 'flashcard') {
+        if (
+          q.type === 'mcq' ||
+          q.type === 'true_false' ||
+          q.type === 'fill_blank' ||
+          q.type === 'flashcard'
+        ) {
           const isCorrect =
             userAns.toLowerCase() === q.correctAnswer.trim().toLowerCase() ||
             (q.type === 'flashcard' && userAns.toLowerCase() === 'knew_it');
@@ -995,7 +1042,9 @@ export function createDocumentsService(deps: {
               total: set.questions.length,
             },
           })
-          .catch((err) => logger.warn({ err }, 'Failed to mirror practice attempt to quiz_attempts'));
+          .catch((err) =>
+            logger.warn({ err }, 'Failed to mirror practice attempt to quiz_attempts'),
+          );
       }
 
       return attempt;
@@ -1004,12 +1053,16 @@ export function createDocumentsService(deps: {
     async saveSetToLibrary(userId, setId, opts) {
       const set = await prisma.generatedQuestionSet.findFirst({
         where: { id: setId, userId },
-        include: { questions: { orderBy: { position: 'asc' } } },
+        include: {
+          questions: { orderBy: { position: 'asc' } },
+          document: { select: { courseId: true } },
+        },
       });
       if (!set) {
         throw new AppError('NOT_FOUND', 'Question set not found');
       }
 
+      const courseId = set.document?.courseId ?? null;
       const baseTitle = (opts.title?.trim() || set.title).slice(0, 150);
       let quizId = set.quizId;
       let deckId = set.deckId;
@@ -1037,6 +1090,7 @@ export function createDocumentsService(deps: {
         const quiz = await prisma.quiz.create({
           data: {
             userId,
+            courseId,
             title: baseTitle,
             topic: set.questions[0]?.topic ?? 'Document Practice',
             questions: { create: quizQuestions },
@@ -1049,6 +1103,7 @@ export function createDocumentsService(deps: {
         const deck = await prisma.deck.create({
           data: {
             userId,
+            courseId,
             title: baseTitle,
             topic: set.questions[0]?.topic ?? 'Document Flashcards',
             cards: {

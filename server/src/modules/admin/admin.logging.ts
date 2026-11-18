@@ -8,7 +8,11 @@ import type {
 } from '@prisma/client';
 
 /** Approximate blended USD per 1M tokens for cost estimation on the AI Usage dashboard. */
-export function estimateCostUsd(tokensIn: number, tokensOut: number, model?: string | null): number {
+export function estimateCostUsd(
+  tokensIn: number,
+  tokensOut: number,
+  model?: string | null,
+): number {
   const m = (model ?? '').toLowerCase();
   const inRate = m.includes('120b') || m.includes('pro') ? 0.6 : 0.15;
   const outRate = m.includes('120b') || m.includes('pro') ? 1.8 : 0.6;
@@ -196,4 +200,3 @@ export async function getAppSettings(prisma: PrismaClient): Promise<AppSettings>
   cachedSettings = { value: created, expiresAt: Date.now() + 15_000 };
   return created;
 }
-

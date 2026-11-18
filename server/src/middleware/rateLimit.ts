@@ -20,13 +20,10 @@ export function createRateLimiter(options: LimiterOptions) {
         res.setHeader('Retry-After', String(windowSeconds));
       }
       const retryHeader = Number(res.getHeader('Retry-After'));
-      const retryAfterSeconds = Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : windowSeconds;
+      const retryAfterSeconds =
+        Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : windowSeconds;
       next(
-        new AppError(
-          'RATE_LIMITED',
-          'Too many requests. Please slow down.',
-          { retryAfterSeconds },
-        ),
+        new AppError('RATE_LIMITED', 'Too many requests. Please slow down.', { retryAfterSeconds }),
       );
     },
   });

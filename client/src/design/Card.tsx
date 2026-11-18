@@ -1,4 +1,5 @@
-import type { HTMLAttributes } from 'react';
+import { useEffect, useState, type HTMLAttributes } from 'react';
+import { API_BASE_URL } from '../lib/apiClient';
 import { cn } from './cn';
 
 export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
@@ -66,11 +67,29 @@ function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+function resolveAvatarUrl(src?: string | null): string | null {
+  if (!src) return null;
+  if (src.startsWith('/api/v1/')) {
+    return `${API_BASE_URL.replace(/\/$/, '')}${src.slice('/api/v1'.length)}`;
+  }
+  return src;
+}
+
 export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
-  return src ? (
+  const resolvedSrc = resolveAvatarUrl(src);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFailedSrc(null);
+  }, [resolvedSrc]);
+
+  const showImg = Boolean(resolvedSrc) && failedSrc !== resolvedSrc;
+
+  return showImg ? (
     <img
-      src={src}
+      src={resolvedSrc!}
       alt={name}
+      onError={() => setFailedSrc(resolvedSrc)}
       className={cn('shrink-0 rounded-full object-cover', avatarSizes[size], className)}
     />
   ) : (
@@ -87,4 +106,3 @@ export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
     </span>
   );
 }
-

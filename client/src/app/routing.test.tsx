@@ -71,4 +71,3 @@ describe('route protection (T-AUTH-15)', () => {
     expect(RequireAuth).toBeTypeOf('function');
   });
 });
-

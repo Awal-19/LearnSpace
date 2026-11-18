@@ -55,6 +55,5 @@ export function generateOpaqueToken(): { raw: string; hash: string } {
   return { raw, hash: hashToken(raw) };
 }
 
-
 export const OTP_EXPIRY_MINUTES = 10;
 export const OTP_TTL_MS = OTP_EXPIRY_MINUTES * 60 * 1000;

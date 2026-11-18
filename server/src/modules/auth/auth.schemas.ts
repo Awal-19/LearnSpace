@@ -11,6 +11,11 @@ const emailSchema = z
 // eslint-disable-next-line no-control-regex
 const noControlChars = (val: string) => !/[\u0000-\u001F\u007F]/.test(val);
 
+export const CURRENT_TERMS_VERSION = '2026-11-18';
+export const CURRENT_PRIVACY_POLICY_VERSION = '2026-11-18';
+export const TERMS_CONSENT_REQUIRED_MESSAGE =
+  'Please accept the Terms and Conditions and Privacy Policy to continue.';
+
 export const signupSchema = z
   .object({
     name: z
@@ -22,6 +27,14 @@ export const signupSchema = z
     email: emailSchema,
     password: passwordSchema,
     timezone: z.string().trim().max(64).optional(),
+    acceptTerms: z
+      .boolean({
+        required_error: TERMS_CONSENT_REQUIRED_MESSAGE,
+        invalid_type_error: TERMS_CONSENT_REQUIRED_MESSAGE,
+      })
+      .refine((value) => value === true, {
+        message: TERMS_CONSENT_REQUIRED_MESSAGE,
+      }),
   })
   .strict();
 
@@ -42,7 +55,10 @@ export const verifyEmailSchema = z
 export const adminTwoFactorSchema = z
   .object({
     email: emailSchema,
-    code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
   })
   .strict();
 
@@ -65,11 +81,13 @@ export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
-
 export const verifyOtpSchema = z
   .object({
     email: emailSchema,
-    code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
   })
   .strict();
 

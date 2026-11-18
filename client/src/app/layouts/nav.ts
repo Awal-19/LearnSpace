@@ -1,6 +1,10 @@
 import {
+  Award,
+  BookMarked,
   BookOpen,
   CalendarCheck,
+  CalendarDays,
+  ClipboardCheck,
   FileUp,
   GraduationCap,
   LayoutDashboard,
@@ -23,12 +27,16 @@ export interface NavItem {
 /** Sidebar (desktop), top-level destinations. */
 export const MAIN_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/courses', label: 'Courses', icon: BookMarked },
   { to: '/chat', label: 'Assistant', icon: MessageSquare },
   { to: '/notes', label: 'Notes', icon: BookOpen },
   { to: '/documents', label: 'Documents', icon: FileUp },
   { to: '/planner', label: 'Planner', icon: CalendarCheck },
+  { to: '/timetable', label: 'Timetable', icon: CalendarDays },
+  { to: '/exams', label: 'Exams', icon: ClipboardCheck },
   { to: '/focus', label: 'Focus', icon: Timer },
   { to: '/study', label: 'Study', icon: GraduationCap },
+  { to: '/grades', label: 'Grades', icon: Award },
 ];
 
 export const ACCOUNT_NAV: NavItem[] = [
@@ -55,4 +63,3 @@ export function titleForPath(pathname: string, base: string): string {
   const prefix = all.find((item) => item.to !== '/' && path.startsWith(`${item.to}/`));
   return prefix?.label ?? 'LearnSpace';
 }
-

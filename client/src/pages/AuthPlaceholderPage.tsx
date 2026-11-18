@@ -28,4 +28,3 @@ export function AuthPlaceholderPage({ title, description }: AuthPlaceholderProps
     </Card>
   );
 }
-

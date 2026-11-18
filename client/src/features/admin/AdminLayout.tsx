@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { ThemeToggle } from '../../app/ThemeToggle';
-import { Avatar, Badge, cn } from '../../design';
+import { Avatar, Badge, cn, VerifiedBadge } from '../../design';
 
 const ADMIN_NAV = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true, superOnly: false },
@@ -100,44 +100,46 @@ export function AdminLayout() {
           <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted/80">
             Console
           </p>
-          {ADMIN_NAV.filter((item) => !item.superOnly || user?.role === 'super_admin').map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-fast ease-soft',
-                    isActive
-                      ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300 font-semibold shadow-sm'
-                      : 'text-muted hover:bg-surface2 hover:text-fg',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive ? (
-                      <span
+          {ADMIN_NAV.filter((item) => !item.superOnly || user?.role === 'super_admin').map(
+            (item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-fast ease-soft',
+                      isActive
+                        ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300 font-semibold shadow-sm'
+                        : 'text-muted hover:bg-surface2 hover:text-fg',
+                    )
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary-600 dark:bg-primary-400"
+                        />
+                      ) : null}
+                      <Icon
+                        className={cn(
+                          'h-4 w-4 shrink-0 transition-transform duration-fast group-hover:scale-105',
+                          isActive ? 'text-primary-600 dark:text-primary-400' : '',
+                        )}
                         aria-hidden="true"
-                        className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary-600 dark:bg-primary-400"
                       />
-                    ) : null}
-                    <Icon
-                      className={cn(
-                        'h-4 w-4 shrink-0 transition-transform duration-fast group-hover:scale-105',
-                        isActive ? 'text-primary-600 dark:text-primary-400' : '',
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
+                      <span className="truncate">{item.label}</span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            },
+          )}
         </nav>
 
         <div className="space-y-1.5 border-t border-line/70 px-3 py-3">
@@ -153,7 +155,10 @@ export function AdminLayout() {
               <div className="flex min-w-0 items-center gap-2.5">
                 <Avatar name={user.name} src={user.avatarUrl} size="sm" />
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-fg">{user.name}</p>
+                  <p className="flex min-w-0 items-center gap-1 text-xs font-semibold text-fg">
+                    <span className="truncate">{user.name}</span>
+                    {user.emailVerified ? <VerifiedBadge className="h-3.5 w-3.5" /> : null}
+                  </p>
                   <p className="truncate text-[11px] text-muted">
                     {user.role === 'super_admin' ? 'Super Admin' : 'Admin'}
                   </p>
@@ -209,6 +214,12 @@ export function AdminLayout() {
             <div className="flex items-center gap-2 rounded-full border border-line/80 bg-surface2/60 py-1 pl-1.5 pr-3 text-sm">
               {user ? <Avatar name={user.name} src={user.avatarUrl} size="sm" /> : null}
               <span className="hidden font-medium text-fg sm:inline">{user?.name}</span>
+              {user?.emailVerified ? (
+                <VerifiedBadge
+                  tooltipPlacement="bottom"
+                  className="hidden h-3.5 w-3.5 sm:inline-flex"
+                />
+              ) : null}
               <Badge tone={user?.role === 'super_admin' ? 'primary' : 'neutral'}>
                 {user?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
               </Badge>
@@ -223,4 +234,3 @@ export function AdminLayout() {
     </div>
   );
 }
-

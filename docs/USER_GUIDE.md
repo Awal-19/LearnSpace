@@ -1,41 +1,69 @@
 # LearnSpace User Guide
 
-LearnSpace is a calm, all-in-one study workspace for university students.
+LearnSpace is a calm, all-in-one academic workspace for university students.
 
 ## 1. Getting Started
-- **Sign up** with your university or personal email and password (or click **Continue with Google** if configured).
-- **Verify your email** using the link sent to your inbox to unlock the **AI Study Assistant**, **AI Note Summarizer**, **AI Flashcard/Quiz Generator**, and **Email Reminders**.
+
+- **Sign up** with your email and password (accepting Terms & Privacy Policy) or click **Continue with Google** if configured.
+- **Verify your email** using the 6-digit OTP code sent to your inbox to access the workspace, including the **AI Study Assistant**, **Study from Documents**, **AI Revision Plans**, **AI Flashcard/Quiz Generators**, and **Email Reminders**.
 - Forgot your password? Use **Forgot password** on the login page to receive a reset link.
 
-## 2. Dashboard (`/`)
-- Displays your time-of-day greeting, current study streak, hours studied in the last 7 days, today's tasks, overdue count, and recent AI tutor conversations.
+## 2. Dashboard & Progress Analytics (`/`)
 
-## 3. AI Study Assistant (`/chat`)
-- Start a new chat or search, rename, and delete past conversations.
-- Ask any study question to receive step-by-step explanations with formatted Markdown and copyable code blocks.
-- Use **Quick actions** (`Explain simply`, `Give an example`, `Quiz me`, `Summarize`) to dig deeper, or **Stop** streaming at any time (partial replies are saved automatically).
+- **Daily summary:** One unified view showing today's study hours, completed/open tasks, due flashcards, next scheduled class, and next upcoming exam.
+- **Progress Analytics:** Switch between `7 days`, `30 days`, and `Semester` to inspect study time per course, quiz scores over time, flashcard reviews & accuracy, completed tasks, and your **Best study hours** (computed from real focus logs in your local timezone).
+- **Weak topics to revise:** Topics scoring below `75%` across flashcards, quizzes, or document practice surface one-click **Revise this · Flashcards** and **Revise this · Quiz** actions.
 
-## 4. Notes & Courses (`/notes`)
-- Create courses to organize your notes, or keep them uncategorised.
-- Search across titles and note bodies.
-- Click **Summarize with AI** on any note with at least 50 characters to generate a concise bullet-point summary without altering your original text.
+## 3. Courses (`/courses`)
 
-## 5. Study Planner & Reminders (`/planner`)
-- Add tasks with a due date, priority (`low`, `medium`, `high`), and optional reminder (`at due time`, `1 hour before`, `1 day before`).
-- Switch between `Today`, `Upcoming`, `Overdue`, `Completed`, and `All`.
-- Check the **Notification Bell** in the top bar for due reminders.
+- Create active academic courses with course codes, color tags, credits, semester, and instructor details, or archive completed terms.
+- Open any course to view its linked notes, study documents, planner tasks, timetable classes, upcoming exams, flashcard decks, quizzes, AI tutor chats, and focus sessions.
+- Deleting a course lets you either **Unassign items** (preserve work without a course) or **Delete linked content**.
 
-## 6. Pomodoro Focus Timer (`/focus`)
-- Run Focus, Short Break, or Long Break sessions customized to your Settings.
-- Optionally link a focus session to a task.
-- Completed focus sessions (or early finishes ≥ 1 minute) are logged to your real study stats.
+## 4. AI Study Assistant (`/chat`)
 
-## 7. Flashcards & Quizzes (`/study`)
-- **Flashcards:** Create decks manually or generate 5–30 cards from a note or topic, then flip through them in study mode.
-- **Quizzes:** Generate 5–20 multiple-choice questions from a note or topic, submit your answers for instant grading and explanations, and track your score history over time.
+- Start a new chat or search, rename, filter by course, and delete past conversations.
+- Attach up to 5 images (camera capture or upload) or documents (`PDF`, `DOCX`, `PPTX`, `TXT`, `CSV`).
+- Use **Quick actions** (`Explain simply`, `Give an example`, `Quiz me`, `Summarize`) or **Stop** streaming at any time (partial replies are saved automatically).
 
-## 8. Profile & Settings (`/profile`, `/settings`)
-- Update your academic details (student ID, programme, level, university, bio) and upload or remove your profile photo.
-- View real stats computed from your activity (streak, hours studied, notes created, quizzes taken, average quiz score).
-- Change your password, sign out all devices, delete your account, or configure theme, timezone, notification preferences, and Pomodoro durations.
+## 5. Study from Documents (`/documents`)
 
+- Upload past question papers, lecture slides, or handwritten/printed photos.
+- **Mode 1 — Answer Past Questions:** Detect individual questions, stream worked solutions, marking schemes, or concise answers (optionally grounded in your course notes), refine follow-ups, save to Notes, or export as PDF/DOCX.
+- **Mode 2 — Generate Practice Questions:** Generate MCQ, True/False, short answer, essay, fill-in-the-blank, calculation, or flashcard sets by scope/difficulty, submit attempts for automated marking + weak-topic feedback, and save to your Flashcard/Quiz library.
+
+## 6. Notes (`/notes`)
+
+- Organize rich Markdown notes by course with full-text search and live preview.
+- Click **Summarize with AI** on any note with at least 50 characters, or turn a note directly into flashcards or a practice quiz.
+
+## 7. Timetable (`/timetable`)
+
+- Build your weekly class schedule (lecture, lab, tutorial, seminar) with Day and Week views.
+- Automatic clash detection warns/blocks overlapping slots on the same day, and local-timezone class reminders notify you before class starts.
+
+## 8. Exams & AI Revision Plans (`/exams`)
+
+- Track midterms, finals, quizzes, and practicals with live countdown cards, venues, weight percentages, and exam topics.
+- Generate an **AI Revision Plan** per exam, review and edit sessions before saving, sync sessions directly to your Study Planner, or reschedule missed sessions automatically.
+
+## 9. Study Planner & Focus Timer (`/planner`, `/focus`)
+
+- **Planner:** Manage `Today`, `Upcoming`, `Overdue`, and `Done` tasks linked to courses, with priorities and local-timezone reminders (`Notification Bell` + optional email).
+- **Focus Timer:** Run Focus, Short Break, and Long Break Pomodoro intervals linked to a course or task; completed sessions feed your daily hours, best study hours, and study streak.
+
+## 10. Flashcards SM-2 & Quizzes (`/study`)
+
+- **Flashcards (SM-2 Spaced Repetition):** Create decks manually, import via CSV, or generate decks from notes, documents, or weak topics. Attach optional diagram images to cards, review due cards using keyboard shortcuts (`Space` flip, `1`–`4` rating) or swipe gestures (`Again`, `Hard`, `Good`, `Easy`), and track due counts from the sidebar and dashboard.
+- **Quizzes:** Generate multiple-choice quizzes from notes or topics, take timed/untimed assessments with per-question explanations, and track accuracy trends.
+
+## 11. GPA & Grades Calculator (`/grades`)
+
+- Auto-initializes with a customizable **University 4.0 Scale** (plus `4.0 +/-`, `5.0`, and custom grading scale presets).
+- Log course grades across semesters, mark retakes (using `latest` or `highest` policy) or `0-credit` / excluded pass-fail courses, inspect your semester-by-semester GPA/CGPA trend chart, and use the **What do I need?** target planner to check achievable CGPA goals.
+
+## 12. Profile, Settings & Data Export (`/profile`, `/settings`)
+
+- Customize your academic profile or design a custom avatar in Profile.
+- Configure theme (`system`, `light`, `dark`), IANA timezone, class/exam/task notification lead times, and Pomodoro durations in Settings.
+- Use **Data & Privacy → Export my data** to download a complete JSON archive (`learnspace-export-YYYY-MM-DD.json`), or permanently delete your account (which removes uploaded files and scrubs login history PII).

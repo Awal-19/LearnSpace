@@ -59,7 +59,9 @@ export function AdminTeamPage() {
       <Card className="p-6 text-center">
         <ShieldAlert className="mx-auto h-8 w-8 text-danger" aria-hidden="true" />
         <h1 className="mt-3 text-lg font-semibold">Super Admin Access Required</h1>
-        <p className="mt-1 text-sm text-muted">Only a super_admin can manage admin accounts and permissions.</p>
+        <p className="mt-1 text-sm text-muted">
+          Only a super_admin can manage admin accounts and permissions.
+        </p>
       </Card>
     );
   }
@@ -68,7 +70,11 @@ export function AdminTeamPage() {
     try {
       await fn();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403 && err.message.toLowerCase().includes('step-up')) {
+      if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        err.message.toLowerCase().includes('step-up')
+      ) {
         setPendingAction(() => fn);
         setStepUpOpen(true);
         return;
@@ -105,7 +111,10 @@ export function AdminTeamPage() {
     });
   };
 
-  const handleRoleToggle = async (member: AdminTeamMember, nextRole: 'student' | 'admin' | 'super_admin') => {
+  const handleRoleToggle = async (
+    member: AdminTeamMember,
+    nextRole: 'student' | 'admin' | 'super_admin',
+  ) => {
     if (!window.confirm(`Change ${member.email}'s role to ${nextRole}?`)) return;
     await runWithStepUp(async () => {
       await updateAdminUserRole(member.id, nextRole, `Changed via Team / Admins`);
@@ -147,135 +156,143 @@ export function AdminTeamPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
-                <tr>
-                  <th className="px-4 py-3">Admin</th>
-                  <th className="px-4 py-3">Role &amp; Status</th>
-                  <th className="px-4 py-3">Last Login / IP</th>
-                  <th className="px-4 py-3">Actions Taken</th>
-                  <th className="px-4 py-3">Permissions</th>
-                  <th className="px-4 py-3 text-right">Controls</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {members.map((m) => {
-                  const isSelf = m.id === user?.id;
-                  return (
-                    <tr key={m.id} className="align-top">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-fg">{m.name}</p>
-                        <p className="text-xs text-muted">{m.email}</p>
-                      </td>
-                      <td className="px-4 py-3 space-y-1">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge tone={m.role === 'super_admin' ? 'primary' : 'neutral'}>
-                            {m.role}
-                          </Badge>
-                          <Badge tone={m.status === 'active' ? 'success' : 'danger'}>
-                            {m.status}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted">
-                        <p>{m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString() : 'Never'}</p>
-                        <p>{m.lastLoginIp ?? '—'}</p>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">{m.actionsCount}</td>
-                      <td className="px-4 py-3">
-                        {m.role === 'super_admin' ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-primary-600">
-                            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                            Full access
-                          </span>
-                        ) : (
+                  <tr>
+                    <th className="px-4 py-3">Admin</th>
+                    <th className="px-4 py-3">Role &amp; Status</th>
+                    <th className="px-4 py-3">Last Login / IP</th>
+                    <th className="px-4 py-3">Actions Taken</th>
+                    <th className="px-4 py-3">Permissions</th>
+                    <th className="px-4 py-3 text-right">Controls</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {members.map((m) => {
+                    const isSelf = m.id === user?.id;
+                    return (
+                      <tr key={m.id} className="align-top">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-fg">{m.name}</p>
+                          <p className="text-xs text-muted">{m.email}</p>
+                        </td>
+                        <td className="px-4 py-3 space-y-1">
                           <div className="flex flex-wrap gap-1.5">
-                            {PERMISSION_LABELS.map(({ key, label }) => {
-                              const enabled = m.permissions[key] !== false;
-                              return (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  onClick={() => void togglePermission(m, key)}
-                                  className={`rounded-full border px-2 py-0.5 text-[11px] transition ${enabled
-                                      ? 'border-primary-500/40 bg-primary-500/10 text-primary-600'
-                                      : 'border-line bg-surface2 text-muted line-through'
+                            <Badge tone={m.role === 'super_admin' ? 'primary' : 'neutral'}>
+                              {m.role}
+                            </Badge>
+                            <Badge tone={m.status === 'active' ? 'success' : 'danger'}>
+                              {m.status}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted">
+                          <p>
+                            {m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString() : 'Never'}
+                          </p>
+                          <p>{m.lastLoginIp ?? '—'}</p>
+                        </td>
+                        <td className="px-4 py-3 tabular-nums">{m.actionsCount}</td>
+                        <td className="px-4 py-3">
+                          {m.role === 'super_admin' ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-primary-600">
+                              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                              Full access
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {PERMISSION_LABELS.map(({ key, label }) => {
+                                const enabled = m.permissions[key] !== false;
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => void togglePermission(m, key)}
+                                    className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                                      enabled
+                                        ? 'border-primary-500/40 bg-primary-500/10 text-primary-600'
+                                        : 'border-line bg-surface2 text-muted line-through'
                                     }`}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isSelf ? (
-                          <span className="text-xs text-muted">Current account</span>
-                        ) : (
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                void handleRoleToggle(m, m.role === 'admin' ? 'super_admin' : 'admin')
-                              }
-                            >
-                              {m.role === 'admin' ? 'Promote' : 'Demote'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                void runWithStepUp(async () => {
-                                  await updateAdminUserStatus(
-                                    m.id,
-                                    m.status === 'active' ? 'suspended' : 'active',
-                                    'Updated from Team / Admins',
-                                  );
-                                  await qc.invalidateQueries({ queryKey: ['admin', 'super', 'team'] });
-                                })
-                              }
-                            >
-                              {m.status === 'active' ? 'Suspend' : 'Reactivate'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                void runWithStepUp(async () => {
-                                  await forceLogoutAdminUser(m.id);
-                                  toast.show({ kind: 'success', title: 'Sessions revoked' });
-                                })
-                              }
-                            >
-                              Force logout
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                void runWithStepUp(async () => {
-                                  await triggerAdminUserReset(m.id);
-                                  toast.show({ kind: 'success', title: 'Password reset sent' });
-                                })
-                              }
-                            >
-                              Reset PW
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => void handleRoleToggle(m, 'student')}
-                            >
-                              Remove access
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {isSelf ? (
+                            <span className="text-xs text-muted">Current account</span>
+                          ) : (
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  void handleRoleToggle(
+                                    m,
+                                    m.role === 'admin' ? 'super_admin' : 'admin',
+                                  )
+                                }
+                              >
+                                {m.role === 'admin' ? 'Promote' : 'Demote'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  void runWithStepUp(async () => {
+                                    await updateAdminUserStatus(
+                                      m.id,
+                                      m.status === 'active' ? 'suspended' : 'active',
+                                      'Updated from Team / Admins',
+                                    );
+                                    await qc.invalidateQueries({
+                                      queryKey: ['admin', 'super', 'team'],
+                                    });
+                                  })
+                                }
+                              >
+                                {m.status === 'active' ? 'Suspend' : 'Reactivate'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  void runWithStepUp(async () => {
+                                    await forceLogoutAdminUser(m.id);
+                                    toast.show({ kind: 'success', title: 'Sessions revoked' });
+                                  })
+                                }
+                              >
+                                Force logout
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  void runWithStepUp(async () => {
+                                    await triggerAdminUserReset(m.id);
+                                    toast.show({ kind: 'success', title: 'Password reset sent' });
+                                  })
+                                }
+                              >
+                                Reset PW
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => void handleRoleToggle(m, 'student')}
+                              >
+                                Remove access
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </Card>
         )}
@@ -312,7 +329,12 @@ export function AdminTeamPage() {
           </Card>
         )}
 
-        <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite Admin" className="max-w-md">
+        <Modal
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          title="Invite Admin"
+          className="max-w-md"
+        >
           <form onSubmit={handleInvite} className="space-y-4 p-5 pt-3">
             <Input
               label="Email address"
@@ -344,9 +366,7 @@ export function AdminTeamPage() {
                     <input
                       type="checkbox"
                       checked={invitePerms[key] !== false}
-                      onChange={(e) =>
-                        setInvitePerms((p) => ({ ...p, [key]: e.target.checked }))
-                      }
+                      onChange={(e) => setInvitePerms((p) => ({ ...p, [key]: e.target.checked }))}
                     />
                     {label}
                   </label>
@@ -377,4 +397,3 @@ export function AdminTeamPage() {
     </SuperAdminGate>
   );
 }
-

@@ -112,7 +112,16 @@ function makeFakePrisma() {
         return take ? rows.slice(0, take) : rows;
       },
       findFirst: async () => null,
-      create: async ({ data }: { data: Partial<MsgRow> & { conversationId: string; userId: string; role: 'user' | 'assistant'; content: string } }) => {
+      create: async ({
+        data,
+      }: {
+        data: Partial<MsgRow> & {
+          conversationId: string;
+          userId: string;
+          role: 'user' | 'assistant';
+          content: string;
+        };
+      }) => {
         seq += 1;
         const row: MsgRow = {
           id: randomUUID(),
@@ -147,7 +156,13 @@ function makeFakePrisma() {
         update,
       }: {
         where: { userId_day: { userId: string; day: Date } };
-        create: { userId: string; day: Date; inputTokens: number; outputTokens: number; requests: number };
+        create: {
+          userId: string;
+          day: Date;
+          inputTokens: number;
+          outputTokens: number;
+          requests: number;
+        };
         update: {
           inputTokens: { increment: number };
           outputTokens: { increment: number };
@@ -417,4 +432,3 @@ describe('AI assistant integration (/api/v1/conversations & /api/v1/ai/usage)', 
     expect(msgRes.text).toContain('event: done');
   });
 });
-

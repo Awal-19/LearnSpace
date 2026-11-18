@@ -14,4 +14,3 @@ export function useAppPath(): (path: string) => string {
   const base = useContext(BasePathContext);
   return (path: string) => (path === '/' ? base || '/' : `${base}${path}`);
 }
-

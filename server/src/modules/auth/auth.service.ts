@@ -20,7 +20,15 @@ import {
   VERIFY_EMAIL_TTL_MS,
 } from '../../lib/tokens';
 import { recordActivityEvent, recordLoginHistory } from '../admin/admin.logging';
-import type { LoginInput, ResetPasswordInput, SignupInput } from './auth.schemas';
+import type { AvatarConfig } from '../users/users.schemas';
+import {
+  CURRENT_PRIVACY_POLICY_VERSION,
+  CURRENT_TERMS_VERSION,
+  TERMS_CONSENT_REQUIRED_MESSAGE,
+  type LoginInput,
+  type ResetPasswordInput,
+  type SignupInput,
+} from './auth.schemas';
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -42,11 +50,28 @@ export interface PublicUser {
   university: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  avatarConfig: AvatarConfig | null;
   hasPassword: boolean;
+  termsAccepted: boolean;
+  termsVersion: string | null;
+  termsAcceptedAt: Date | null;
+  privacyPolicyVersion: string | null;
+  privacyPolicyAcceptedAt: Date | null;
   createdAt: Date;
 }
 
 export function toPublicUser(user: User): PublicUser {
+  const rawConfig = (user as { avatarConfig?: AvatarConfig | null }).avatarConfig;
+  const consent = user as Partial<
+    Pick<
+      User,
+      | 'termsAccepted'
+      | 'termsVersion'
+      | 'termsAcceptedAt'
+      | 'privacyPolicyVersion'
+      | 'privacyPolicyAcceptedAt'
+    >
+  >;
   return {
     id: user.id,
     email: user.email,
@@ -61,7 +86,13 @@ export function toPublicUser(user: User): PublicUser {
     university: user.university,
     bio: user.bio,
     avatarUrl: user.avatarUrl,
+    avatarConfig: rawConfig ?? null,
     hasPassword: user.passwordHash !== null,
+    termsAccepted: Boolean(consent.termsAccepted),
+    termsVersion: consent.termsVersion ?? null,
+    termsAcceptedAt: consent.termsAcceptedAt ?? null,
+    privacyPolicyVersion: consent.privacyPolicyVersion ?? null,
+    privacyPolicyAcceptedAt: consent.privacyPolicyAcceptedAt ?? null,
     createdAt: user.createdAt,
   };
 }
@@ -90,8 +121,7 @@ export interface AuthSessionResult {
 }
 
 export type LoginResult =
-  | (AuthSessionResult & { requiresTwoFactor?: false })
-  | { requiresTwoFactor: true; email: string };
+  (AuthSessionResult & { requiresTwoFactor?: false }) | { requiresTwoFactor: true; email: string };
 
 export interface AuthServiceDeps {
   prisma: PrismaClient;
@@ -226,6 +256,10 @@ export function createAuthService(deps: AuthServiceDeps) {
         }
       }
 
+      if (input.acceptTerms !== true) {
+        throw new AppError('VALIDATION_ERROR', TERMS_CONSENT_REQUIRED_MESSAGE);
+      }
+
       const existing = await prisma.user.findUnique({ where: { email: input.email } });
       if (existing) {
         throw new AppError('EMAIL_TAKEN');
@@ -233,6 +267,7 @@ export function createAuthService(deps: AuthServiceDeps) {
 
       const passwordHash = await hashPassword(input.password);
       const timezone = isValidTimezone(input.timezone) ? input.timezone : 'UTC';
+      const acceptedAt = now();
 
       const user = await prisma.user.create({
         data: {
@@ -240,6 +275,11 @@ export function createAuthService(deps: AuthServiceDeps) {
           email: input.email,
           passwordHash,
           emailVerified: false,
+          termsAccepted: true,
+          termsVersion: CURRENT_TERMS_VERSION,
+          termsAcceptedAt: acceptedAt,
+          privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+          privacyPolicyAcceptedAt: acceptedAt,
           settings: { create: { timezone } },
         },
       });
@@ -286,7 +326,9 @@ export function createAuthService(deps: AuthServiceDeps) {
       }
 
       if (user.lockedUntil && user.lockedUntil > current) {
-        const retryAfterSeconds = Math.ceil((user.lockedUntil.getTime() - current.getTime()) / 1000);
+        const retryAfterSeconds = Math.ceil(
+          (user.lockedUntil.getTime() - current.getTime()) / 1000,
+        );
         await recordLoginHistory(prisma, {
           userId: user.id,
           email: user.email,
@@ -442,7 +484,10 @@ export function createAuthService(deps: AuthServiceDeps) {
       return issueSession(user, false, meta);
     },
 
-    async refresh(rawRefreshToken: string | undefined, meta: SessionMeta): Promise<AuthSessionResult> {
+    async refresh(
+      rawRefreshToken: string | undefined,
+      meta: SessionMeta,
+    ): Promise<AuthSessionResult> {
       if (!rawRefreshToken) {
         throw new AppError('REFRESH_INVALID');
       }
@@ -461,7 +506,10 @@ export function createAuthService(deps: AuthServiceDeps) {
           where: { familyId: existing.familyId, revokedAt: null },
           data: { revokedAt: current },
         });
-        logger.warn({ userId: existing.userId, familyId: existing.familyId }, 'Refresh token reuse detected');
+        logger.warn(
+          { userId: existing.userId, familyId: existing.familyId },
+          'Refresh token reuse detected',
+        );
         throw new AppError('REFRESH_INVALID');
       }
 
@@ -532,7 +580,12 @@ export function createAuthService(deps: AuthServiceDeps) {
       const current = now();
       const record = await prisma.emailToken.findUnique({ where: { tokenHash } });
 
-      if (!record || record.type !== 'verify_email' || record.usedAt !== null || record.expiresAt <= current) {
+      if (
+        !record ||
+        record.type !== 'verify_email' ||
+        record.usedAt !== null ||
+        record.expiresAt <= current
+      ) {
         throw new AppError('INVALID_TOKEN');
       }
 
@@ -586,7 +639,12 @@ export function createAuthService(deps: AuthServiceDeps) {
       const current = now();
       const record = await prisma.emailToken.findUnique({ where: { tokenHash } });
 
-      if (!record || record.type !== 'reset_password' || record.usedAt !== null || record.expiresAt <= current) {
+      if (
+        !record ||
+        record.type !== 'reset_password' ||
+        record.usedAt !== null ||
+        record.expiresAt <= current
+      ) {
         throw new AppError('INVALID_TOKEN');
       }
 
@@ -787,7 +845,10 @@ export function createAuthService(deps: AuthServiceDeps) {
       }
       if (otp.expiresAt <= current) {
         await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
-        throw new AppError('VALIDATION_ERROR', 'Verification code has expired. Request a new code.');
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'Verification code has expired. Request a new code.',
+        );
       }
       if (otp.attempts >= 5) {
         await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
@@ -849,7 +910,10 @@ export function createAuthService(deps: AuthServiceDeps) {
       return generic;
     },
 
-    async cleanupExpiredOtpsAndUnverifiedUsers(): Promise<{ deletedOtps: number; deletedUsers: number }> {
+    async cleanupExpiredOtpsAndUnverifiedUsers(): Promise<{
+      deletedOtps: number;
+      deletedUsers: number;
+    }> {
       const current = now();
       const cutoff24h = new Date(current.getTime() - 24 * 60 * 60 * 1000);
       const [otps, users] = await Promise.all([
@@ -864,4 +928,3 @@ export function createAuthService(deps: AuthServiceDeps) {
 }
 
 export type AuthService = ReturnType<typeof createAuthService>;
-

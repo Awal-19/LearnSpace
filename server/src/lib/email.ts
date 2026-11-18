@@ -4,11 +4,37 @@ import { Resend } from 'resend';
 import type { Env } from '../config/env';
 import { OTP_EXPIRY_MINUTES } from './tokens';
 
+export interface ClassReminderEmailParams {
+  to: string;
+  name: string;
+  courseLabel: string;
+  startsAtLabel: string;
+  venue: string | null;
+  timetableUrl: string;
+}
+
+export interface ExamReminderEmailParams {
+  to: string;
+  name: string;
+  courseLabel: string;
+  examTitle: string;
+  startsAtLabel: string;
+  venue: string | null;
+  examsUrl: string;
+}
+
 export interface EmailService {
   sendVerificationEmail(to: string, name: string, verifyUrl: string): Promise<void>;
   sendOtpEmail(params: { email: string; name: string; code: string }): Promise<void>;
   sendPasswordResetEmail(to: string, name: string, resetUrl: string): Promise<void>;
-  sendTaskReminderEmail(to: string, name: string, taskTitle: string, plannerUrl: string): Promise<void>;
+  sendTaskReminderEmail(
+    to: string,
+    name: string,
+    taskTitle: string,
+    plannerUrl: string,
+  ): Promise<void>;
+  sendClassReminderEmail(params: ClassReminderEmailParams): Promise<void>;
+  sendExamReminderEmail(params: ExamReminderEmailParams): Promise<void>;
 }
 
 function escapeHtml(value: string): string {
@@ -75,6 +101,50 @@ function reminderTemplate(name: string, taskTitle: string, plannerUrl: string) {
   };
 }
 
+function classReminderTemplate({
+  name,
+  courseLabel,
+  startsAtLabel,
+  venue,
+  timetableUrl,
+}: Omit<ClassReminderEmailParams, 'to'>) {
+  const safeName = escapeHtml(name);
+  const safeCourse = escapeHtml(courseLabel);
+  const safeWhen = escapeHtml(startsAtLabel);
+  const safeVenue = venue ? escapeHtml(venue) : null;
+  const safeUrl = escapeHtml(timetableUrl);
+  const venueLine = venue ? `\nVenue: ${venue}` : '';
+  const htmlVenue = safeVenue ? ` · Venue: <strong>${safeVenue}</strong>` : '';
+  return {
+    subject: `Upcoming class: ${courseLabel}`,
+    text: `Hi ${name},\n\nYour class ${courseLabel} starts at ${startsAtLabel}.${venueLine}\n\nView your timetable: ${timetableUrl}\n`,
+    html: `<p>Hi ${safeName},</p><p>Reminder: your class <strong>${safeCourse}</strong> is scheduled for <strong>${safeWhen}</strong>${htmlVenue}.</p><p><a href="${safeUrl}">Open Timetable</a></p>`,
+  };
+}
+
+function examReminderTemplate({
+  name,
+  courseLabel,
+  examTitle,
+  startsAtLabel,
+  venue,
+  examsUrl,
+}: Omit<ExamReminderEmailParams, 'to'>) {
+  const safeName = escapeHtml(name);
+  const safeCourse = escapeHtml(courseLabel);
+  const safeTitle = escapeHtml(examTitle);
+  const safeWhen = escapeHtml(startsAtLabel);
+  const safeVenue = venue ? escapeHtml(venue) : null;
+  const safeUrl = escapeHtml(examsUrl);
+  const venueLine = venue ? `\nVenue: ${venue}` : '';
+  const htmlVenue = safeVenue ? ` · Venue: <strong>${safeVenue}</strong>` : '';
+  return {
+    subject: `Exam reminder: ${courseLabel} — ${examTitle}`,
+    text: `Hi ${name},\n\nReminder for your upcoming exam: ${courseLabel} (${examTitle}) at ${startsAtLabel}.${venueLine}\n\nView your exam countdowns: ${examsUrl}\n`,
+    html: `<p>Hi ${safeName},</p><p>Upcoming exam reminder: <strong>${safeCourse}</strong> — ${safeTitle} on <strong>${safeWhen}</strong>${htmlVenue}.</p><p><a href="${safeUrl}">Open Exams &amp; Revision Plan</a></p>`,
+  };
+}
+
 export function createEmailService(
   env: Pick<
     Env,
@@ -92,7 +162,8 @@ export function createEmailService(
   const from = env.EMAIL_FROM ?? 'LearnSpace <no-reply@learnspace.local>';
   const provider = env.EMAIL_PROVIDER ?? 'auto';
 
-  const canUseResend = Boolean(env.RESEND_API_KEY) && (provider === 'auto' || provider === 'resend');
+  const canUseResend =
+    Boolean(env.RESEND_API_KEY) && (provider === 'auto' || provider === 'resend');
   if (canUseResend && env.RESEND_API_KEY) {
     const resend = new Resend(env.RESEND_API_KEY);
     const send = async (to: string, payload: { subject: string; text: string; html: string }) => {
@@ -112,6 +183,8 @@ export function createEmailService(
         }),
       sendPasswordResetEmail: (to, name, url) => send(to, resetTemplate(name, url)),
       sendTaskReminderEmail: (to, name, title, url) => send(to, reminderTemplate(name, title, url)),
+      sendClassReminderEmail: (params) => send(params.to, classReminderTemplate(params)),
+      sendExamReminderEmail: (params) => send(params.to, examReminderTemplate(params)),
     };
   }
 
@@ -131,14 +204,16 @@ export function createEmailService(
         }),
       sendPasswordResetEmail: (to, name, url) => send(to, resetTemplate(name, url)),
       sendTaskReminderEmail: (to, name, title, url) => send(to, reminderTemplate(name, title, url)),
+      sendClassReminderEmail: (params) => send(params.to, classReminderTemplate(params)),
+      sendExamReminderEmail: (params) => send(params.to, examReminderTemplate(params)),
     };
   }
 
   const emailJsConfigured = Boolean(
     env.EMAILJS_SERVICE_ID &&
-      env.EMAILJS_TEMPLATE_ID &&
-      env.EMAILJS_PUBLIC_KEY &&
-      env.EMAILJS_PRIVATE_KEY,
+    env.EMAILJS_TEMPLATE_ID &&
+    env.EMAILJS_PUBLIC_KEY &&
+    env.EMAILJS_PRIVATE_KEY,
   );
   if (emailJsConfigured && (provider === 'auto' || provider === 'emailjs')) {
     const postEmailJs = async (templateParams: Record<string, string>) => {
@@ -197,22 +272,65 @@ export function createEmailService(
           app_name: 'LearnSpace',
         });
       },
+      sendClassReminderEmail: (params) => {
+        const payload = classReminderTemplate(params);
+        return postEmailJs({
+          to_email: params.to,
+          to_name: params.name,
+          subject: payload.subject,
+          message: payload.text,
+          app_name: 'LearnSpace',
+        });
+      },
+      sendExamReminderEmail: (params) => {
+        const payload = examReminderTemplate(params);
+        return postEmailJs({
+          to_email: params.to,
+          to_name: params.name,
+          subject: payload.subject,
+          message: payload.text,
+          app_name: 'LearnSpace',
+        });
+      },
     };
   }
 
   return {
     async sendVerificationEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped verification email');
+      logger.warn(
+        { to },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped verification email',
+      );
     },
     async sendOtpEmail({ email }) {
-      logger.warn({ to: email }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped OTP email');
+      logger.warn(
+        { to: email },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped OTP email',
+      );
     },
     async sendPasswordResetEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reset email');
+      logger.warn(
+        { to },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reset email',
+      );
     },
     async sendTaskReminderEmail(to) {
-      logger.warn({ to }, 'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reminder email');
+      logger.warn(
+        { to },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped reminder email',
+      );
+    },
+    async sendClassReminderEmail({ to }) {
+      logger.warn(
+        { to },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped class reminder email',
+      );
+    },
+    async sendExamReminderEmail({ to }) {
+      logger.warn(
+        { to },
+        'Email not configured (set RESEND_API_KEY, SMTP_URL, or EMAILJS_*); skipped exam reminder email',
+      );
     },
   };
 }
-

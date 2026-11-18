@@ -2,7 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Download, Search, Users, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Avatar, Badge, Button, Card, EmptyState, Skeleton, useToast, VerifiedBadge } from '../../design';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Skeleton,
+  useToast,
+  VerifiedBadge,
+} from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { bulkAdminUsers, fetchAdminUsers } from './adminApi';
 
@@ -15,7 +24,9 @@ export function AdminUsersPage() {
   const [status, setStatus] = useState('');
   const [verified, setVerified] = useState('');
   const [authMethod, setAuthMethod] = useState('');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'name' | 'email' | 'lastActiveAt'>('createdAt');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'name' | 'email' | 'lastActiveAt'>(
+    'createdAt',
+  );
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -57,7 +68,10 @@ export function AdminUsersPage() {
 
   const handleBulk = async (action: 'export_csv' | 'suspend') => {
     if (selectedIds.length === 0) return;
-    if (action === 'suspend' && !window.confirm(`Suspend ${selectedIds.length} selected user(s)?`)) {
+    if (
+      action === 'suspend' &&
+      !window.confirm(`Suspend ${selectedIds.length} selected user(s)?`)
+    ) {
       return;
     }
     setBusyBulk(true);
@@ -65,7 +79,8 @@ export function AdminUsersPage() {
       await bulkAdminUsers({ action, userIds: selectedIds });
       toast.show({
         kind: 'success',
-        title: action === 'export_csv' ? 'Exported selected users to CSV' : 'Selected users suspended',
+        title:
+          action === 'export_csv' ? 'Exported selected users to CSV' : 'Selected users suspended',
       });
       if (action === 'suspend') {
         setSelectedIds([]);
@@ -325,4 +340,3 @@ export function AdminUsersPage() {
     </div>
   );
 }
-

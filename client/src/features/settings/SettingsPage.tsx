@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Palette, Timer } from 'lucide-react';
+import { Bell, Download, Palette, ShieldCheck, Timer } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../app/AuthContext';
 import { useTheme } from '../../app/ThemeProvider';
 import { Button, Card, Checkbox, ErrorState, Input, Skeleton, useToast } from '../../design';
-import { ApiError, request } from '../../lib/apiClient';
+import { API_BASE_URL, ApiError, getAccessToken, request } from '../../lib/apiClient';
 
 interface UserSettings {
   theme: 'system' | 'light' | 'dark';
@@ -15,6 +15,8 @@ interface UserSettings {
   focusMinutes: number;
   shortBreakMinutes: number;
   longBreakMinutes: number;
+  classReminderMinutes: number;
+  examReminderMinutes?: number;
 }
 
 const COMMON_TIMEZONES = [
@@ -45,6 +47,7 @@ export function SettingsPage() {
 
   const [form, setForm] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (settingsQuery.data) setForm(settingsQuery.data);
@@ -61,10 +64,7 @@ export function SettingsPage() {
 
   if (settingsQuery.isError) {
     return (
-      <ErrorState
-        title="Could not load settings"
-        onRetry={() => void settingsQuery.refetch()}
-      />
+      <ErrorState title="Could not load settings" onRetry={() => void settingsQuery.refetch()} />
     );
   }
 
@@ -77,7 +77,12 @@ export function SettingsPage() {
         body: form,
       });
       setPreference(updated.theme);
-      await qc.invalidateQueries({ queryKey: ['users', 'me', 'settings'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['users', 'me', 'settings'] }),
+        qc.invalidateQueries({ queryKey: ['timetable'] }),
+        qc.invalidateQueries({ queryKey: ['exams'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
       toast.show({ kind: 'success', title: 'Settings saved' });
     } catch (err) {
       toast.show({
@@ -114,9 +119,7 @@ export function SettingsPage() {
             <select
               id="setting-theme"
               value={form.theme}
-              onChange={(e) =>
-                setForm({ ...form, theme: e.target.value as UserSettings['theme'] })
-              }
+              onChange={(e) => setForm({ ...form, theme: e.target.value as UserSettings['theme'] })}
               className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
             >
               <option value="system">System</option>
@@ -155,13 +158,13 @@ export function SettingsPage() {
           <h2 className="text-base font-semibold text-fg">Notifications</h2>
         </div>
         <Checkbox
-          label="In-app task reminders"
+          label="In-app task & class reminders"
           checked={form.notifyInApp}
           onChange={(e) => setForm({ ...form, notifyInApp: e.target.checked })}
         />
         <div>
           <Checkbox
-            label="Email reminders for due tasks"
+            label="Email reminders for due tasks & upcoming classes"
             disabled={!user?.emailVerified}
             checked={form.notifyEmailReminders}
             onChange={(e) => setForm({ ...form, notifyEmailReminders: e.target.checked })}
@@ -171,6 +174,50 @@ export function SettingsPage() {
               Verify your email address to enable email reminders.
             </p>
           ) : null}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="setting-class-reminder"
+              className="mb-1.5 block text-sm font-medium text-fg"
+            >
+              Default class reminder lead time
+            </label>
+            <select
+              id="setting-class-reminder"
+              value={String(form.classReminderMinutes ?? 15)}
+              onChange={(e) => setForm({ ...form, classReminderMinutes: Number(e.target.value) })}
+              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
+            >
+              <option value="0">At class start time</option>
+              <option value="5">5 minutes before</option>
+              <option value="10">10 minutes before</option>
+              <option value="15">15 minutes before</option>
+              <option value="30">30 minutes before</option>
+              <option value="60">1 hour before</option>
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="setting-exam-reminder"
+              className="mb-1.5 block text-sm font-medium text-fg"
+            >
+              Default exam reminder lead time
+            </label>
+            <select
+              id="setting-exam-reminder"
+              value={String(form.examReminderMinutes ?? 1440)}
+              onChange={(e) => setForm({ ...form, examReminderMinutes: Number(e.target.value) })}
+              className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
+            >
+              <option value="0">Off</option>
+              <option value="60">1 hour before</option>
+              <option value="720">12 hours before</option>
+              <option value="1440">1 day before</option>
+              <option value="4320">3 days before</option>
+              <option value="10080">7 days before</option>
+            </select>
+          </div>
         </div>
         <Checkbox
           label="Product updates & study tips"
@@ -214,6 +261,61 @@ export function SettingsPage() {
         </div>
       </Card>
 
+      <Card className="p-6 space-y-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-fg">Data &amp; Privacy</h2>
+            <p className="text-xs text-muted">
+              Download a portable JSON copy of your courses, notes, flashcards, grades, and
+              schedules.
+            </p>
+          </div>
+        </div>
+        <div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const token = getAccessToken();
+                const res = await fetch(`${API_BASE_URL}/users/me/export`, {
+                  credentials: 'include',
+                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                });
+                if (!res.ok) throw new Error('Export failed');
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `learnspace-export-${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                toast.show({ kind: 'success', title: 'Data export downloaded' });
+              } catch {
+                toast.show({
+                  kind: 'error',
+                  title: 'Could not export data',
+                  description: 'Please try again in a moment.',
+                });
+              } finally {
+                setExporting(false);
+              }
+            }}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export my data (JSON)
+          </Button>
+        </div>
+      </Card>
+
       <div className="flex justify-end">
         <Button type="submit" loading={saving}>
           Save settings
@@ -222,4 +324,3 @@ export function SettingsPage() {
     </form>
   );
 }
-

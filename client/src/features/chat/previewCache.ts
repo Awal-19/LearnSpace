@@ -29,4 +29,3 @@ export function revokeTrackedBlobUrl(url: string | undefined): void {
   activeBlobUrls.delete(url);
   URL.revokeObjectURL(url);
 }
-

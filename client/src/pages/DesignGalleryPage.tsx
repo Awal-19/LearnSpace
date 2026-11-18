@@ -36,7 +36,10 @@ export default function DesignGalleryPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl">Design system</h1>
         <div className="flex gap-2">
-          <Link className="text-sm text-primary-600 underline dark:text-primary-400" to="/dev/shell">
+          <Link
+            className="text-sm text-primary-600 underline dark:text-primary-400"
+            to="/dev/shell"
+          >
             Preview layout shell
           </Link>
         </div>
@@ -138,7 +141,9 @@ export default function DesignGalleryPage() {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => toast.show({ kind: 'success', title: 'Saved', description: 'Toast example' })}
+          onClick={() =>
+            toast.show({ kind: 'success', title: 'Saved', description: 'Toast example' })
+          }
         >
           Success toast
         </Button>
@@ -161,4 +166,3 @@ export default function DesignGalleryPage() {
     </div>
   );
 }
-

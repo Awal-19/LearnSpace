@@ -71,7 +71,9 @@ export class EnvError extends Error {
  * Validates configuration. Error messages list variable names and rules only;
  * they never echo the offending values, so secrets cannot leak into logs.
  */
-export function loadEnv(source: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): Env {
+export function loadEnv(
+  source: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): Env {
   const result = schema.safeParse(source);
   if (!result.success) {
     throw new EnvError(
@@ -91,4 +93,3 @@ export function loadEnv(source: NodeJS.ProcessEnv | Record<string, string | unde
 
   return { ...env, CORS_ORIGINS: origins };
 }
-

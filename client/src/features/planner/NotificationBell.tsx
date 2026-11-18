@@ -41,11 +41,11 @@ export function NotificationBell() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={`Notifications (${unread} unread)`}
-        className="relative rounded-md p-2 text-muted hover:bg-surface2 hover:text-fg"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/85 bg-white/80 text-muted shadow-sm backdrop-blur-md transition hover:border-primary-300 hover:bg-white hover:text-primary-600 dark:border-line dark:bg-surface dark:hover:border-primary-500/40 dark:hover:text-primary-400"
       >
-        <Bell className="h-5 w-5" aria-hidden="true" />
+        <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
         {unread > 0 ? (
-          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}
@@ -94,4 +94,3 @@ export function NotificationBell() {
     </div>
   );
 }
-

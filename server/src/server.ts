@@ -13,11 +13,15 @@ import { createAdminService } from './modules/admin/admin.service';
 import { createDocumentJobQueue } from './modules/documents/documents.jobs';
 import { createDocumentsService } from './modules/documents/documents.service';
 import { createAuthService } from './modules/auth/auth.service';
+import { createCoursesService } from './modules/courses/courses.service';
+import { createExamsService } from './modules/exams/exams.service';
 import { createFocusService } from './modules/focus/focus.service';
+import { createGpaService } from './modules/gpa/gpa.service';
 import { createNotesService } from './modules/notes/notes.service';
 import { createPlannerService } from './modules/planner/planner.service';
 import { createRagService } from './modules/rag/rag.service';
 import { createStudyService } from './modules/study/study.service';
+import { createTimetableService } from './modules/timetable/timetable.service';
 import { createUsersService } from './modules/users/users.service';
 
 function main(): void {
@@ -32,7 +36,7 @@ function main(): void {
 
   const logger = createLogger(env);
   const email = createEmailService(env, logger);
-  const storage = createStorageService(env, logger);
+  const storage = createStorageService(env, logger, prisma);
   const llm = env.NVIDIA_API_KEY
     ? createNvidiaProvider(env, logger)
     : createGeminiProvider(env, logger);
@@ -47,6 +51,7 @@ function main(): void {
   const aiDailyTokenLimit = env.AI_DAILY_TOKEN_LIMIT ?? null;
   const auth = createAuthService({ prisma, env, email, logger });
   const users = createUsersService({ prisma, storage, logger });
+  const courses = createCoursesService({ prisma, storage, logger });
   const rag = createRagService({ prisma, logger });
   const attachments = createAttachmentsService({ prisma, storage, logger });
   const documentJobs = createDocumentJobQueue({ prisma, storage, llm, logger });
@@ -70,8 +75,24 @@ function main(): void {
   });
   const notes = createNotesService({ prisma, llm, logger });
   const planner = createPlannerService({ prisma, email, logger, clientUrl: env.CLIENT_URL });
+  const timetable = createTimetableService({ prisma, email, logger, clientUrl: env.CLIENT_URL });
+  const exams = createExamsService({
+    prisma,
+    llm,
+    email,
+    logger,
+    clientUrl: env.CLIENT_URL,
+    dailyTokenLimit: aiDailyTokenLimit,
+  });
   const focus = createFocusService(prisma);
-  const study = createStudyService({ prisma, llm, logger });
+  const gpa = createGpaService({ prisma, logger });
+  const study = createStudyService({
+    prisma,
+    llm,
+    logger,
+    storage,
+    dailyTokenLimit: aiDailyTokenLimit,
+  });
 
   const app = createApp(
     env,
@@ -81,10 +102,14 @@ function main(): void {
       },
       auth,
       users,
+      courses,
+      timetable,
+      exams: { service: exams, isEmailVerified },
       ai: { service: ai, isEmailVerified },
       notes: { service: notes, isEmailVerified },
       planner,
       focus,
+      gpa,
       study: { service: study, isEmailVerified },
       rag: { service: rag, isEmailVerified },
       attachments: { service: attachments, isEmailVerified },
@@ -96,9 +121,17 @@ function main(): void {
   );
 
   const reminderTimer = setInterval(() => {
-    void planner.processDueReminders().catch((err) => {
-      logger.warn({ err }, 'Reminder sweep failed');
-    });
+    void Promise.all([
+      planner.processDueReminders().catch((err) => {
+        logger.warn({ err }, 'Task reminder sweep failed');
+      }),
+      timetable.processDueClassReminders().catch((err) => {
+        logger.warn({ err }, 'Class reminder sweep failed');
+      }),
+      exams.processDueExamReminders().catch((err) => {
+        logger.warn({ err }, 'Exam reminder sweep failed');
+      }),
+    ]);
   }, 60_000);
   reminderTimer.unref();
   documentJobs.startWorker(2_000);
@@ -124,7 +157,9 @@ function main(): void {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('unhandledRejection', (reason) => logger.error({ err: reason }, 'Unhandled rejection'));
+  process.on('unhandledRejection', (reason) =>
+    logger.error({ err: reason }, 'Unhandled rejection'),
+  );
   process.on('uncaughtException', (err) => {
     logger.fatal({ err }, 'Uncaught exception');
     process.exit(1);
@@ -132,4 +167,3 @@ function main(): void {
 }
 
 main();
-

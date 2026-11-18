@@ -44,4 +44,3 @@ databases:
   - name: learnspace-db
     plan: free
     postgresMajorVersion: 16
-

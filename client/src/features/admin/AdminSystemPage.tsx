@@ -2,11 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Activity } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Skeleton } from '../../design';
-import {
-  fetchAdminErrorLogs,
-  fetchAdminLoginHistory,
-  fetchAdminSystemHealth,
-} from './adminApi';
+import { fetchAdminErrorLogs, fetchAdminLoginHistory, fetchAdminSystemHealth } from './adminApi';
 
 export function AdminSystemPage() {
   const [suspiciousOnly, setSuspiciousOnly] = useState(false);
@@ -54,7 +50,10 @@ export function AdminSystemPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-5">
             {[
               { name: 'API', val: healthQuery.data.api },
-              { name: `Database (${healthQuery.data.dbLatencyMs}ms)`, val: healthQuery.data.database },
+              {
+                name: `Database (${healthQuery.data.dbLatencyMs}ms)`,
+                val: healthQuery.data.database,
+              },
               { name: 'Email', val: healthQuery.data.email },
               { name: 'AI Provider', val: healthQuery.data.ai },
               { name: 'Storage', val: healthQuery.data.storage },
@@ -134,4 +133,3 @@ export function AdminSystemPage() {
     </div>
   );
 }
-

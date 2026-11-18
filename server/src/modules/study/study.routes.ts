@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
@@ -10,13 +11,36 @@ import {
   createDeckSchema,
   generateDeckSchema,
   generateQuizSchema,
+  importCsvSchema,
+  listQuizzesQuerySchema,
   paginationQuerySchema,
   quizAttemptsRangeSchema,
+  reviewCardSchema,
   submitAttemptSchema,
   updateCardSchema,
   updateDeckSchema,
+  updateQuizSchema,
 } from './study.schemas';
-import type { StudyService } from './study.service';
+import { MAX_CARD_IMAGE_BYTES, type StudyService } from './study.service';
+
+const cardImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CARD_IMAGE_BYTES, files: 1 },
+});
+
+const handleCardImageMulter: RequestHandler = (req, res, next) => {
+  cardImageUpload.single('file')(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      next(new AppError('PAYLOAD_TOO_LARGE', 'Card image must be 5 MB or smaller'));
+      return;
+    }
+    next(new AppError('VALIDATION_ERROR', 'Invalid image upload'));
+  });
+};
 
 const uuidSchema = z.string().uuid();
 function parseUuid(raw: string | undefined, label: string): string {
@@ -58,6 +82,15 @@ export function studyRouter({ study, env, isEmailVerified }: StudyRouterDeps): R
     }),
   );
 
+  // IMPORTANT: Mounted before /decks/:id so "due-summary" is not treated as a deck UUID.
+  router.get(
+    '/decks/due-summary',
+    auth,
+    asyncHandler(async (req, res) => {
+      res.json(await study.getDueSummary(req.user!.id));
+    }),
+  );
+
   router.post(
     '/decks',
     auth,
@@ -84,6 +117,25 @@ export function studyRouter({ study, env, isEmailVerified }: StudyRouterDeps): R
     asyncHandler(async (req, res) => {
       const id = parseUuid(req.params.id, 'Deck');
       res.json(await study.getDeck(req.user!.id, id));
+    }),
+  );
+
+  router.get(
+    '/decks/:id/due',
+    auth,
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Deck');
+      res.json(await study.getDueCards(req.user!.id, id));
+    }),
+  );
+
+  router.post(
+    '/decks/:id/import-csv',
+    auth,
+    validateBody(importCsvSchema),
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Deck');
+      res.status(201).json(await study.importCardsCsv(req.user!.id, id, req.body));
     }),
   );
 
@@ -137,12 +189,62 @@ export function studyRouter({ study, env, isEmailVerified }: StudyRouterDeps): R
     }),
   );
 
+  router.post(
+    '/cards/:id/review',
+    auth,
+    validateBody(reviewCardSchema),
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Card');
+      res.json(await study.reviewCard(req.user!.id, id, req.body));
+    }),
+  );
+
+  router.post(
+    '/cards/:id/image',
+    auth,
+    handleCardImageMulter,
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Card');
+      if (!req.file?.buffer) {
+        throw new AppError('VALIDATION_ERROR', 'Attach an image under the "file" field');
+      }
+      res.status(201).json(await study.uploadCardImage(req.user!.id, id, req.file.buffer));
+    }),
+  );
+
+  router.get(
+    '/cards/:id/image',
+    auth,
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Card');
+      const bytes = await study.readCardImage(req.user!.id, id);
+      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.send(bytes);
+    }),
+  );
+
+  router.delete(
+    '/cards/:id/image',
+    auth,
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Card');
+      res.json(await study.deleteCardImage(req.user!.id, id));
+    }),
+  );
+
   // Quizzes & attempts
   router.get(
     '/quizzes',
     auth,
+    validateQuery(listQuizzesQuerySchema),
     asyncHandler(async (req, res) => {
-      res.json(await study.listQuizzes(req.user!.id));
+      res.json(
+        await study.listQuizzes(
+          req.user!.id,
+          req.query as unknown as z.infer<typeof listQuizzesQuerySchema>,
+        ),
+      );
     }),
   );
 
@@ -163,6 +265,16 @@ export function studyRouter({ study, env, isEmailVerified }: StudyRouterDeps): R
     asyncHandler(async (req, res) => {
       const id = parseUuid(req.params.id, 'Quiz');
       res.json(await study.getQuiz(req.user!.id, id));
+    }),
+  );
+
+  router.patch(
+    '/quizzes/:id',
+    auth,
+    validateBody(updateQuizSchema),
+    asyncHandler(async (req, res) => {
+      const id = parseUuid(req.params.id, 'Quiz');
+      res.json(await study.updateQuiz(req.user!.id, id, req.body));
     }),
   );
 
@@ -211,4 +323,3 @@ export function studyRouter({ study, env, isEmailVerified }: StudyRouterDeps): R
 
   return router;
 }
-

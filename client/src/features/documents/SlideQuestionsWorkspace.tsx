@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
@@ -47,6 +48,7 @@ export function SlideQuestionsWorkspace({ detail, onRefresh }: SlideQuestionsWor
   const toast = useToast();
   const navigate = useNavigate();
   const appPath = useAppPath();
+  const qc = useQueryClient();
 
   const [selectedTypes, setSelectedTypes] = useState<GeneratedQuestionType[]>([
     'mcq',
@@ -110,7 +112,12 @@ export function SlideQuestionsWorkspace({ detail, onRefresh }: SlideQuestionsWor
         style,
       });
       toast.show({ kind: 'info', title: 'Generating questions from your slides…' });
-      await onRefresh();
+      await Promise.all([
+        onRefresh(),
+        qc.invalidateQueries({ queryKey: ['decks'] }),
+        qc.invalidateQueries({ queryKey: ['quizzes'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
     } catch (err) {
       toast.show({
         kind: 'error',
@@ -138,7 +145,9 @@ export function SlideQuestionsWorkspace({ detail, onRefresh }: SlideQuestionsWor
           }
           return {
             ...s,
-            questions: s.questions.map((item) => (item.id === res.question.id ? res.question : item)),
+            questions: s.questions.map((item) =>
+              item.id === res.question.id ? res.question : item,
+            ),
           };
         }),
       );
@@ -171,7 +180,12 @@ export function SlideQuestionsWorkspace({ detail, onRefresh }: SlideQuestionsWor
               ? 'Saved quiz to Study library'
               : 'Saved Quiz & Flashcards to Study library',
       });
-      await onRefresh();
+      await Promise.all([
+        onRefresh(),
+        qc.invalidateQueries({ queryKey: ['decks'] }),
+        qc.invalidateQueries({ queryKey: ['quizzes'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
       if (target === 'deck') {
         navigate(appPath('/study'));
       }
@@ -522,4 +536,3 @@ export function SlideQuestionsWorkspace({ detail, onRefresh }: SlideQuestionsWor
     </div>
   );
 }
-

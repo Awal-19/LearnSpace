@@ -50,4 +50,3 @@ describe('ai.prompts', () => {
     expect(suggestConversationTitle('x'.repeat(80)).length).toBeLessThanOrEqual(60);
   });
 });
-

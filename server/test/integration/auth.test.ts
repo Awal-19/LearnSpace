@@ -79,9 +79,29 @@ function createInMemoryPrisma() {
         }
         return null;
       },
-      create: async ({ data }: { data: { name: string; email: string; passwordHash?: string | null; emailVerified?: boolean } }) => {
+      create: async ({
+        data,
+      }: {
+        data: {
+          name: string;
+          email: string;
+          passwordHash?: string | null;
+          emailVerified?: boolean;
+          termsAccepted?: boolean;
+          termsVersion?: string | null;
+          termsAcceptedAt?: Date | null;
+          privacyPolicyVersion?: string | null;
+          privacyPolicyAcceptedAt?: Date | null;
+        };
+      }) => {
         const now = new Date();
-        const row: UserRow = {
+        const row: UserRow & {
+          termsAccepted: boolean;
+          termsVersion: string | null;
+          termsAcceptedAt: Date | null;
+          privacyPolicyVersion: string | null;
+          privacyPolicyAcceptedAt: Date | null;
+        } = {
           id: randomUUID(),
           email: data.email.toLowerCase(),
           name: data.name,
@@ -96,6 +116,11 @@ function createInMemoryPrisma() {
           avatarPublicId: null,
           failedLoginCount: 0,
           lockedUntil: null,
+          termsAccepted: data.termsAccepted ?? false,
+          termsVersion: data.termsVersion ?? null,
+          termsAcceptedAt: data.termsAcceptedAt ?? null,
+          privacyPolicyVersion: data.privacyPolicyVersion ?? null,
+          privacyPolicyAcceptedAt: data.privacyPolicyAcceptedAt ?? null,
           createdAt: now,
           updatedAt: now,
         };
@@ -112,7 +137,11 @@ function createInMemoryPrisma() {
     refreshToken: {
       findUnique: async ({ where }: { where: { tokenHash: string } }) =>
         refreshTokens.find((t) => t.tokenHash === where.tokenHash) ?? null,
-      create: async ({ data }: { data: Omit<RefreshRow, 'id' | 'revokedAt' | 'replacedById' | 'createdAt'> }) => {
+      create: async ({
+        data,
+      }: {
+        data: Omit<RefreshRow, 'id' | 'revokedAt' | 'replacedById' | 'createdAt'>;
+      }) => {
         const row: RefreshRow = {
           id: randomUUID(),
           revokedAt: null,
@@ -270,15 +299,20 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
         sentResetUrl = url;
       }),
       sendTaskReminderEmail: vi.fn(async () => undefined),
+      sendClassReminderEmail: vi.fn(async () => undefined),
+      sendExamReminderEmail: vi.fn(async () => undefined),
     };
     const auth = createAuthService({ prisma: store.db, env, email, logger });
     app = createApp(env, { checkDb: async () => undefined, auth }, logger);
   });
 
-  it('signs up a user as unverified without issuing a session, sends 6-digit OTP, and verifies to unlock session', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/signup')
-      .send({ name: 'Ama Mensah', email: 'Ama@Uni.edu', password: 'StudyPass1!' });
+  it('signs up a user as unverified without issuing a session, persists consent, sends 6-digit OTP, and verifies to unlock session', async () => {
+    const res = await request(app).post('/api/v1/auth/signup').send({
+      name: 'Ama Mensah',
+      email: 'Ama@Uni.edu',
+      password: 'StudyPass1!',
+      acceptTerms: true,
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.requiresVerification).toBe(true);
@@ -287,6 +321,14 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     expect(res.headers['set-cookie']).toBeUndefined();
     expect(store.users[0]?.passwordHash?.startsWith('$argon2id$')).toBe(true);
     expect(store.users[0]?.emailVerified).toBe(false);
+    expect((store.users[0] as { termsAccepted?: boolean })?.termsAccepted).toBe(true);
+    expect((store.users[0] as { termsVersion?: string | null })?.termsVersion).toBe('2026-11-18');
+    expect((store.users[0] as { termsAcceptedAt?: Date | null })?.termsAcceptedAt).toBeInstanceOf(
+      Date,
+    );
+    expect((store.users[0] as { privacyPolicyVersion?: string | null })?.privacyPolicyVersion).toBe(
+      '2026-11-18',
+    );
     expect(sentOtpCode).toMatch(/^\d{6}$/);
 
     // Login before verification is blocked with EMAIL_NOT_VERIFIED
@@ -303,17 +345,48 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.body.accessToken).toBeTruthy();
     expect(verifyRes.body.user.emailVerified).toBe(true);
+    expect(verifyRes.body.user.termsAccepted).toBe(true);
+    expect(verifyRes.body.user.termsVersion).toBe('2026-11-18');
+    expect(verifyRes.body.user.termsAcceptedAt).toBeTruthy();
+    expect(verifyRes.body.user.privacyPolicyVersion).toBe('2026-11-18');
+    expect(verifyRes.body.user.privacyPolicyAcceptedAt).toBeTruthy();
     expect(verifyRes.headers['set-cookie']?.[0]).toMatch(/ls_refresh=.*;.*HttpOnly/i);
+  });
+
+  it('rejects signup when Terms and Conditions consent is missing or false', async () => {
+    const missing = await request(app)
+      .post('/api/v1/auth/signup')
+      .send({ name: 'Ama', email: 'noconsent@uni.edu', password: 'StudyPass1!' });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error.code).toBe('VALIDATION_ERROR');
+    expect(missing.body.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'acceptTerms',
+          message: 'Please accept the Terms and Conditions and Privacy Policy to continue.',
+        }),
+      ]),
+    );
+
+    const declined = await request(app).post('/api/v1/auth/signup').send({
+      name: 'Ama',
+      email: 'declined@uni.edu',
+      password: 'StudyPass1!',
+      acceptTerms: false,
+    });
+    expect(declined.status).toBe(400);
+    expect(declined.body.error.code).toBe('VALIDATION_ERROR');
+    expect(store.users).toHaveLength(0);
   });
 
   it('rejects duplicate signup regardless of email case (T-AUTH-02)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!', acceptTerms: true });
 
     const dup = await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama 2', email: 'AMA@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama 2', email: 'AMA@uni.edu', password: 'StudyPass1!', acceptTerms: true });
 
     expect(dup.status).toBe(409);
     expect(dup.body.error.code).toBe('EMAIL_TAKEN');
@@ -322,7 +395,7 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   it('locks account after 5 failed logins (T-AUTH-05)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!', acceptTerms: true });
 
     for (let i = 0; i < 4; i += 1) {
       const fail = await request(app)
@@ -346,7 +419,7 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   it('requires X-Requested-With on refresh (T-AUTH-08) and revokes family on token reuse (T-AUTH-07)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!', acceptTerms: true });
     const verify = await request(app)
       .post('/api/v1/auth/verify-otp')
       .send({ email: 'ama@uni.edu', code: sentOtpCode });
@@ -380,23 +453,27 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   it('verifies OTP once and rejects reuse (T-AUTH-11)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!', acceptTerms: true });
     const code = sentOtpCode!;
 
-    const ok = await request(app).post('/api/v1/auth/verify-otp').send({ email: 'ama@uni.edu', code });
+    const ok = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'ama@uni.edu', code });
     expect(ok.status).toBe(200);
     expect(store.users[0]?.emailVerified).toBe(true);
 
     // Reusing the same OTP after verification does not create another OTP; if unverified again, reuse fails
     store.users[0]!.emailVerified = false;
-    const reuse = await request(app).post('/api/v1/auth/verify-otp').send({ email: 'ama@uni.edu', code });
+    const reuse = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'ama@uni.edu', code });
     expect(reuse.status).toBe(400);
   });
 
   it('resets password, revokes all sessions, and gives identical forgot-password responses (T-AUTH-12, T-AUTH-13)', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'ama@uni.edu', password: 'StudyPass1!', acceptTerms: true });
     const verify = await request(app)
       .post('/api/v1/auth/verify-otp')
       .send({ email: 'ama@uni.edu', code: sentOtpCode });
@@ -447,7 +524,7 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   it('rejects wrong, over-attempted, and expired OTPs and enforces resend cooldown with generic response', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'otp@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'otp@uni.edu', password: 'StudyPass1!', acceptTerms: true });
 
     // Resend within 60s returns 429 cooldown for existing unverified user, generic 200 for unknown email
     const unknownResend = await request(app)
@@ -483,13 +560,9 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
   it('blocks unverified users with 403 EMAIL_NOT_VERIFIED across all protected endpoints', async () => {
     await request(app)
       .post('/api/v1/auth/signup')
-      .send({ name: 'Ama', email: 'blocked@uni.edu', password: 'StudyPass1!' });
+      .send({ name: 'Ama', email: 'blocked@uni.edu', password: 'StudyPass1!', acceptTerms: true });
     const unverifiedUser = store.users.find((u) => u.email === 'blocked@uni.edu')!;
-    const { token } = signAccessToken(
-      unverifiedUser.id,
-      testEnv().JWT_SECRET,
-      300,
-    );
+    const { token } = signAccessToken(unverifiedUser.id, testEnv().JWT_SECRET, 300);
 
     const protectedApp = createApp(
       testEnv(),
@@ -516,12 +589,9 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
     ];
 
     for (const ep of endpoints) {
-      const res = await request(protectedApp)
-        .get(ep)
-        .set('Authorization', `Bearer ${token}`);
+      const res = await request(protectedApp).get(ep).set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('EMAIL_NOT_VERIFIED');
     }
   });
 });
-

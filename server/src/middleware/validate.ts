@@ -35,4 +35,3 @@ export function asyncHandler(
     fn(req, res, next).catch(next);
   };
 }
-

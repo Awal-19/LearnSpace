@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { ApiError, request, setAccessToken, setRefreshHandler } from '../lib/apiClient';
+import type { AvatarConfig } from '../features/profile/avatarTypes';
 
 export interface AuthUser {
   id: string;
@@ -23,7 +24,13 @@ export interface AuthUser {
   university?: string | null;
   bio?: string | null;
   avatarUrl: string | null;
+  avatarConfig?: AvatarConfig | null;
   hasPassword?: boolean;
+  termsAccepted?: boolean;
+  termsVersion?: string | null;
+  termsAcceptedAt?: string | null;
+  privacyPolicyVersion?: string | null;
+  privacyPolicyAcceptedAt?: string | null;
 }
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';

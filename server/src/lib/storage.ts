@@ -1,9 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 import type { Logger } from 'pino';
+import sharp from 'sharp';
 import type { Env } from '../config/env';
 import { AppError } from './errors';
 
@@ -64,19 +66,48 @@ export interface StorageService {
     extension: string,
   ): Promise<UploadedAttachment>;
   getSignedAttachmentUrl(storageKey: string, kind: 'image' | 'document'): string | null;
-  readAttachmentBytes(storageKey: string, storageUrl: string, kind: 'image' | 'document'): Promise<Buffer>;
+  readAttachmentBytes(
+    storageKey: string,
+    storageUrl: string,
+    kind: 'image' | 'document',
+  ): Promise<Buffer>;
   deleteAttachment(storageKey: string, kind: 'image' | 'document'): Promise<void>;
+}
+
+/**
+ * Re-encodes an uploaded avatar image with sharp (strips EXIF metadata, applies EXIF orientation,
+ * normalizes to a crisp 512x512 WebP, and verifies real decodable image pixels).
+ */
+export async function sanitizeAndResizeAvatar(buffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(buffer)
+      .rotate()
+      .resize(512, 512, { fit: 'cover' })
+      .webp({ quality: 90 })
+      .toBuffer();
+  } catch {
+    throw new AppError(
+      'UNSUPPORTED_MEDIA_TYPE',
+      'Could not read image file. Please choose a valid JPG, PNG, or WebP photo.',
+    );
+  }
 }
 
 const DEV_DIR = path.join(os.tmpdir(), 'learnspace-dev-attachments');
 
 /**
  * Creates a Cloudinary-backed storage service.
- * In NODE_ENV=development only, if CLOUDINARY_URL is unset, chat attachments fall back
- * to a private temp directory served through authenticated API routes (never in production).
+ * When CLOUDINARY_URL is unset:
+ * - User avatars are sanitized with sharp and stored persistently in PostgreSQL (`user_avatars`)
+ *   so avatars persist across reloads, logouts, and devices without extra cloud secrets.
+ * - In NODE_ENV=development only, chat attachments fall back to a private temp directory.
  */
-export function createStorageService(env: Env, logger: Logger): StorageService {
-  const configured = Boolean(env.CLOUDINARY_URL);
+export function createStorageService(
+  env: Env,
+  logger: Logger,
+  prisma?: PrismaClient,
+): StorageService {
+  let configured = Boolean(env.CLOUDINARY_URL);
   const allowDevLocal = env.NODE_ENV === 'development' && !configured;
 
   if (configured && env.CLOUDINARY_URL) {
@@ -89,7 +120,11 @@ export function createStorageService(env: Env, logger: Logger): StorageService {
         secure: true,
       });
     } catch (err) {
-      logger.warn({ err }, 'Invalid CLOUDINARY_URL format; cloud storage will be unavailable');
+      configured = false;
+      logger.warn(
+        { err },
+        'Invalid CLOUDINARY_URL format; cloud storage will fall back if available',
+      );
     }
   }
 
@@ -109,37 +144,72 @@ export function createStorageService(env: Env, logger: Logger): StorageService {
     isConfigured: () => configured || allowDevLocal,
 
     async uploadAvatar(buffer, userId) {
-      if (!configured) {
-        throw new AppError('STORAGE_UNAVAILABLE', 'Avatar storage is not configured');
+      if (configured) {
+        const processed = await sanitizeAndResizeAvatar(buffer);
+        const publicId = `learnspace/avatars/${userId}-${Date.now()}`;
+        return new Promise<UploadedAvatar>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              public_id: publicId,
+              overwrite: true,
+              resource_type: 'image',
+              transformation: [
+                { width: 512, height: 512, crop: 'limit' },
+                { fetch_format: 'webp', quality: 'auto' },
+              ],
+            },
+            (error, result) => {
+              if (error || !result?.secure_url) {
+                logger.error({ err: error }, 'Cloudinary avatar upload failed');
+                reject(new AppError('STORAGE_UNAVAILABLE', 'Could not upload avatar right now'));
+                return;
+              }
+              resolve({ url: result.secure_url, publicId: result.public_id });
+            },
+          );
+          stream.end(processed);
+        });
       }
 
-      const publicId = `learnspace/avatars/${userId}-${Date.now()}`;
-      return new Promise<UploadedAvatar>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            public_id: publicId,
-            overwrite: true,
-            resource_type: 'image',
-            transformation: [
-              { width: 256, height: 256, crop: 'fill', gravity: 'face' },
-              { fetch_format: 'webp', quality: 'auto' },
-            ],
+      if (prisma) {
+        const processed = await sanitizeAndResizeAvatar(buffer);
+        const etag = createHash('sha256').update(processed).digest('hex').slice(0, 32);
+        await prisma.userAvatar.upsert({
+          where: { userId },
+          create: {
+            userId,
+            mimeType: 'image/webp',
+            data: processed,
+            etag,
           },
-          (error, result) => {
-            if (error || !result?.secure_url) {
-              logger.error({ err: error }, 'Cloudinary avatar upload failed');
-              reject(new AppError('STORAGE_UNAVAILABLE', 'Could not upload avatar right now'));
-              return;
-            }
-            resolve({ url: result.secure_url, publicId: result.public_id });
+          update: {
+            mimeType: 'image/webp',
+            data: processed,
+            etag,
           },
-        );
-        stream.end(buffer);
-      });
+        });
+        return {
+          url: `/api/v1/users/${userId}/avatar?v=${Date.now()}`,
+          publicId: `db:${userId}`,
+        };
+      }
+
+      throw new AppError('STORAGE_UNAVAILABLE', 'Avatar storage is not configured');
     },
 
     async deleteAvatar(publicId) {
-      if (!configured || !publicId) return;
+      if (!publicId) return;
+      if (publicId.startsWith('db:')) {
+        const userId = publicId.slice('db:'.length);
+        if (prisma && userId) {
+          await prisma.userAvatar.deleteMany({ where: { userId } }).catch((err) => {
+            logger.warn({ err, publicId }, 'Failed to delete avatar from database');
+          });
+        }
+        return;
+      }
+
+      if (!configured) return;
       try {
         await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
       } catch (err) {
@@ -182,7 +252,10 @@ export function createStorageService(env: Env, logger: Logger): StorageService {
         return { storageKey, storageUrl: storageKey };
       }
 
-      throw new AppError('STORAGE_UNAVAILABLE', 'Object storage (CLOUDINARY_URL) is not configured');
+      throw new AppError(
+        'STORAGE_UNAVAILABLE',
+        'Object storage (CLOUDINARY_URL) is not configured',
+      );
     },
 
     getSignedAttachmentUrl(storageKey, kind) {

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext, type AuthContextValue, type AuthUser } from '../../app/AuthContext';
 import { ToastProvider } from '../../design';
@@ -88,11 +89,11 @@ describe('ChatPage', () => {
       start(controller) {
         const enc = new TextEncoder();
         controller.enqueue(
-          enc.encode(
-            'event: meta\ndata: {"userMessageId":"m1","assistantMessageId":"m2"}\n\n',
-          ),
+          enc.encode('event: meta\ndata: {"userMessageId":"m1","assistantMessageId":"m2"}\n\n'),
         );
-        controller.enqueue(enc.encode('event: delta\ndata: {"text":"Binary search runs in O(log n)."}\n\n'));
+        controller.enqueue(
+          enc.encode('event: delta\ndata: {"text":"Binary search runs in O(log n)."}\n\n'),
+        );
         controller.enqueue(
           enc.encode(
             'event: done\ndata: {"messageId":"m2","usage":{"inputTokens":10,"outputTokens":12}}\n\n',
@@ -272,11 +273,20 @@ describe('ChatPage', () => {
     expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
   });
 
-  it('displays Unlimited when daily AI tokenLimit is null', () => {
+  it('does not display daily AI token usage or Unlimited stats in ConversationList sidebar', () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     render(
       <ConversationList
-        conversations={[]}
-        activeId={null}
+        conversations={[
+          {
+            id: 'c1',
+            title: 'Distributed Systems Notes',
+            courseId: null,
+            createdAt: yesterday,
+            updatedAt: yesterday,
+          },
+        ]}
+        activeId="c1"
         search=""
         onSearchChange={vi.fn()}
         onSelect={vi.fn()}
@@ -285,17 +295,322 @@ describe('ChatPage', () => {
         onDelete={vi.fn(async () => undefined)}
         isLoading={false}
         isCreating={false}
-        usage={{
-          day: '2026-11-17',
-          tokensUsed: 15420,
-          tokenLimit: null,
-          requestsPerMinute: 20,
-          resetsAt: '2026-11-18T00:00:00.000Z',
-        }}
+        user={verifiedUser}
       />,
     );
 
-    expect(screen.getByText(/15,420 · Unlimited/)).toBeInTheDocument();
+    expect(screen.getByText('Yesterday')).toBeInTheDocument();
+    expect(screen.getByText('Distributed Systems Notes')).toBeInTheDocument();
+    expect(screen.queryByText(/Daily AI tokens/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unlimited/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps user messages and streamed AI replies visible on first message, follow-up, sidebar collapse, and reload', async () => {
+    const enc = new TextEncoder();
+    const makeStream = (userId: string, assistantId: string, replyText: string, title?: string) =>
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            enc.encode(
+              `event: meta\ndata: ${JSON.stringify({ userMessageId: userId, assistantMessageId: assistantId })}\n\n`,
+            ),
+          );
+          controller.enqueue(
+            enc.encode(`event: delta\ndata: ${JSON.stringify({ text: replyText })}\n\n`),
+          );
+          controller.enqueue(
+            enc.encode(
+              `event: done\ndata: ${JSON.stringify({ messageId: assistantId, usage: { inputTokens: 8, outputTokens: 12 }, ...(title ? { title } : {}) })}\n\n`,
+            ),
+          );
+          controller.close();
+        },
+      });
+
+    const persistedMessages: Array<{
+      id: string;
+      role: 'user' | 'assistant';
+      content: string;
+      status: 'complete';
+      action: null;
+      createdAt: string;
+    }> = [];
+    let convTitle = 'New chat';
+    let created = false;
+    let sendCount = 0;
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.endsWith('/conversations') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            items: created
+              ? [
+                  {
+                    id: 'conv-new',
+                    title: convTitle,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  },
+                ]
+              : [],
+            nextCursor: null,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (url.endsWith('/conversations') && method === 'POST') {
+        created = true;
+        return new Response(
+          JSON.stringify({
+            id: 'conv-new',
+            title: 'New chat',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (url.endsWith('/ai/documents')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.endsWith('/conversations/conv-new') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            conversation: {
+              id: 'conv-new',
+              title: convTitle,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            messages: [...persistedMessages],
+            hasMore: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (url.endsWith('/conversations/conv-new/messages') && method === 'POST') {
+        sendCount += 1;
+        if (sendCount === 1) {
+          convTitle = 'Hi';
+          persistedMessages.push(
+            {
+              id: 'u-1',
+              role: 'user',
+              content: 'Hi',
+              status: 'complete',
+              action: null,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: 'a-1',
+              role: 'assistant',
+              content: 'Hello! How can I help you study today?',
+              status: 'complete',
+              action: null,
+              createdAt: new Date().toISOString(),
+            },
+          );
+          return new Response(
+            makeStream('u-1', 'a-1', 'Hello! How can I help you study today?', 'Hi'),
+            { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+          );
+        }
+
+        persistedMessages.push(
+          {
+            id: 'u-2',
+            role: 'user',
+            content: 'What is a noun?',
+            status: 'complete',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'a-2',
+            role: 'assistant',
+            content: 'A noun is a word that names a person, place, thing, or idea.',
+            status: 'complete',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+        );
+        return new Response(
+          makeStream('u-2', 'a-2', 'A noun is a word that names a person, place, thing, or idea.'),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      }
+
+      return new Response('{}', { status: 404 });
+    });
+
+    const renderRoutedChat = () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const auth: AuthContextValue = {
+        status: 'authenticated',
+        user: verifiedUser,
+        setSession: vi.fn(),
+        updateUser: vi.fn(),
+        clearSession: vi.fn(),
+        logout: vi.fn(async () => undefined),
+        markEmailVerified: vi.fn(),
+      };
+      setAccessToken('test-token');
+      return render(
+        <QueryClientProvider client={qc}>
+          <ToastProvider>
+            <AuthContext.Provider value={auth}>
+              <MemoryRouter initialEntries={['/chat']}>
+                <Routes>
+                  <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/chat/:conversationId" element={<ChatPage />} />
+                </Routes>
+              </MemoryRouter>
+            </AuthContext.Provider>
+          </ToastProvider>
+        </QueryClientProvider>,
+      );
+    };
+
+    const view = renderRoutedChat();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'New chat' }));
+
+    const input = screen.getByLabelText('Message to AWAL');
+    await user.type(input, 'Hi');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByText('Hi', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByText('Hello! How can I help you study today?')).toBeInTheDocument();
+
+    // Follow-up question stays in the same active conversation
+    await user.type(screen.getByLabelText('Message to AWAL'), 'What is a noun?');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(
+      await screen.findByText('A noun is a word that names a person, place, thing, or idea.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Hi', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByText('What is a noun?', { selector: 'p' })).toBeInTheDocument();
+
+    // Collapsing and expanding sidebar preserves active conversation
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(screen.getByText('Hello! How can I help you study today?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(screen.getByText('What is a noun?', { selector: 'p' })).toBeInTheDocument();
+
+    // Simulated page refresh restores full persisted conversation from backend
+    view.unmount();
+    renderRoutedChat();
+
+    expect(await screen.findByText('Hello! How can I help you study today?')).toBeInTheDocument();
+    expect(
+      screen.getByText('A noun is a word that names a person, place, thing, or idea.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps user message visible and allows Retry when AI response fails', async () => {
+    let attempts = 0;
+    const enc = new TextEncoder();
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.endsWith('/conversations') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'c1',
+                title: 'Grammar',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+            nextCursor: null,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/ai/documents')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/conversations/c1') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            conversation: {
+              id: 'c1',
+              title: 'Grammar',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            messages: [],
+            hasMore: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/conversations/c1/messages') && method === 'POST') {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response(
+            JSON.stringify({
+              error: { code: 'AI_UNAVAILABLE', message: 'Tutor temporarily busy.' },
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                enc.encode(
+                  'event: meta\ndata: {"userMessageId":"u1","assistantMessageId":"a1"}\n\n',
+                ),
+              );
+              controller.enqueue(enc.encode('event: delta\ndata: {"text":"Recovered reply!"}\n\n'));
+              controller.enqueue(
+                enc.encode(
+                  'event: done\ndata: {"messageId":"a1","usage":{"inputTokens":5,"outputTokens":5}}\n\n',
+                ),
+              );
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      }
+      return new Response('{}', { status: 404 });
+    });
+
+    renderChat();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Grammar', { selector: 'h1' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Message to AWAL'), 'Define verb');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(screen.getByText('Define verb', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Tutor temporarily busy.');
+    expect(screen.getByText('Define verb', { selector: 'p' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Recovered reply!')).toBeInTheDocument();
+    expect(screen.getAllByText('Define verb')).toHaveLength(1);
   });
 });
-

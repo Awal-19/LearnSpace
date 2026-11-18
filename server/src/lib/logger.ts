@@ -23,4 +23,3 @@ export function createLogger(env: Pick<Env, 'NODE_ENV' | 'LOG_LEVEL'>): Logger {
       : {}),
   });
 }
-

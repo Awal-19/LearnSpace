@@ -33,7 +33,10 @@ export function AdminUserDetailPage() {
     return (
       <Card className="p-6 text-center">
         <p className="text-sm text-danger">User not found.</p>
-        <Link to="/admin/users" className="mt-3 inline-block text-sm text-primary-600 hover:underline">
+        <Link
+          to="/admin/users"
+          className="mt-3 inline-block text-sm text-primary-600 hover:underline"
+        >
           Back to users
         </Link>
       </Card>
@@ -64,7 +67,7 @@ export function AdminUserDetailPage() {
     const nextStatus = user.status === 'active' ? 'suspended' : 'active';
     const reason =
       nextStatus === 'suspended'
-        ? window.prompt('Reason for suspension (optional):') ?? undefined
+        ? (window.prompt('Reason for suspension (optional):') ?? undefined)
         : undefined;
     if (nextStatus === 'suspended' && !window.confirm(`Suspend ${user.email}?`)) return;
     await runAction(
@@ -115,7 +118,7 @@ export function AdminUserDetailPage() {
       <Card className="border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-5 dark:border-primary-500/20 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <Avatar name={user.name} size="lg" />
+            <Avatar name={user.name} src={user.avatarUrl} size="lg" />
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="inline-flex items-center gap-1.5 font-display text-xl font-bold text-fg">
@@ -124,9 +127,6 @@ export function AdminUserDetailPage() {
                 </h1>
                 <Badge tone="neutral">{user.role}</Badge>
                 <Badge tone={user.status === 'active' ? 'success' : 'danger'}>{user.status}</Badge>
-                <Badge tone={user.emailVerified ? 'success' : 'warning'}>
-                  {user.emailVerified ? 'Verified' : 'Unverified'}
-                </Badge>
               </div>
               <p className="mt-1 text-sm text-muted">{user.email}</p>
               <p className="mt-1 text-xs text-muted">
@@ -134,13 +134,20 @@ export function AdminUserDetailPage() {
                 {user.authMethod} · Joined {new Date(user.createdAt).toLocaleDateString()}
               </p>
               {user.suspendedReason ? (
-                <p className="mt-2 text-xs text-danger">Suspension reason: {user.suspendedReason}</p>
+                <p className="mt-2 text-xs text-danger">
+                  Suspension reason: {user.suspendedReason}
+                </p>
               ) : null}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void handleSuspendToggle()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void handleSuspendToggle()}
+            >
               {user.status === 'active' ? (
                 <>
                   <UserX className="mr-1.5 h-3.5 w-3.5" />
@@ -157,7 +164,9 @@ export function AdminUserDetailPage() {
               size="sm"
               variant="secondary"
               disabled={busy}
-              onClick={() => void runAction(() => forceLogoutAdminUser(user.id), 'Sessions revoked')}
+              onClick={() =>
+                void runAction(() => forceLogoutAdminUser(user.id), 'Sessions revoked')
+              }
             >
               <LogOut className="mr-1.5 h-3.5 w-3.5" />
               Force logout
@@ -167,7 +176,10 @@ export function AdminUserDetailPage() {
               variant="secondary"
               disabled={busy}
               onClick={() =>
-                void runAction(() => resendAdminUserVerification(user.id), 'Verification email sent')
+                void runAction(
+                  () => resendAdminUserVerification(user.id),
+                  'Verification email sent',
+                )
               }
             >
               <Mail className="mr-1.5 h-3.5 w-3.5" />
@@ -224,9 +236,7 @@ export function AdminUserDetailPage() {
             className="p-4 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md"
           >
             <p className="text-xs font-medium text-muted">{s.label}</p>
-            <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">
-              {s.value}
-            </p>
+            <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">{s.value}</p>
           </Card>
         ))}
       </div>
@@ -241,7 +251,9 @@ export function AdminUserDetailPage() {
               {recentActivity.map((a) => (
                 <li key={a.id} className="flex items-center justify-between py-2">
                   <span className="capitalize font-medium">{a.action}</span>
-                  <span className="text-xs text-muted">{new Date(a.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-muted">
+                    {new Date(a.createdAt).toLocaleString()}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -264,7 +276,9 @@ export function AdminUserDetailPage() {
                     {l.suspicious ? <Badge tone="warning">Suspicious</Badge> : null}
                     <p className="text-xs text-muted">{l.ip ?? 'unknown IP'}</p>
                   </div>
-                  <span className="text-xs text-muted">{new Date(l.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-muted">
+                    {new Date(l.createdAt).toLocaleString()}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -274,4 +288,3 @@ export function AdminUserDetailPage() {
     </div>
   );
 }
-

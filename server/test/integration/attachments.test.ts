@@ -70,7 +70,12 @@ function makeFakePrisma() {
       create: async ({
         data,
       }: {
-        data: { conversationId: string; userId: string; role: 'user' | 'assistant'; content: string };
+        data: {
+          conversationId: string;
+          userId: string;
+          role: 'user' | 'assistant';
+          content: string;
+        };
       }) => {
         const row: MsgRow = {
           id: randomUUID(),
@@ -94,11 +99,7 @@ function makeFakePrisma() {
     messageAttachment: {
       count: async ({ where }: { where: { userId: string } }) =>
         Array.from(attachments.values()).filter((a) => a.userId === where.userId).length,
-      create: async ({
-        data,
-      }: {
-        data: Omit<AttRow, 'id' | 'messageId' | 'createdAt'>;
-      }) => {
+      create: async ({ data }: { data: Omit<AttRow, 'id' | 'messageId' | 'createdAt'> }) => {
         const row: AttRow = {
           id: randomUUID(),
           messageId: null,
@@ -303,8 +304,9 @@ describe('multimodal chat attachments integration', () => {
 
     expect(chatRes.status).toBe(200);
     const lastContent = capturedMessages?.at(-1)?.content;
-    expect(typeof lastContent === 'string' && lastContent.includes('<attached_document')).toBe(true);
+    expect(typeof lastContent === 'string' && lastContent.includes('<attached_document')).toBe(
+      true,
+    );
     expect(typeof lastContent === 'string' && lastContent.includes('Newton second law')).toBe(true);
   });
 });
-

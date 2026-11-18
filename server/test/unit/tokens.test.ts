@@ -38,4 +38,3 @@ describe('tokens (T-AUTH-09)', () => {
     expect(hash).toBe(hashToken(raw));
   });
 });
-

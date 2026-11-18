@@ -163,11 +163,14 @@ export function RequireAdmin() {
           </div>
           <h1 className="mt-4 font-display text-xl font-semibold">403 — Access Denied</h1>
           <p className="mt-2 text-sm text-muted">
-            You are currently signed in as a student ({user?.email}). Sign in with an administrator account to access the Admin Console.
+            You are currently signed in as a student ({user?.email}). Sign in with an administrator
+            account to access the Admin Console.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link to="/">
-              <Button size="sm" variant="secondary">Back to LearnSpace</Button>
+              <Button size="sm" variant="secondary">
+                Back to LearnSpace
+              </Button>
             </Link>
             <Button size="sm" onClick={() => void logout()}>
               Sign in as Admin

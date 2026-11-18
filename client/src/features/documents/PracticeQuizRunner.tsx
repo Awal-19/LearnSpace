@@ -39,8 +39,7 @@ export function PracticeQuizRunner({
 
   const current = questions[index];
   const answeredCount = questions.filter((q) => Boolean((answers[q.id] ?? '').trim())).length;
-  const progressPct =
-    questions.length > 0 ? Math.round(((index + 1) / questions.length) * 100) : 0;
+  const progressPct = questions.length > 0 ? Math.round(((index + 1) / questions.length) * 100) : 0;
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -151,9 +150,7 @@ export function PracticeQuizRunner({
                   <strong>Correct answer:</strong> {q.correctAnswer}
                 </p>
                 {fb?.feedback ? (
-                  <p className="mt-2 rounded-md bg-surface2 p-2.5 text-xs text-fg">
-                    {fb.feedback}
-                  </p>
+                  <p className="mt-2 rounded-md bg-surface2 p-2.5 text-xs text-fg">{fb.feedback}</p>
                 ) : null}
               </Card>
             );
@@ -219,11 +216,7 @@ export function PracticeQuizRunner({
 
         {current.type === 'flashcard' ? (
           <div className="space-y-3 rounded-lg border border-line bg-surface2 p-4">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setFlippedFlashcard((f) => !f)}
-            >
+            <Button size="sm" variant="secondary" onClick={() => setFlippedFlashcard((f) => !f)}>
               {flippedFlashcard ? 'Hide answer' : 'Flip card'}
             </Button>
             {flippedFlashcard ? (
@@ -318,4 +311,3 @@ export function PracticeQuizRunner({
     </Card>
   );
 }
-

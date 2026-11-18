@@ -13,6 +13,9 @@ export const loginSchema = z.object({
   rememberMe: z.boolean().default(false),
 });
 
+export const TERMS_CONSENT_REQUIRED_MESSAGE =
+  'Please accept the Terms and Conditions and Privacy Policy to continue.';
+
 export const signupSchema = z.object({
   name: z
     .string()
@@ -21,6 +24,9 @@ export const signupSchema = z.object({
     .max(100, 'Name must be at most 100 characters'),
   email: z.string().trim().email('Enter a valid email address'),
   password: passwordPolicy,
+  acceptTerms: z.boolean().refine((value) => value === true, {
+    message: TERMS_CONSENT_REQUIRED_MESSAGE,
+  }),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -41,4 +47,3 @@ export type LoginValues = z.infer<typeof loginSchema>;
 export type SignupValues = z.infer<typeof signupSchema>;
 export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
-

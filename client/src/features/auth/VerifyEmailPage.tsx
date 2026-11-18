@@ -108,9 +108,7 @@ export function VerifyEmailPage() {
         setDigits(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
         setErrorMsg(
-          err instanceof ApiError
-            ? err.message
-            : 'Could not verify that code. Please try again.',
+          err instanceof ApiError ? err.message : 'Could not verify that code. Please try again.',
         );
       } finally {
         setVerifying(false);
@@ -277,7 +275,11 @@ export function VerifyEmailPage() {
           }}
           className="space-y-5"
         >
-          <div className="flex justify-center gap-2 sm:gap-3" role="group" aria-label="6-digit verification code">
+          <div
+            className="flex justify-center gap-2 sm:gap-3"
+            role="group"
+            aria-label="6-digit verification code"
+          >
             {digits.map((digit, index) => (
               <input
                 key={index}

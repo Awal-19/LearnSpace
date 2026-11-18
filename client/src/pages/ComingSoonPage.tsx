@@ -12,7 +12,12 @@ interface ComingSoonPageProps {
 }
 
 /** Honest route stub for features that land in a later roadmap phase. Contains no fake data. */
-export function ComingSoonPage({ feature, phase, description, icon = Hourglass }: ComingSoonPageProps) {
+export function ComingSoonPage({
+  feature,
+  phase,
+  description,
+  icon = Hourglass,
+}: ComingSoonPageProps) {
   return (
     <EmptyState
       icon={icon}
@@ -21,4 +26,3 @@ export function ComingSoonPage({ feature, phase, description, icon = Hourglass }
     />
   );
 }
-

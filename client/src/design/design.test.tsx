@@ -50,8 +50,9 @@ describe('Input (T-UI-01)', () => {
   it('shows the hint when there is no error', () => {
     render(<Input label="Name" hint="Shown on your profile" />);
     const input = screen.getByLabelText('Name');
-    expect(screen.getByText('Shown on your profile').id).toBe(input.getAttribute('aria-describedby'));
+    expect(screen.getByText('Shown on your profile').id).toBe(
+      input.getAttribute('aria-describedby'),
+    );
     expect(input).not.toHaveAttribute('aria-invalid');
   });
 });
-

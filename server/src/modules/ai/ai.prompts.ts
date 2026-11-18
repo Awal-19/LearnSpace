@@ -116,4 +116,3 @@ export function suggestConversationTitle(content: string, action?: AiAction | nu
   if (action === 'summarize') return 'Summary';
   return 'New chat';
 }
-

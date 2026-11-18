@@ -219,7 +219,9 @@ export function AdminOverviewPage() {
                     {c.value}
                   </p>
                 </div>
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.accent}`}>
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.accent}`}
+                >
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
               </div>
@@ -300,7 +302,12 @@ export function AdminOverviewPage() {
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <Tooltip contentStyle={chartTooltipStyle} />
-                  <Bar dataKey="aiMessages" name="AI messages" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                  <Bar
+                    dataKey="aiMessages"
+                    name="AI messages"
+                    fill="#2563eb"
+                    radius={[6, 6, 0, 0]}
+                  />
                   <Bar dataKey="uploads" name="Uploads" fill="#60a5fa" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -343,9 +350,6 @@ export function AdminOverviewPage() {
                       <p className="truncate text-xs text-muted">{u.email}</p>
                     </div>
                   </div>
-                  <Badge tone={u.emailVerified ? 'success' : 'warning'}>
-                    {u.emailVerified ? 'Verified' : 'Unverified'}
-                  </Badge>
                 </li>
               ))}
             </ul>
@@ -398,7 +402,10 @@ export function AdminOverviewPage() {
 
         <Card className="p-5 sm:p-6">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <ShieldCheck
+              className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
+              aria-hidden="true"
+            />
             <h2 className="font-display text-base font-semibold text-fg">
               System Health &amp; Recent Errors
             </h2>
@@ -443,4 +450,3 @@ export function AdminOverviewPage() {
     </div>
   );
 }
-

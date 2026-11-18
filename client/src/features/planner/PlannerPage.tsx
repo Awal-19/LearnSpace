@@ -1,8 +1,20 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, CheckCircle2, Circle, Plus, Trash2 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { Badge, Button, Card, EmptyState, ErrorState, Input, Skeleton, useToast } from '../../design';
+import { useMemo, useState, type FormEvent } from 'react';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  Skeleton,
+  useToast,
+} from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
+import { CourseBadge } from '../courses/CourseBadge';
+import { CourseSelect } from '../courses/CourseSelect';
+import { listCourses } from '../courses/coursesApi';
 
 type TaskView = 'today' | 'upcoming' | 'overdue' | 'done' | 'all';
 
@@ -31,16 +43,28 @@ export function PlannerPage() {
   const qc = useQueryClient();
 
   const [view, setView] = useState<TaskView>('all');
+  const [courseFilter, setCourseFilter] = useState('');
   const [title, setTitle] = useState('');
   const [dueLocal, setDueLocal] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [offset, setOffset] = useState<string>('');
+  const [courseId, setCourseId] = useState('');
   const [creating, setCreating] = useState(false);
 
+  const coursesQuery = useQuery({
+    queryKey: ['courses', 'active'],
+    queryFn: () => listCourses({ archived: 'active' }).catch(() => []),
+  });
+  const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+  const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
+
   const tasksQuery = useQuery({
-    queryKey: ['tasks', view],
-    queryFn: () =>
-      request<{ items: Task[]; nextCursor: string | null }>(`/tasks?view=${view}`),
+    queryKey: ['tasks', view, courseFilter],
+    queryFn: () => {
+      const sp = new URLSearchParams({ view });
+      if (courseFilter) sp.set('courseId', courseFilter);
+      return request<{ items: Task[]; nextCursor: string | null }>(`/tasks?${sp.toString()}`);
+    },
   });
 
   const handleAdd = async (e: FormEvent) => {
@@ -50,18 +74,27 @@ export function PlannerPage() {
     setCreating(true);
     try {
       const dueAt = dueLocal ? new Date(dueLocal).toISOString() : null;
-      const reminderOffsetMinutes =
-        dueAt && offset !== '' ? Number(offset) : null;
+      const reminderOffsetMinutes = dueAt && offset !== '' ? Number(offset) : null;
 
       await request<Task>('/tasks', {
         method: 'POST',
-        body: { title: trimmed, dueAt, priority, reminderOffsetMinutes },
+        body: {
+          title: trimmed,
+          dueAt,
+          priority,
+          reminderOffsetMinutes,
+          courseId: courseId || null,
+        },
       });
       setTitle('');
       setDueLocal('');
       setOffset('');
-      await qc.invalidateQueries({ queryKey: ['tasks'] });
-      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      setCourseId('');
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
       toast.show({ kind: 'success', title: 'Task added' });
     } catch (err) {
       toast.show({
@@ -80,8 +113,11 @@ export function PlannerPage() {
         method: 'PATCH',
         body: { status: task.status === 'done' ? 'todo' : 'done' },
       });
-      await qc.invalidateQueries({ queryKey: ['tasks'] });
-      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
     } catch (err) {
       toast.show({
         kind: 'error',
@@ -94,8 +130,11 @@ export function PlannerPage() {
   const handleDelete = async (id: string) => {
     try {
       await request<void>(`/tasks/${id}`, { method: 'DELETE' });
-      await qc.invalidateQueries({ queryKey: ['tasks'] });
-      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
     } catch (err) {
       toast.show({
         kind: 'error',
@@ -112,9 +151,7 @@ export function PlannerPage() {
           <CalendarClock className="h-5 w-5" aria-hidden="true" />
         </div>
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
-            Study Planner
-          </h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Study Planner</h1>
           <p className="mt-0.5 text-sm text-muted">
             Organize coursework, deadlines, and revision sessions with smart reminders.
           </p>
@@ -122,12 +159,24 @@ export function PlannerPage() {
       </div>
 
       <Card className="p-5 sm:p-6">
-        <form onSubmit={handleAdd} className="grid gap-3.5 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end">
+        <form
+          onSubmit={handleAdd}
+          className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-[1fr_175px_auto_auto_auto_auto] lg:items-end"
+        >
           <Input
             label="New task"
             placeholder="e.g. Review Chapter 4 lecture notes"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+          />
+          <CourseSelect
+            id="task-course"
+            label="Course"
+            mode="assign"
+            value={courseId}
+            onChange={setCourseId}
+            courses={courses}
+            className="w-full"
           />
           <div>
             <label htmlFor="task-due" className="mb-1.5 block text-sm font-medium text-fg">
@@ -180,27 +229,37 @@ export function PlannerPage() {
         </form>
       </Card>
 
-      <div
-        role="tablist"
-        aria-label="Task views"
-        className="inline-flex flex-wrap gap-1 rounded-xl bg-surface2/80 p-1 ring-1 ring-line/60"
-      >
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            role="tab"
-            aria-selected={view === v.id}
-            onClick={() => setView(v.id)}
-            className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-base ease-soft ${
-              view === v.id
-                ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
-                : 'text-muted hover:text-fg'
-            }`}
-          >
-            {v.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label="Task views"
+          className="inline-flex flex-wrap gap-1 rounded-xl bg-surface2/80 p-1 ring-1 ring-line/60"
+        >
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={view === v.id}
+              onClick={() => setView(v.id)}
+              className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-base ease-soft ${
+                view === v.id
+                  ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
+                  : 'text-muted hover:text-fg'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <CourseSelect
+          ariaLabel="Filter tasks by course"
+          mode="filter"
+          value={courseFilter}
+          onChange={setCourseFilter}
+          courses={courses}
+          className="h-9 text-xs sm:min-w-[180px]"
+        />
       </div>
 
       <Card className="divide-y divide-line/80 overflow-hidden !p-0">
@@ -230,7 +289,9 @@ export function PlannerPage() {
               <div className="flex min-w-0 items-center gap-3">
                 <button
                   type="button"
-                  aria-label={task.status === 'done' ? `Mark ${task.title} as todo` : `Complete ${task.title}`}
+                  aria-label={
+                    task.status === 'done' ? `Mark ${task.title} as todo` : `Complete ${task.title}`
+                  }
                   onClick={() => void toggleDone(task)}
                   className="text-primary-600 transition-transform hover:scale-105 hover:text-primary-700"
                 >
@@ -256,6 +317,7 @@ export function PlannerPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {task.courseId ? <CourseBadge course={courseById.get(task.courseId)} link /> : null}
                 <Badge
                   tone={
                     task.priority === 'high'
@@ -283,4 +345,3 @@ export function PlannerPage() {
     </div>
   );
 }
-

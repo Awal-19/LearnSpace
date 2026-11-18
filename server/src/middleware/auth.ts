@@ -55,7 +55,10 @@ export function requireVerifiedEmail(
   });
 }
 
-function requireRole(prisma: PrismaClient, allowed: Array<'admin' | 'super_admin'>): RequestHandler {
+function requireRole(
+  prisma: PrismaClient,
+  allowed: Array<'admin' | 'super_admin'>,
+): RequestHandler {
   return asyncHandler(async (req, _res, next) => {
     if (!req.user) {
       throw new AppError('UNAUTHENTICATED');
@@ -138,4 +141,3 @@ export function requireAdmin(prisma: PrismaClient): RequestHandler {
 export function requireSuperAdmin(prisma: PrismaClient): RequestHandler {
   return requireRole(prisma, ['super_admin']);
 }
-

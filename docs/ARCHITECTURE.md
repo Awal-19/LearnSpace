@@ -1,6 +1,7 @@
 # Architecture
 
 ## 1. Principles
+
 Simple over clever · one language (TypeScript) end to end · a modular monolith (one API process, one DB) · stateless API so it scales horizontally · secrets only on the server.
 
 ## 2. System diagram
@@ -35,50 +36,63 @@ The scheduler runs inside the API process (one instance in v1). Jobs are idempot
 ## 3. Component breakdown
 
 ### 3.1 Client (`client/`)
+
 ```
 src/
-  app/          router, providers (QueryClient, Auth, Theme), layout shell
+  app/          router (React.lazy routes), providers (QueryClient, Auth, Theme), layout shell (Sidebar, BottomNav, TopBar, MorePage)
   design/       tokens.css, tailwind preset, primitives (Button, Input, Card, Modal, Toast, Skeleton, EmptyState, ErrorState)
   features/
-    auth/       LoginPage, SignupPage, Forgot/Reset/Verify pages, useAuth, schemas (Zod)
-    profile/    ProfilePage, AvatarUploader, StatsGrid, SecurityForm
-    chat/       ChatPage, ConversationList, MessageList, Composer, Markdown, useChatStream
+    auth/       LoginPage, SignupPage, Forgot/Reset/Verify pages, AuthContext, schemas (Zod)
+    profile/    ProfilePage, AvatarStudio, StatsGrid, SecurityForm
+    courses/    CoursesPage, CourseDetailPage, CourseFormModal, DeleteCourseModal, CourseBadge, CourseSelect
+    timetable/  TimetablePage (Week/Day grid, clash detection), TimetableModal
+    exams/      ExamsPage, ExamFormModal, RevisionPlannerPanel
+    documents/  DocumentsPage, PastQuestionsWorkspace, SlideQuestionsWorkspace, PracticeQuizRunner
+    chat/       ChatPage, ConversationList, MessageList, Composer, MarkdownContent, useChatStream, CameraCaptureModal
     notes/      NotesPage, NoteEditor, CourseSidebar
     planner/    PlannerPage, TaskForm, NotificationBell
-    focus/      PomodoroPage, useTimer
-    study/      DecksPage, StudyMode, QuizPage, QuizResults, ScoreChart
-    dashboard/  DashboardPage
-    settings/   SettingsPage
+    focus/      FocusPage, useTimer
+    study/      StudyPage (SM-2 Flashcards + CSV import + card images + Quizzes + score trends)
+    grades/gpa  GradesPage, ScaleSettingsModal, GradeRecordFormModal, WhatIfPlannerPanel
+    dashboard/  DashboardPage (Daily Summary, Upcoming Exams, Next Class) & ProgressAnalyticsSection (Recharts)
+    settings/   SettingsPage (Preferences, Notification Lead Times, Pomodoro, JSON Data Export)
+    admin/      AdminLayout, Overview, Users, AI Usage, Content, Learning, Announcements, Feedback, Audit Log, System, Reports, Team, Settings
   lib/          apiClient (fetch wrapper, refresh logic), sse.ts, format.ts
 ```
+
 - **Server state:** TanStack Query (cache, retries, optimistic updates). **UI state:** local component state / context. No Redux.
 - **Access token** lives in memory only (never localStorage). On load, `POST /auth/refresh` restores the session via cookie.
-- **Routing:** public `AuthLayout` routes, `RequireAuth` wrapper for app routes, lazy-loaded route chunks.
+- **Routing:** public `AuthLayout` routes, `RequireAuth` wrapper for app routes, `RequireAdmin` for `/admin/*`, lazy-loaded route chunks.
 - **Streaming:** `fetch()` + `ReadableStream` parser (not `EventSource`, since we need POST + Authorization header).
 
 ### 3.2 Server (`server/`)
+
 ```
 src/
   config/       env.ts (Zod-validated env; app refuses to boot if invalid)
   middleware/   requestId, httpLogger, auth, validate, rateLimit, csrfGuard, errorHandler, notFound
-  modules/      auth, users, conversations, ai, notes, courses, tasks, notifications,
-                studySessions, decks, quizzes, dashboard, health
-                (each: routes.ts, controller.ts, service.ts, schemas.ts, *.test.ts)
-  lib/          prisma, email (Resend + templates), storage (Cloudinary), tokens, password (argon2), llm/ (provider interface + gemini.ts), logger
-  jobs/         reminders.ts, cleanup.ts
+  modules/      auth, users (incl. exportMyData + userCleanup blob/PII purge), courses, timetable,
+                exams (revision plans), documents (background jobs + practice/export), ai (chat + attachments),
+                rag, notes, planner (tasks + notifications), focus, study (SM-2 flashcards + quizzes),
+                gpa, analytics, dashboard, admin, health
+  lib/          prisma, email (Resend / SMTP / EmailJS templates), storage (Cloudinary / DB / dev fallback),
+                tokens, password (argon2), llm/ (provider interface + NVIDIA/Gemini), logger
+  jobs/         reminders.ts (task, timetable class, and exam reminders), cleanup.ts
   app.ts / server.ts
-prisma/         schema.prisma, migrations/, seed (dev-only, creates no users in prod)
+prisma/         schema.prisma, migrations/, seed (dev-only)
 ```
+
 Layering: **routes → controller (HTTP only) → service (business rules, Prisma) → lib (external systems)**. Controllers never touch Prisma; services never touch `req/res`.
 
 ### 3.3 Cross-cutting
-| Concern | Approach |
-|---|---|
-| Validation | Zod schema per route for `body`, `query`, `params`; shared shapes are duplicated in client schemas where needed (small, avoids a shared package) |
-| Errors | `AppError(code, status, message, details)`; one `errorHandler` formats `{ error: { code, message, details?, requestId } }`; unknown errors become `INTERNAL` and are logged, never leaked |
-| Logging | pino JSON, `pino-http` with request ID, redacts `authorization`, `cookie`, `password`, tokens |
-| Config | Env validated at boot; `.env.example` is complete and committed, `.env` is not |
-| AI abstraction | `LLMProvider { stream(messages, opts): AsyncIterable<Chunk>; generateJson(prompt, schema) }`; Gemini implementation first |
+
+| Concern        | Approach                                                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validation     | Zod schema per route for `body`, `query`, `params`; shared shapes are duplicated in client schemas where needed (small, avoids a shared package)                                          |
+| Errors         | `AppError(code, status, message, details)`; one `errorHandler` formats `{ error: { code, message, details?, requestId } }`; unknown errors become `INTERNAL` and are logged, never leaked |
+| Logging        | pino JSON, `pino-http` with request ID, redacts `authorization`, `cookie`, `password`, tokens                                                                                             |
+| Config         | Env validated at boot; `.env.example` is complete and committed, `.env` is not                                                                                                            |
+| AI abstraction | `LLMProvider { stream(messages, opts): AsyncIterable<Chunk>; generateJson(prompt, schema) }`; Gemini implementation first                                                                 |
 
 ## 4. Authentication flow
 
@@ -203,41 +217,44 @@ sequenceDiagram
 ```
 
 ## 6. Reminders flow
+
 `node-cron` every minute: `SELECT` tasks where `remindAt <= now() AND reminderSentAt IS NULL AND status != 'done'`, claim each with `UPDATE ... SET reminderSentAt = now() WHERE id=? AND reminderSentAt IS NULL RETURNING`, insert a `notifications` row, and send email if the user opted in and is verified. The client polls `GET /notifications?unread=true` every 60 s while the tab is visible (SSE push is not needed for v1).
 
 ## 7. Technology decisions
 
-| Choice | Why | Alternatives rejected |
-|---|---|---|
-| **React + Vite** | Fast dev/build, plain SPA fits an authenticated app with no SEO needs; simple static deploy | Next.js: SSR/RSC adds complexity we don't need; separate API is required anyway for the brief |
-| **Tailwind + CSS variables tokens** | Consistent, small CSS, tokens in one place, easy dark mode | CSS-in-JS runtime cost; component library lock-in |
-| **TanStack Query** | Caching, retries, optimistic updates, devtools | Hand-rolled fetch hooks |
-| **React Hook Form + Zod** | Light, uncontrolled-input performance, same Zod as server | Formik (heavier) |
-| **Express + TypeScript** | Ubiquitous, minimal, well-understood, easy to test with Supertest | NestJS: more structure than needed for this size |
-| **PostgreSQL + Prisma** | Relational data, FTS built in, typed client, real migrations | MongoDB: weaker fit for relational study data and aggregates |
-| **argon2id** | Current OWASP recommendation | bcrypt (acceptable; 72-byte limit), kept as fallback if native build fails on host |
-| **Access JWT (memory) + rotating refresh cookie** | Limits XSS exposure (no persistent JS-readable token) and gives revocable sessions | localStorage JWT (XSS-stealable); server sessions (fine, but JWT eases stateless horizontal scaling) |
-| **Gemini API** | Free tier suitable for students/dev, streaming, JSON schema output | OpenAI/Anthropic: paid only; the provider interface makes switching a one-file change |
-| **Cloudinary** | Free tier, on-upload transforms (crop 256×256, WebP) | S3: more setup (IAM, CDN) |
-| **Resend** | Simple API, good deliverability, free tier | Nodemailer + SMTP: usable fallback via env switch for local dev (Mailpit in docker-compose) |
-| **Prisma `$queryRaw` for FTS** | Postgres `tsvector` + GIN index on notes, with `ILIKE` fallback for short queries | External search engine: overkill |
-| **node-cron in-process** | No extra infra | BullMQ/Redis: unnecessary at this scale |
-| **Vitest + Supertest + Playwright** | One test runner for client and server; fast; E2E in real browser | Jest (slower setup with ESM/TS) |
-| **Render (API+DB) + Vercel (client)** | Free tiers, simple Docker deploy | Fly.io/Railway equivalent |
+| Choice                                            | Why                                                                                         | Alternatives rejected                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **React + Vite**                                  | Fast dev/build, plain SPA fits an authenticated app with no SEO needs; simple static deploy | Next.js: SSR/RSC adds complexity we don't need; separate API is required anyway for the brief        |
+| **Tailwind + CSS variables tokens**               | Consistent, small CSS, tokens in one place, easy dark mode                                  | CSS-in-JS runtime cost; component library lock-in                                                    |
+| **TanStack Query**                                | Caching, retries, optimistic updates, devtools                                              | Hand-rolled fetch hooks                                                                              |
+| **React Hook Form + Zod**                         | Light, uncontrolled-input performance, same Zod as server                                   | Formik (heavier)                                                                                     |
+| **Express + TypeScript**                          | Ubiquitous, minimal, well-understood, easy to test with Supertest                           | NestJS: more structure than needed for this size                                                     |
+| **PostgreSQL + Prisma**                           | Relational data, FTS built in, typed client, real migrations                                | MongoDB: weaker fit for relational study data and aggregates                                         |
+| **argon2id**                                      | Current OWASP recommendation                                                                | bcrypt (acceptable; 72-byte limit), kept as fallback if native build fails on host                   |
+| **Access JWT (memory) + rotating refresh cookie** | Limits XSS exposure (no persistent JS-readable token) and gives revocable sessions          | localStorage JWT (XSS-stealable); server sessions (fine, but JWT eases stateless horizontal scaling) |
+| **Gemini API**                                    | Free tier suitable for students/dev, streaming, JSON schema output                          | OpenAI/Anthropic: paid only; the provider interface makes switching a one-file change                |
+| **Cloudinary**                                    | Free tier, on-upload transforms (crop 256×256, WebP)                                        | S3: more setup (IAM, CDN)                                                                            |
+| **Resend**                                        | Simple API, good deliverability, free tier                                                  | Nodemailer + SMTP: usable fallback via env switch for local dev (Mailpit in docker-compose)          |
+| **Prisma `$queryRaw` for FTS**                    | Postgres `tsvector` + GIN index on notes, with `ILIKE` fallback for short queries           | External search engine: overkill                                                                     |
+| **node-cron in-process**                          | No extra infra                                                                              | BullMQ/Redis: unnecessary at this scale                                                              |
+| **Vitest + Supertest + Playwright**               | One test runner for client and server; fast; E2E in real browser                            | Jest (slower setup with ESM/TS)                                                                      |
+| **Render (API+DB) + Vercel (client)**             | Free tiers, simple Docker deploy                                                            | Fly.io/Railway equivalent                                                                            |
 
 Local email: docker-compose includes **Mailpit** so verification/reset flows are testable offline without Resend.
 
 ## 8. Environments
 
-| Env | Client | API | DB | Email |
-|---|---|---|---|---|
-| Local | Vite :5173 | tsx watch :4000 | docker `db` | Mailpit or Resend |
-| CI | n/a | Vitest + Supertest | Postgres service container | stubbed transport (test double at the transport boundary, not in app logic) |
-| Production | Vercel | Render | Render Postgres | Resend |
+| Env        | Client     | API                | DB                         | Email                                                                       |
+| ---------- | ---------- | ------------------ | -------------------------- | --------------------------------------------------------------------------- |
+| Local      | Vite :5173 | tsx watch :4000    | docker `db`                | Mailpit or Resend                                                           |
+| CI         | n/a        | Vitest + Supertest | Postgres service container | stubbed transport (test double at the transport boundary, not in app logic) |
+| Production | Vercel     | Render             | Render Postgres            | Resend                                                                      |
 
 ## 9. Scaling notes
+
 Stateless API behind a load balancer; scheduler needs leader election or a single instance (guarded by idempotent claims); IP/user rate-limit counters are in-memory in v1 (single instance); per-account login lockout and the AI token budget are in Postgres, so they are correct across instances. Move rate-limit counters to Redis if you run more than one API instance.
 
 ## 10. Admin Dashboard Architecture
+
 - **Backend:** `server/src/modules/admin/` (`admin.schemas.ts`, `admin.logging.ts`, `admin.service.ts`, `admin.routes.ts`) mounted at `/api/admin` (plus student engagement routes on `/api/v1`). `admin.logging.ts` records `usage_events`, `activity_events`, `login_history`, `error_logs`, and `audit_logs`.
 - **Frontend:** `client/src/features/admin/` with a dedicated `AdminLayout` (collapsible sidebar, top search, theme toggle, profile menu) guarded by `RequireAdmin`, rendering real-time charts (`recharts`) and tables via TanStack Query.

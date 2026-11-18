@@ -90,7 +90,11 @@ export function AdminContentPage() {
     }
   };
 
-  const handleDeleteUpload = async (source: 'attachment' | 'document', id: string, name: string) => {
+  const handleDeleteUpload = async (
+    source: 'attachment' | 'document',
+    id: string,
+    name: string,
+  ) => {
     if (!window.confirm(`Delete "${name}" permanently?`)) return;
     try {
       await deleteAdminUpload(source, id);
@@ -308,8 +312,8 @@ export function AdminContentPage() {
             <Card className="p-4">
               <p className="text-xs text-muted">Total tracked storage</p>
               <p className="mt-1 font-display text-xl font-semibold">
-                {formatBytes(uploadsQuery.data?.totalStorageBytes ?? 0)} ({uploadsQuery.data?.total ?? 0}{' '}
-                files)
+                {formatBytes(uploadsQuery.data?.totalStorageBytes ?? 0)} (
+                {uploadsQuery.data?.total ?? 0} files)
               </p>
             </Card>
 
@@ -331,11 +335,16 @@ export function AdminContentPage() {
                     </thead>
                     <tbody className="divide-y divide-line/80">
                       {uploadsQuery.data?.items.map((u) => (
-                        <tr key={`${u.source}-${u.id}`} className="transition-colors hover:bg-surface2/40">
+                        <tr
+                          key={`${u.source}-${u.id}`}
+                          className="transition-colors hover:bg-surface2/40"
+                        >
                           <td className="px-4 py-3 font-medium text-fg">{u.name}</td>
                           <td className="px-4 py-3 capitalize text-muted">{u.source}</td>
                           <td className="px-4 py-3 text-xs text-muted">{u.owner.email}</td>
-                          <td className="px-4 py-3 text-xs tabular-nums">{formatBytes(u.sizeBytes)}</td>
+                          <td className="px-4 py-3 text-xs tabular-nums">
+                            {formatBytes(u.sizeBytes)}
+                          </td>
                           <td className="px-4 py-3">
                             <Badge tone="neutral">{u.status}</Badge>
                           </td>
@@ -394,4 +403,3 @@ export function AdminContentPage() {
     </div>
   );
 }
-

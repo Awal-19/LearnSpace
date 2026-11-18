@@ -38,7 +38,8 @@ function sessionMeta(req: Request) {
 
 export function authRouter(
   service: AuthService,
-  env: Pick<Env, 'NODE_ENV' | 'JWT_SECRET' | 'CLIENT_URL'> & Partial<Pick<Env, 'GOOGLE_CALLBACK_URL'>>,
+  env: Pick<Env, 'NODE_ENV' | 'JWT_SECRET' | 'CLIENT_URL'> &
+    Partial<Pick<Env, 'GOOGLE_CALLBACK_URL'>>,
 ): Router {
   const router = Router();
   const isProd = env.NODE_ENV === 'production';
@@ -93,7 +94,11 @@ export function authRouter(
     validate({ body: verifyOtpSchema }),
     asyncHandler(async (req, res) => {
       const result = await service.verifyOtp(req.body, sessionMeta(req));
-      res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+      res.cookie(
+        REFRESH_COOKIE_NAME,
+        result.rawRefreshToken,
+        refreshCookieOptions(isProd, result.persistent),
+      );
       res.json({
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
@@ -123,7 +128,11 @@ export function authRouter(
         res.json({ requiresTwoFactor: true, email: result.email });
         return;
       }
-      res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+      res.cookie(
+        REFRESH_COOKIE_NAME,
+        result.rawRefreshToken,
+        refreshCookieOptions(isProd, result.persistent),
+      );
       res.json({
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
@@ -142,7 +151,11 @@ export function authRouter(
         req.body.code,
         sessionMeta(req),
       );
-      res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+      res.cookie(
+        REFRESH_COOKIE_NAME,
+        result.rawRefreshToken,
+        refreshCookieOptions(isProd, result.persistent),
+      );
       res.json({
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
@@ -157,7 +170,11 @@ export function authRouter(
     asyncHandler(async (req, res) => {
       const raw = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
       const result = await service.refresh(raw, sessionMeta(req));
-      res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+      res.cookie(
+        REFRESH_COOKIE_NAME,
+        result.rawRefreshToken,
+        refreshCookieOptions(isProd, result.persistent),
+      );
       res.json({
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
@@ -287,7 +304,11 @@ export function authRouter(
           redirectUri,
           sessionMeta(req),
         );
-        res.cookie(REFRESH_COOKIE_NAME, result.rawRefreshToken, refreshCookieOptions(isProd, result.persistent));
+        res.cookie(
+          REFRESH_COOKIE_NAME,
+          result.rawRefreshToken,
+          refreshCookieOptions(isProd, result.persistent),
+        );
         res.redirect(302, `${env.CLIENT_URL}/auth/callback`);
       } catch {
         res.redirect(302, failWith('google_failed'));
@@ -297,4 +318,3 @@ export function authRouter(
 
   return router;
 }
-

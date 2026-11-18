@@ -6,6 +6,7 @@ import {
   FileQuestion,
   FileText,
   FileUp,
+  Layers,
   Loader2,
   Presentation,
   RotateCcw,
@@ -17,13 +18,17 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
 import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
-import { ApiError, request } from '../../lib/apiClient';
+import { ApiError } from '../../lib/apiClient';
 import { CameraCaptureModal } from '../chat/CameraCaptureModal';
 import { formatBytes, prepareImageForUpload } from '../chat/imagePrep';
+import { CourseBadge } from '../courses/CourseBadge';
+import { CourseSelect } from '../courses/CourseSelect';
+import { listCourses, type CourseSummary } from '../courses/coursesApi';
 import {
   deleteDocument,
   getDocumentDetail,
   listDocuments,
+  updateDocumentMetadata,
   uploadDocument,
   type DocumentDetailResponse,
   type DocumentType,
@@ -31,11 +36,7 @@ import {
 } from './documentsApi';
 import { PastQuestionsWorkspace } from './PastQuestionsWorkspace';
 import { SlideQuestionsWorkspace } from './SlideQuestionsWorkspace';
-
-interface CourseItem {
-  id: string;
-  name: string;
-}
+import { generateDeck } from '../study/studyApi';
 
 const TYPE_LABELS: Record<DocumentType, string> = {
   past_question: 'Past Question / Exam',
@@ -58,6 +59,7 @@ export function DocumentsPage() {
   const queryClient = useQueryClient();
 
   const [filterType, setFilterType] = useState<DocumentType | ''>('');
+  const [filterCourseId, setFilterCourseId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -72,6 +74,7 @@ export function DocumentsPage() {
 
   // Active document detail mode
   const [activeMode, setActiveMode] = useState<'answer' | 'generate'>('answer');
+  const [makingFlashcards, setMakingFlashcards] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileCamRef = useRef<HTMLInputElement>(null);
@@ -85,17 +88,22 @@ export function DocumentsPage() {
 
   const coursesQuery = useQuery({
     queryKey: ['courses'],
-    queryFn: ({ signal }) => request<CourseItem[]>('/courses', { signal }).catch(() => []),
+    queryFn: () => listCourses().catch(() => [] as CourseSummary[]),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
   const docsQuery = useQuery({
-    queryKey: ['documents', 'list', { type: filterType || 'all', q: debouncedSearch }],
+    queryKey: [
+      'documents',
+      'list',
+      { type: filterType || 'all', courseId: filterCourseId || 'all', q: debouncedSearch },
+    ],
     queryFn: ({ signal }) =>
       listDocuments(
         {
           type: filterType || undefined,
+          courseId: filterCourseId || undefined,
           q: debouncedSearch || undefined,
           page: 1,
           pageSize: 50,
@@ -124,14 +132,21 @@ export function DocumentsPage() {
 
   const docs = docsQuery.data?.documents ?? [];
   const courses = Array.isArray(coursesQuery.data) ? coursesQuery.data : [];
+  const coursesMap = new Map(courses.map((c) => [c.id, c]));
   const loadingList = docsQuery.isLoading;
   const detail: DocumentDetailResponse | null = detailQuery.data ?? null;
   const loadingDetail = detailQuery.isLoading;
+  const detailDocId = detail?.document.id;
+  const detailDocType = detail?.document.type;
+  const detailRefetchRef = useRef(detailQuery.refetch);
+  detailRefetchRef.current = detailQuery.refetch;
+  const docsRefetchRef = useRef(docsQuery.refetch);
+  docsRefetchRef.current = docsQuery.refetch;
 
   useEffect(() => {
-    if (!detail) return;
-    setActiveMode(detail.document.type === 'past_question' ? 'answer' : 'generate');
-  }, [detail?.document.id, detail?.document.type]);
+    if (!detailDocId || !detailDocType) return;
+    setActiveMode(detailDocType === 'past_question' ? 'answer' : 'generate');
+  }, [detailDocId, detailDocType]);
 
   // De-duplicated toast notification for rate limits without piling up
   useEffect(() => {
@@ -151,11 +166,11 @@ export function DocumentsPage() {
 
   const isDetailProcessing = Boolean(
     documentId &&
-      detail &&
-      (detail.document.status === 'uploaded' ||
-        detail.document.status === 'extracting' ||
-        detail.latestJob?.status === 'queued' ||
-        detail.latestJob?.status === 'running'),
+    detail &&
+    (detail.document.status === 'uploaded' ||
+      detail.document.status === 'extracting' ||
+      detail.latestJob?.status === 'queued' ||
+      detail.latestJob?.status === 'running'),
   );
 
   // Visibility-aware exponential backoff polling for active document processing
@@ -170,7 +185,7 @@ export function DocumentsPage() {
       timer = window.setTimeout(async () => {
         if (cancelled) return;
         if (document.visibilityState === 'visible') {
-          const result = await detailQuery.refetch();
+          const result = await detailRefetchRef.current();
           if (result.error instanceof ApiError && result.error.status === 429) {
             const waitMs = (result.error.retryAfterSeconds ?? 10) * 1000;
             schedule(waitMs);
@@ -186,7 +201,7 @@ export function DocumentsPage() {
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && !cancelled) {
-        void detailQuery.refetch();
+        void detailRefetchRef.current();
       }
     };
 
@@ -215,7 +230,7 @@ export function DocumentsPage() {
       timer = window.setTimeout(async () => {
         if (cancelled) return;
         if (document.visibilityState === 'visible') {
-          const result = await docsQuery.refetch();
+          const result = await docsRefetchRef.current();
           if (result.error instanceof ApiError && result.error.status === 429) {
             schedule((result.error.retryAfterSeconds ?? 10) * 1000);
             return;
@@ -252,6 +267,7 @@ export function DocumentsPage() {
       setUploadTitle('');
       toast.show({ kind: 'success', title: 'Uploaded — processing document…' });
       await queryClient.invalidateQueries({ queryKey: ['documents', 'list'] });
+      await queryClient.invalidateQueries({ queryKey: ['courses'] });
       navigate(appPath(`/documents/${res.document.id}`));
     } catch (err) {
       toast.show({
@@ -356,20 +372,89 @@ export function DocumentsPage() {
                       {detail.document.status}
                     </Badge>
                     <Badge tone="neutral">{TYPE_LABELS[detail.document.type]}</Badge>
+                    {detail.document.courseId && coursesMap.has(detail.document.courseId) ? (
+                      <CourseBadge link course={coursesMap.get(detail.document.courseId)} />
+                    ) : null}
                   </div>
                   <p className="mt-1 text-xs text-muted">
                     {detail.document.originalName} · {formatBytes(detail.document.sizeBytes)} ·{' '}
                     {detail.document.pageCount || 1} page(s)/slide(s)
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => void handleDelete(detail.document.id)}
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4 text-danger" />
-                  Delete
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CourseSelect
+                    ariaLabel="Assign document course"
+                    courses={courses}
+                    value={detail.document.courseId ?? ''}
+                    onChange={async (nextCourseId) => {
+                      try {
+                        await updateDocumentMetadata(detail.document.id, {
+                          courseId: nextCourseId || null,
+                        });
+                        await Promise.all([
+                          queryClient.invalidateQueries({ queryKey: ['documents'] }),
+                          queryClient.invalidateQueries({ queryKey: ['courses'] }),
+                        ]);
+                        toast.show({ kind: 'success', title: 'Document course updated' });
+                      } catch (err) {
+                        toast.show({
+                          kind: 'error',
+                          title: 'Could not update course',
+                          description: err instanceof ApiError ? err.message : 'Please try again.',
+                        });
+                      }
+                    }}
+                    className="h-9 text-xs"
+                  />
+                  {detail.document.status === 'ready' ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={makingFlashcards}
+                      onClick={async () => {
+                        setMakingFlashcards(true);
+                        try {
+                          const deck = await generateDeck({
+                            documentId: detail.document.id,
+                            courseId: detail.document.courseId ?? null,
+                            count: 10,
+                          });
+                          await Promise.all([
+                            queryClient.invalidateQueries({ queryKey: ['decks'] }),
+                            queryClient.invalidateQueries({ queryKey: ['decks', 'due-summary'] }),
+                            queryClient.invalidateQueries({ queryKey: ['courses'] }),
+                          ]);
+                          toast.show({
+                            kind: 'success',
+                            title: 'Flashcard deck created',
+                            description: `${deck.cardCount} cards generated from this document.`,
+                          });
+                          navigate(appPath(`/study?tab=decks&deckId=${deck.id}`));
+                        } catch (err) {
+                          toast.show({
+                            kind: 'error',
+                            title: 'Could not make flashcards',
+                            description:
+                              err instanceof ApiError ? err.message : 'Please try again.',
+                          });
+                        } finally {
+                          setMakingFlashcards(false);
+                        }
+                      }}
+                    >
+                      <Layers className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                      Make flashcards from this
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void handleDelete(detail.document.id)}
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4 text-danger" />
+                    Delete
+                  </Button>
+                </div>
               </div>
 
               {detail.document.status === 'uploaded' || detail.document.status === 'extracting' ? (
@@ -495,32 +580,23 @@ export function DocumentsPage() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           className={`mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-            dragActive ? 'border-primary-500 bg-primary-50/40 dark:bg-primary-950/20' : 'border-line bg-surface2/40'
+            dragActive
+              ? 'border-primary-500 bg-primary-50/40 dark:bg-primary-950/20'
+              : 'border-line bg-surface2/40'
           }`}
         >
           <UploadCloud className="h-8 w-8 text-primary-600" aria-hidden="true" />
           <p className="mt-2 text-sm font-medium text-fg">
             Drag & drop PDF, DOCX, PPTX, TXT, CSV, or photo here
           </p>
-          <p className="mt-0.5 text-xs text-muted">
-            Images up to 10 MB · Documents up to 20 MB
-          </p>
+          <p className="mt-0.5 text-xs text-muted">Images up to 10 MB · Documents up to 20 MB</p>
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Button
-              size="sm"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
+            <Button size="sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
               <FileUp className="mr-1.5 h-4 w-4" />
               Choose file
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={uploading}
-              onClick={handleTakePhoto}
-            >
+            <Button size="sm" variant="secondary" disabled={uploading} onClick={handleTakePhoto}>
               <Camera className="mr-1.5 h-4 w-4" />
               Take photo
             </Button>
@@ -586,6 +662,14 @@ export function DocumentsPage() {
             <option value="slides">Slides</option>
             <option value="notes">Notes</option>
           </select>
+          <CourseSelect
+            ariaLabel="Filter documents by course"
+            mode="filter"
+            courses={courses}
+            value={filterCourseId}
+            onChange={setFilterCourseId}
+            className="h-9 py-1 text-sm"
+          />
         </div>
       </div>
 
@@ -648,6 +732,11 @@ export function DocumentsPage() {
                 <p className="mt-0.5 text-xs text-muted">
                   {TYPE_LABELS[doc.type]} · {formatBytes(doc.sizeBytes)}
                 </p>
+                {doc.courseId && coursesMap.has(doc.courseId) ? (
+                  <div className="mt-2">
+                    <CourseBadge link course={coursesMap.get(doc.courseId)} />
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -682,4 +771,3 @@ export function DocumentsPage() {
     </div>
   );
 }
-

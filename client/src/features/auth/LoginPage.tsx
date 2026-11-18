@@ -86,7 +86,8 @@ export function LoginPage() {
           return;
         }
         if (err.code === 'ACCOUNT_LOCKED') {
-          const secs = (err.details as { retryAfterSeconds?: number } | undefined)?.retryAfterSeconds;
+          const secs = (err.details as { retryAfterSeconds?: number } | undefined)
+            ?.retryAfterSeconds;
           const mins = secs ? Math.max(1, Math.ceil(secs / 60)) : 15;
           setServerError(`Too many failed attempts. Try again in about ${mins} minute(s).`);
         } else {
@@ -104,12 +105,15 @@ export function LoginPage() {
     setServerError(null);
     setVerifyingOtp(true);
     try {
-      const data = await request<{ accessToken: string; user: AuthUser }>('/auth/admin-2fa/verify', {
-        method: 'POST',
-        body: { email: twoFactorEmail, code: otpCode.trim() },
-        auth: false,
-        cookie: true,
-      });
+      const data = await request<{ accessToken: string; user: AuthUser }>(
+        '/auth/admin-2fa/verify',
+        {
+          method: 'POST',
+          body: { email: twoFactorEmail, code: otpCode.trim() },
+          auth: false,
+          cookie: true,
+        },
+      );
       setSession(data.accessToken, data.user);
       navigate(safeNext(params.get('next')), { replace: true });
     } catch (err) {
@@ -123,11 +127,10 @@ export function LoginPage() {
     return (
       <div className="space-y-6">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg">
-            Admin verification
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg">Admin verification</h1>
           <p className="text-sm leading-relaxed text-muted">
-            Enter the 6-digit security code sent to <strong className="font-medium text-fg">{twoFactorEmail}</strong>.
+            Enter the 6-digit security code sent to{' '}
+            <strong className="font-medium text-fg">{twoFactorEmail}</strong>.
           </p>
         </div>
 
@@ -179,9 +182,7 @@ export function LoginPage() {
         <h1 className="font-display text-2xl font-bold tracking-[-0.025em] text-fg">
           Welcome back
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Log in to continue your study session.
-        </p>
+        <p className="mt-1 text-sm text-muted">Log in to continue your study session.</p>
       </div>
 
       <GoogleButton />
@@ -252,4 +253,3 @@ export function LoginPage() {
     </div>
   );
 }
-

@@ -87,7 +87,15 @@ export function AdminFeedbackPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={f.status === 'resolved' ? 'success' : f.status === 'in_progress' ? 'warning' : 'neutral'}>
+                    <Badge
+                      tone={
+                        f.status === 'resolved'
+                          ? 'success'
+                          : f.status === 'in_progress'
+                            ? 'warning'
+                            : 'neutral'
+                      }
+                    >
                       {f.status}
                     </Badge>
                     <Badge tone="neutral">{f.category}</Badge>
@@ -118,10 +126,7 @@ export function AdminFeedbackPage() {
                   >
                     Resolve
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => void handleReply(f.id, f.user.email)}
-                  >
+                  <Button size="sm" onClick={() => void handleReply(f.id, f.user.email)}>
                     <Mail className="mr-1 h-3.5 w-3.5" />
                     Reply
                   </Button>
@@ -134,4 +139,3 @@ export function AdminFeedbackPage() {
     </div>
   );
 }
-

@@ -13,13 +13,17 @@ test('core student workflow: sign up -> dashboard -> notes -> planner -> profile
   await page.getByRole('button', { name: /create account/i }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { name: /good (morning|afternoon|evening), e2e/i })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: /good (morning|afternoon|evening), e2e/i }),
+  ).toBeVisible();
 
   // Notes: create a note and verify it persists after reload
   await page.goto('/notes');
   await page.getByRole('button', { name: /new note/i }).click();
   await page.getByLabel('Title').fill('Distributed Systems Lecture 1');
-  await page.getByLabel('Notes').fill('Lamport timestamps order causal events in distributed nodes.');
+  await page
+    .getByLabel('Notes')
+    .fill('Lamport timestamps order causal events in distributed nodes.');
   await page.getByRole('button', { name: /save note/i }).click();
   await page.reload();
   await expect(page.getByText('Distributed Systems Lecture 1')).toBeVisible();
@@ -36,4 +40,3 @@ test('core student workflow: sign up -> dashboard -> notes -> planner -> profile
   await page.getByRole('button', { name: /save changes/i }).click();
   await expect(page.getByText('Profile saved')).toBeVisible();
 });
-

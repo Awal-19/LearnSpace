@@ -59,7 +59,19 @@ export function ragRouter({ rag, env, isEmailVerified }: RagRouterDeps): Router 
       if (!req.file?.buffer) {
         throw new AppError('VALIDATION_ERROR', 'Attach a PDF file under the "file" field');
       }
-      const doc = await rag.uploadPdf(req.user!.id, req.file.originalname, req.file.buffer);
+      const rawCourseId =
+        typeof req.body?.courseId === 'string' && req.body.courseId.trim() !== ''
+          ? req.body.courseId.trim()
+          : undefined;
+      if (rawCourseId !== undefined && !uuidSchema.safeParse(rawCourseId).success) {
+        throw new AppError('VALIDATION_ERROR', 'Invalid courseId');
+      }
+      const doc = await rag.uploadPdf(
+        req.user!.id,
+        req.file.originalname,
+        req.file.buffer,
+        rawCourseId ?? null,
+      );
       res.status(201).json(doc);
     }),
   );
@@ -68,7 +80,11 @@ export function ragRouter({ rag, env, isEmailVerified }: RagRouterDeps): Router 
     '/ai/documents',
     auth,
     asyncHandler(async (req, res) => {
-      const docs = await rag.listDocuments(req.user!.id);
+      const courseId =
+        typeof req.query.courseId === 'string' && req.query.courseId.trim() !== ''
+          ? req.query.courseId.trim()
+          : undefined;
+      const docs = await rag.listDocuments(req.user!.id, courseId);
       res.json(docs);
     }),
   );
@@ -86,4 +102,3 @@ export function ragRouter({ rag, env, isEmailVerified }: RagRouterDeps): Router 
 
   return router;
 }
-

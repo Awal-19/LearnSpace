@@ -49,4 +49,3 @@ export function focusRouter(focus: FocusService, env: Env): Router {
 
   return router;
 }
-

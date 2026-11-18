@@ -1,14 +1,27 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, GraduationCap, Sparkles, Trash2, XCircle } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useAuth } from '../../app/AuthContext';
-import { Badge, Button, Card, EmptyState, ErrorState, Input, Skeleton, useToast } from '../../design';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  Skeleton,
+  useToast,
+} from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
+import { CourseBadge } from '../courses/CourseBadge';
+import { CourseSelect } from '../courses/CourseSelect';
+import { listCourses } from '../courses/coursesApi';
 
 interface QuizSummary {
   id: string;
   title: string;
   topic: string | null;
+  courseId: string | null;
   questionCount: number;
   attempts: number;
   bestScore: number | null;
@@ -19,6 +32,7 @@ interface QuizToTake {
   id: string;
   title: string;
   topic: string | null;
+  courseId: string | null;
   questions: Array<{ id: string; prompt: string; options: string[] }>;
 }
 
@@ -48,6 +62,7 @@ interface AttemptHistoryItem {
 interface NoteOption {
   id: string;
   title: string;
+  courseId?: string | null;
 }
 
 export function QuizzesTab() {
@@ -55,9 +70,11 @@ export function QuizzesTab() {
   const toast = useToast();
   const qc = useQueryClient();
 
+  const [courseFilter, setCourseFilter] = useState('');
   const [sourceMode, setSourceMode] = useState<'topic' | 'note'>('topic');
   const [topic, setTopic] = useState('');
   const [noteId, setNoteId] = useState('');
+  const [genCourseId, setGenCourseId] = useState('');
   const [count, setCount] = useState('5');
   const [generating, setGenerating] = useState(false);
 
@@ -66,9 +83,21 @@ export function QuizzesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<AttemptResult | null>(null);
 
+  const coursesQuery = useQuery({
+    queryKey: ['courses', 'active'],
+    queryFn: () => listCourses({ archived: 'active' }).catch(() => []),
+  });
+  const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+  const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
+
   const quizzesQuery = useQuery({
-    queryKey: ['quizzes'],
-    queryFn: () => request<QuizSummary[]>('/quizzes'),
+    queryKey: ['quizzes', courseFilter],
+    queryFn: () => {
+      const sp = new URLSearchParams();
+      if (courseFilter) sp.set('courseId', courseFilter);
+      const qs = sp.toString();
+      return request<QuizSummary[]>(qs ? `/quizzes?${qs}` : '/quizzes');
+    },
   });
 
   const notesQuery = useQuery({
@@ -105,13 +134,18 @@ export function QuizzesTab() {
         body: {
           ...(sourceMode === 'topic' ? { topic: topic.trim() } : { noteId }),
           count: Number(count) || 5,
+          courseId: genCourseId || null,
         },
       });
       setTopic('');
+      setGenCourseId('');
       setActiveQuiz(created);
       setAnswers(new Array(created.questions.length).fill(null));
       setResult(null);
-      await qc.invalidateQueries({ queryKey: ['quizzes'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['quizzes'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
       toast.show({ kind: 'success', title: 'Quiz generated' });
     } catch (err) {
       toast.show({
@@ -134,9 +168,12 @@ export function QuizzesTab() {
         body: { answers },
       });
       setResult(res);
-      await qc.invalidateQueries({ queryKey: ['quizzes'] });
-      await qc.invalidateQueries({ queryKey: ['quiz-attempts'] });
-      await qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['quizzes'] }),
+        qc.invalidateQueries({ queryKey: ['quiz-attempts'] }),
+        qc.invalidateQueries({ queryKey: ['users', 'me', 'stats'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
     } catch (err) {
       toast.show({
         kind: 'error',
@@ -148,13 +185,39 @@ export function QuizzesTab() {
     }
   };
 
+  const handleUpdateQuizCourse = async (quizId: string, nextCourseId: string) => {
+    try {
+      await request(`/quizzes/${quizId}`, {
+        method: 'PATCH',
+        body: { courseId: nextCourseId || null },
+      });
+      setActiveQuiz((prev) =>
+        prev && prev.id === quizId ? { ...prev, courseId: nextCourseId || null } : prev,
+      );
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['quizzes'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
+      toast.show({ kind: 'success', title: 'Quiz course updated' });
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        title: 'Could not update quiz',
+        description: err instanceof ApiError ? err.message : 'Please try again.',
+      });
+    }
+  };
+
   const handleDeleteQuiz = async (id: string) => {
     await request<void>(`/quizzes/${id}`, { method: 'DELETE' });
     if (activeQuiz?.id === id) {
       setActiveQuiz(null);
       setResult(null);
     }
-    await qc.invalidateQueries({ queryKey: ['quizzes'] });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['quizzes'] }),
+      qc.invalidateQueries({ queryKey: ['courses'] }),
+    ]);
   };
 
   return (
@@ -201,7 +264,12 @@ export function QuizzesTab() {
                 <select
                   id="quiz-note"
                   value={noteId}
-                  onChange={(e) => setNoteId(e.target.value)}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setNoteId(nextId);
+                    const picked = (notesQuery.data?.items ?? []).find((n) => n.id === nextId);
+                    if (picked?.courseId) setGenCourseId(picked.courseId);
+                  }}
                   className="h-9 w-full rounded-lg border border-line bg-bg px-2.5 text-sm text-fg"
                 >
                   <option value="">Choose a note...</option>
@@ -213,6 +281,20 @@ export function QuizzesTab() {
                 </select>
               </div>
             )}
+            <div>
+              <label htmlFor="quiz-gen-course" className="mb-1 block text-xs font-medium text-fg">
+                Course (optional)
+              </label>
+              <CourseSelect
+                id="quiz-gen-course"
+                ariaLabel="Course for generated quiz"
+                mode="assign"
+                value={genCourseId}
+                onChange={setGenCourseId}
+                courses={courses}
+                className="h-9 w-full text-xs"
+              />
+            </div>
             <Input
               label="Questions (5–20)"
               type="number"
@@ -233,22 +315,37 @@ export function QuizzesTab() {
           </form>
         </Card>
 
-        <Card className="p-4 space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Your quizzes
-          </h3>
+        <Card className="p-4 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Your quizzes
+            </h3>
+          </div>
+          <CourseSelect
+            ariaLabel="Filter quizzes by course"
+            mode="filter"
+            value={courseFilter}
+            onChange={setCourseFilter}
+            courses={courses}
+            className="h-8 w-full text-xs"
+          />
           {quizzesQuery.isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : quizzesQuery.isError ? (
-            <ErrorState title="Could not load quizzes" onRetry={() => void quizzesQuery.refetch()} />
+            <ErrorState
+              title="Could not load quizzes"
+              onRetry={() => void quizzesQuery.refetch()}
+            />
           ) : (quizzesQuery.data?.length ?? 0) === 0 ? (
             <p className="py-4 text-center text-xs text-muted">No quizzes yet.</p>
           ) : (
             quizzesQuery.data!.map((q) => (
               <div
                 key={q.id}
-                className={`flex items-center justify-between rounded-lg p-2 text-sm ${
-                  activeQuiz?.id === q.id ? 'bg-primary-50 dark:bg-primary-950/40' : 'hover:bg-surface2'
+                className={`flex items-center justify-between gap-2 rounded-lg p-2 text-sm ${
+                  activeQuiz?.id === q.id
+                    ? 'bg-primary-50 dark:bg-primary-950/40'
+                    : 'hover:bg-surface2'
                 }`}
               >
                 <button
@@ -261,6 +358,11 @@ export function QuizzesTab() {
                     {q.questionCount} Qs
                     {q.bestScore !== null ? ` · Best ${Math.round(q.bestScore * 100)}%` : ''}
                   </p>
+                  {q.courseId ? (
+                    <div className="mt-1">
+                      <CourseBadge course={courseById.get(q.courseId)} />
+                    </div>
+                  ) : null}
                 </button>
                 <button
                   type="button"
@@ -287,13 +389,28 @@ export function QuizzesTab() {
           </Card>
         ) : (
           <Card className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-fg">{activeQuiz.title}</h2>
-              {result ? (
-                <Badge tone={result.score / result.total >= 0.7 ? 'success' : 'warning'}>
-                  Score: {result.score} / {result.total}
-                </Badge>
-              ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-fg">{activeQuiz.title}</h2>
+                {activeQuiz.courseId ? (
+                  <CourseBadge course={courseById.get(activeQuiz.courseId)} link />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <CourseSelect
+                  ariaLabel="Assign quiz to course"
+                  mode="assign"
+                  value={activeQuiz.courseId ?? ''}
+                  onChange={(val) => void handleUpdateQuizCourse(activeQuiz.id, val)}
+                  courses={courses}
+                  className="h-8 text-xs"
+                />
+                {result ? (
+                  <Badge tone={result.score / result.total >= 0.7 ? 'success' : 'warning'}>
+                    Score: {result.score} / {result.total}
+                  </Badge>
+                ) : null}
+              </div>
             </div>
 
             <form onSubmit={handleSubmitAttempt} className="space-y-5">
@@ -369,7 +486,11 @@ export function QuizzesTab() {
                 </div>
               ) : (
                 <div className="flex justify-end">
-                  <Button type="button" variant="secondary" onClick={() => void startQuiz(activeQuiz.id)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void startQuiz(activeQuiz.id)}
+                  >
                     Retake quiz
                   </Button>
                 </div>
@@ -382,15 +503,18 @@ export function QuizzesTab() {
           <Card className="p-5 space-y-3">
             <h3 className="text-sm font-semibold text-fg">Recent quiz scores</h3>
             <div className="divide-y divide-line">
-              {historyQuery.data!.slice(-8).reverse().map((h) => (
-                <div key={h.id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="truncate font-medium text-fg">{h.quiz.title}</span>
-                  <span className="text-xs text-muted">
-                    {h.score}/{h.total} ({Math.round((h.score / Math.max(1, h.total)) * 100)}%) ·{' '}
-                    {new Date(h.takenAt).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
+              {historyQuery
+                .data!.slice(-8)
+                .reverse()
+                .map((h) => (
+                  <div key={h.id} className="flex items-center justify-between py-2 text-sm">
+                    <span className="truncate font-medium text-fg">{h.quiz.title}</span>
+                    <span className="text-xs text-muted">
+                      {h.score}/{h.total} ({Math.round((h.score / Math.max(1, h.total)) * 100)}%) ·{' '}
+                      {new Date(h.takenAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
             </div>
           </Card>
         ) : null}
@@ -398,4 +522,3 @@ export function QuizzesTab() {
     </div>
   );
 }
-

@@ -52,4 +52,3 @@ describe('loadEnv (T-X-04)', () => {
     ).toThrow(/production/);
   });
 });
-

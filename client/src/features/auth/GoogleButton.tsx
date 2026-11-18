@@ -50,4 +50,3 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
     </div>
   );
 }
-

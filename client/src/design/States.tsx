@@ -13,7 +13,13 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export function EmptyState({ title, description, icon: Icon = Inbox, action, className }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  description,
+  icon: Icon = Inbox,
+  action,
+  className,
+}: EmptyStateProps) {
   return (
     <div
       className={cn(
@@ -65,4 +71,3 @@ export function ErrorState({
     </div>
   );
 }
-

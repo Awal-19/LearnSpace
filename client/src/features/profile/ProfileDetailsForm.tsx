@@ -7,7 +7,11 @@ import { Button, Card, Input, Textarea, useToast } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 
 const profileSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(100, 'Name must be 100 characters or fewer'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(100, 'Name must be 100 characters or fewer'),
   studentId: z.string().trim().max(50, 'Student ID must be 50 characters or fewer'),
   programme: z.string().trim().max(120, 'Programme must be 120 characters or fewer'),
   level: z.string().trim().max(30, 'Level must be 30 characters or fewer'),
@@ -95,11 +99,7 @@ export function ProfileDetailsForm() {
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Full name"
-            error={errors.name?.message}
-            {...register('name')}
-          />
+          <Input label="Full name" error={errors.name?.message} {...register('name')} />
           <Input
             label="Student ID"
             placeholder="e.g. 10928374"
@@ -149,4 +149,3 @@ export function ProfileDetailsForm() {
     </Card>
   );
 }
-

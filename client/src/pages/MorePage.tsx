@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../design';
 import { useAuth } from '../app/AuthContext';
 import { useAppPath } from '../app/basePath';
-import { ACCOUNT_NAV, MAIN_NAV } from '../app/layouts/nav';
+import { ACCOUNT_NAV, BOTTOM_NAV, MAIN_NAV } from '../app/layouts/nav';
+
+const BOTTOM_PATHS = new Set(BOTTOM_NAV.map((item) => item.to));
 
 /** Mobile "More" destination: everything not in the bottom bar. */
 export function MorePage() {
@@ -11,10 +13,7 @@ export function MorePage() {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const items = [
-    ...MAIN_NAV.filter((item) => ['/focus', '/study'].includes(item.to)),
-    ...ACCOUNT_NAV,
-  ];
+  const items = [...MAIN_NAV.filter((item) => !BOTTOM_PATHS.has(item.to)), ...ACCOUNT_NAV];
 
   const handleLogout = async () => {
     await logout();

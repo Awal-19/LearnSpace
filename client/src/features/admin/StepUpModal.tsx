@@ -116,7 +116,13 @@ export function StepUpModal({
                   error={error ?? undefined}
                 />
               </div>
-              <Button type="button" size="sm" variant="secondary" loading={busy} onClick={handleSendOtp}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={busy}
+                onClick={handleSendOtp}
+              >
                 <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
                 {otpSent ? 'Resend' : 'Send OTP'}
               </Button>
@@ -136,7 +142,6 @@ export function StepUpModal({
     </Modal>
   );
 }
-
 
 export function SuperAdminGate({ children }: { children: ReactNode }) {
   const { user } = useAuth();

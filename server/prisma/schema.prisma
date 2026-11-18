@@ -75,6 +75,7 @@ enum UsageFeature {
   summary
   flashcards
   quiz
+  revision_plan
 }
 
 enum UsageStatus {
@@ -133,7 +134,37 @@ enum TaskStatus {
 
 enum NotificationType {
   task_reminder
+  class_reminder
+  exam_reminder
   system
+}
+
+enum ExamType {
+  midterm
+  final
+  quiz
+  practical
+  oral
+  other
+}
+
+enum RevisionPlanStatus {
+  active
+  archived
+}
+
+enum RevisionSessionStatus {
+  planned
+  completed
+  missed
+  rescheduled
+}
+
+enum TimetableEntryType {
+  lecture
+  lab
+  tutorial
+  seminar
 }
 
 enum StudySessionKind {
@@ -143,6 +174,19 @@ enum StudySessionKind {
 enum StudySessionSource {
   pomodoro
   manual
+}
+
+enum ReviewRating {
+  again
+  hard
+  good
+  easy
+}
+
+enum RetakePolicy {
+  latest
+  highest
+  include_all
 }
 
 enum AttachmentKind {
@@ -224,10 +268,16 @@ model User {
   programme        String?   @db.VarChar(120)
   level            String?   @db.VarChar(30)
   university       String?   @db.VarChar(120)
-  bio              String?   @db.VarChar(500)
-  avatarUrl        String?
-  avatarPublicId   String?
-  failedLoginCount Int       @default(0)
+  bio                     String?   @db.VarChar(500)
+  avatarUrl               String?
+  avatarPublicId          String?
+  avatarConfig            Json?
+  termsAccepted           Boolean   @default(false)
+  termsVersion            String?   @db.VarChar(32)
+  termsAcceptedAt         DateTime? @db.Timestamptz(3)
+  privacyPolicyVersion    String?   @db.VarChar(32)
+  privacyPolicyAcceptedAt DateTime? @db.Timestamptz(3)
+  failedLoginCount        Int       @default(0)
   lockedUntil      DateTime? @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
@@ -241,11 +291,18 @@ model User {
   messages       Message[]
   aiUsage        AiUsageDaily[]
   courses        Course[]
-  notes          Note[]
-  tasks          Task[]
-  notifications  Notification[]
+  notes            Note[]
+  tasks            Task[]
+  timetableEntries TimetableEntry[]
+  exams            Exam[]
+  revisionPlans    RevisionPlan[]
+  revisionSessions RevisionSession[]
+  notifications    Notification[]
   studySessions  StudySession[]
   decks          Deck[]
+  reviewLogs     ReviewLog[]
+  gradingScales  GradingScale[]
+  gradeRecords   GradeRecord[]
   quizzes        Quiz[]
   quizAttempts   QuizAttempt[]
   studyDocuments           StudyDocument[]
@@ -264,11 +321,24 @@ model User {
   usageEvents              UsageEvent[]
   activityEvents           ActivityEvent[]
   loginHistory             LoginHistory[]
+  avatar                   UserAvatar?
 
   @@index([role])
   @@index([status])
   @@index([createdAt(sort: Desc)])
   @@map("users")
+}
+
+model UserAvatar {
+  userId    String   @id @db.Uuid
+  mimeType  String   @db.VarChar(50)
+  data      Bytes
+  etag      String   @db.VarChar(64)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_avatars")
 }
 
 model AuthIdentity {
@@ -332,6 +402,8 @@ model UserSettings {
   focusMinutes         Int       @default(25)
   shortBreakMinutes    Int       @default(5)
   longBreakMinutes     Int       @default(15)
+  classReminderMinutes Int       @default(15)
+  examReminderMinutes  Int       @default(1440)
   updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -344,15 +416,18 @@ model UserSettings {
 model Conversation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
+  courseId  String?  @db.Uuid
   title     String   @default("New chat") @db.VarChar(120)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages Message[]
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course?             @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  messages    Message[]
   attachments MessageAttachment[]
 
   @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, courseId])
   @@map("conversations")
 }
 
@@ -417,18 +492,38 @@ model AiUsageDaily {
 // ---------------------------------------------------------------- notes and planner
 
 model Course {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @db.Uuid
-  name      String   @db.VarChar(80)
-  color     String?  @db.VarChar(7)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @db.Uuid
+  name        String    @db.VarChar(80)
+  code        String?   @db.VarChar(24)
+  lecturer    String?   @db.VarChar(120)
+  creditHours Float?
+  semester    String?   @db.VarChar(60)
+  level       String?   @db.VarChar(30)
+  color       String?   @db.VarChar(7)
+  courseNotes String?   @db.VarChar(4000)
+  archivedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  notes     Note[]
-  tasks     Task[]
-  documents Document[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes            Note[]
+  tasks            Task[]
+  timetableEntries TimetableEntry[]
+  exams            Exam[]
+  revisionSessions RevisionSession[]
+  documents        Document[]
+  conversations  Conversation[]
+  studySessions  StudySession[]
+  decks          Deck[]
+  reviewLogs     ReviewLog[]
+  gradeRecords   GradeRecord[]
+  quizzes        Quiz[]
+  studyDocuments StudyDocument[]
 
   @@index([userId])
+  @@index([userId, archivedAt])
+  @@index([userId, semester])
   @@map("courses")
 }
 
@@ -470,31 +565,139 @@ model Task {
   createdAt             DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime     @updatedAt @db.Timestamptz(3)
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course        Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  notifications Notification[]
-  studySessions StudySession[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course          Course?          @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  notifications   Notification[]
+  studySessions   StudySession[]
+  revisionSession RevisionSession?
 
   @@index([userId, status, dueAt])
+  @@index([userId, courseId])
   @@map("tasks")
 }
 
-model Notification {
-  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId        String           @db.Uuid
-  type          NotificationType
-  title         String           @db.VarChar(200)
-  body          String
-  taskId        String?          @db.Uuid
-  dueAtSnapshot DateTime?        @db.Timestamptz(3)
-  readAt        DateTime?        @db.Timestamptz(3)
-  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+model Exam {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String    @db.Uuid
+  courseId        String    @db.Uuid
+  title           String    @db.VarChar(160)
+  examType        ExamType  @default(final)
+  startsAt        DateTime  @db.Timestamptz(3)
+  durationMinutes Int?
+  venue           String?   @db.VarChar(120)
+  weightPercent   Float?
+  topicsJson      Json      @default("[]")
+  notes           String?   @db.VarChar(2000)
+  reminderSentAt  DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course           Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  notifications    Notification[]
+  revisionSessions RevisionSession[]
+
+  @@index([userId, startsAt])
+  @@index([userId, courseId, startsAt])
+  @@map("exams")
+}
+
+model RevisionPlan {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String             @db.Uuid
+  title              String             @db.VarChar(160)
+  startDate          DateTime           @db.Date
+  endDate            DateTime           @db.Date
+  hoursPerDay        Float
+  daysOffJson        Json               @default("[]")
+  preferredTimesJson Json               @default("[\"evening\"]")
+  status             RevisionPlanStatus @default(active)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions RevisionSession[]
+
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@map("revision_plans")
+}
+
+model RevisionSession {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId          String                @db.Uuid
+  userId          String                @db.Uuid
+  examId          String?               @db.Uuid
+  courseId        String?               @db.Uuid
+  taskId          String?               @unique @db.Uuid
+  scheduledDate   DateTime              @db.Date
+  startTime       String                @db.VarChar(5)
+  durationMinutes Int
+  topic           String                @db.VarChar(200)
+  notes           String?               @db.VarChar(1000)
+  status          RevisionSessionStatus @default(planned)
+  position        Int                   @default(0)
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+
+  plan   RevisionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam   Exam?        @relation(fields: [examId], references: [id], onDelete: SetNull)
+  course Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  task   Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, scheduledDate])
+  @@index([planId, scheduledDate, position])
+  @@map("revision_sessions")
+}
+
+model TimetableEntry {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String             @db.Uuid
+  courseId        String             @db.Uuid
+  dayOfWeek       Int                @db.SmallInt
+  startMinute     Int
+  endMinute       Int
+  venue           String?            @db.VarChar(120)
+  type            TimetableEntryType @default(lecture)
+  reminderEnabled Boolean            @default(true)
+  reminderMinutes Int?
+  lastReminderKey String?            @db.VarChar(160)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course        Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([userId, dayOfWeek, startMinute])
+  @@index([userId, courseId])
+  @@map("timetable_entries")
+}
+
+model Notification {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String           @db.Uuid
+  type             NotificationType
+  title            String           @db.VarChar(200)
+  body             String
+  taskId           String?          @db.Uuid
+  timetableEntryId String?          @db.Uuid
+  examId           String?          @db.Uuid
+  occurrenceKey    String?          @db.VarChar(160)
+  dueAtSnapshot    DateTime?        @db.Timestamptz(3)
+  readAt           DateTime?        @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  timetableEntry TimetableEntry? @relation(fields: [timetableEntryId], references: [id], onDelete: SetNull)
+  exam           Exam?           @relation(fields: [examId], references: [id], onDelete: SetNull)
 
   @@unique([taskId, type, dueAtSnapshot])
+  @@unique([userId, type, occurrenceKey])
   @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([timetableEntryId])
+  @@index([examId])
   @@map("notifications")
 }
 
@@ -502,69 +705,119 @@ model StudySession {
   id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId          String             @db.Uuid
   taskId          String?            @db.Uuid
+  courseId        String?            @db.Uuid
   kind            StudySessionKind   @default(focus)
   startedAt       DateTime           @db.Timestamptz(3)
   durationSeconds Int
   source          StudySessionSource @default(pomodoro)
   createdAt       DateTime           @default(now()) @db.Timestamptz(3)
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
 
   // Also makes POST /study-sessions idempotent across retries.
   @@unique([userId, startedAt])
+  @@index([userId, courseId])
   @@map("study_sessions")
 }
 
 // ---------------------------------------------------------------- flashcards and quizzes
 
 model Deck {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @db.Uuid
-  noteId    String?  @db.Uuid
-  title     String   @db.VarChar(150)
-  topic     String?
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @db.Uuid
+  noteId     String?  @db.Uuid
+  documentId String?  @db.Uuid
+  courseId   String?  @db.Uuid
+  title      String   @db.VarChar(150)
+  topic      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   note                  Note?                  @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  document              Document?              @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  course                Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
   cards                 Card[]
+  reviewLogs            ReviewLog[]
   generatedQuestionSets GeneratedQuestionSet[]
 
   @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, courseId])
+  @@index([userId, documentId])
   @@map("decks")
 }
 
 model Card {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  deckId    String   @db.Uuid
-  front     String
-  back      String
-  position  Int
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deckId          String    @db.Uuid
+  front           String
+  back            String
+  topic           String?   @db.VarChar(160)
+  imageUrl        String?
+  imageStorageKey String?
+  position        Int
+  easeFactor      Float     @default(2.5)
+  intervalDays    Int       @default(0)
+  repetitions     Int       @default(0)
+  lapses          Int       @default(0)
+  dueAt           DateTime  @default(now()) @db.Timestamptz(3)
+  lastReviewedAt  DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
 
-  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  deck       Deck        @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  reviewLogs ReviewLog[]
 
   @@index([deckId, position])
+  @@index([deckId, dueAt])
   @@map("cards")
+}
+
+model ReviewLog {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String       @db.Uuid
+  cardId           String       @db.Uuid
+  deckId           String       @db.Uuid
+  courseId         String?      @db.Uuid
+  topic            String?      @db.VarChar(160)
+  rating           ReviewRating
+  quality          Int          @db.SmallInt
+  previousInterval Int
+  nextInterval     Int
+  easeFactorAfter  Float
+  reviewedAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card   Card    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  deck   Deck    @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@index([userId, reviewedAt(sort: Desc)])
+  @@index([deckId, reviewedAt(sort: Desc)])
+  @@index([userId, courseId, reviewedAt(sort: Desc)])
+  @@index([cardId, reviewedAt(sort: Desc)])
+  @@map("review_logs")
 }
 
 model Quiz {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   noteId    String?  @db.Uuid
+  courseId  String?  @db.Uuid
   title     String   @db.VarChar(150)
   topic     String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   note                  Note?                  @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  course                Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
   questions             QuizQuestion[]
   attempts              QuizAttempt[]
   generatedQuestionSets GeneratedQuestionSet[]
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, courseId])
   @@map("quizzes")
 }
 
@@ -605,15 +858,18 @@ model QuizAttempt {
 model StudyDocument {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
+  courseId  String?  @db.Uuid
   filename  String   @db.VarChar(255)
   sizeBytes Int
   pageCount Int
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
   chunks DocumentChunk[]
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, courseId])
   @@map("study_documents")
 }
 
@@ -661,6 +917,7 @@ model Document {
   jobs               DocumentJob[]
   extractedQuestions ExtractedQuestion[]
   questionSets       GeneratedQuestionSet[]
+  decks              Deck[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, type])
@@ -1029,5 +1286,54 @@ model AdminExportJob {
 
   @@index([adminId, createdAt(sort: Desc)])
   @@map("admin_export_jobs")
+}
+
+// ---------------------------------------------------------------- GPA & Grades
+
+model GradingScale {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String       @db.Uuid
+  name              String       @db.VarChar(100)
+  maxGpa            Float        @default(4.0)
+  retakePolicy      RetakePolicy @default(latest)
+  boundariesJson    Json
+  degreeClassesJson Json
+  isDefault         Boolean      @default(false)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gradeRecords GradeRecord[]
+
+  @@index([userId, isDefault])
+  @@map("grading_scales")
+}
+
+model GradeRecord {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @db.Uuid
+  courseId       String?  @db.Uuid
+  scaleId        String?  @db.Uuid
+  semester       String   @db.VarChar(60)
+  semesterOrder  Int      @default(1)
+  courseCode     String   @db.VarChar(24)
+  courseTitle    String   @db.VarChar(120)
+  creditHours    Float
+  score          Float?
+  gradeLabel     String   @db.VarChar(12)
+  gradePoint     Float
+  excludeFromGpa Boolean  @default(false)
+  isRetake       Boolean  @default(false)
+  retakeGroupKey String?  @db.VarChar(40)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  scale  GradingScale? @relation(fields: [scaleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, semesterOrder, createdAt])
+  @@index([userId, retakeGroupKey])
+  @@map("grade_records")
 }
 

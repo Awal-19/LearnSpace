@@ -32,4 +32,3 @@ export function maskEmail(email: string): string {
   const domain = trimmed.slice(at);
   return `${local[0]}***${domain}`;
 }
-

@@ -169,4 +169,3 @@ export function aiRouter({ ai, env, isEmailVerified }: AiRouterDeps): Router {
 
   return router;
 }
-

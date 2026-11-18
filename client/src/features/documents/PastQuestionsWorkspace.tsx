@@ -404,7 +404,7 @@ export function PastQuestionsWorkspace({ detail, onRefresh }: PastQuestionsWorks
         {questions.map((q, idx) => {
           const isEditing = editingId === q.id;
           const isStreamingThis = answeringId === q.id;
-          const liveAnswer = isStreamingThis ? streamingText[q.id] ?? '' : q.answerMarkdown;
+          const liveAnswer = isStreamingThis ? (streamingText[q.id] ?? '') : q.answerMarkdown;
           const thinkingOpen = Boolean(openThinking[q.id]);
 
           return (
@@ -423,9 +423,7 @@ export function PastQuestionsWorkspace({ detail, onRefresh }: PastQuestionsWorks
                     <span className="font-semibold text-fg">
                       {q.section ? `${q.section} · ` : ''}Q{q.questionNumber}
                     </span>
-                    {q.marks !== null ? (
-                      <Badge tone="neutral">{q.marks} marks</Badge>
-                    ) : null}
+                    {q.marks !== null ? <Badge tone="neutral">{q.marks} marks</Badge> : null}
                     {q.unclear ? (
                       <Badge tone="warning">
                         <AlertTriangle className="mr-1 h-3 w-3" />
@@ -543,11 +541,7 @@ export function PastQuestionsWorkspace({ detail, onRefresh }: PastQuestionsWorks
                       Edit
                     </Button>
                     {idx < questions.length - 1 ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void mergeWithNext(idx)}
-                      >
+                      <Button size="sm" variant="ghost" onClick={() => void mergeWithNext(idx)}>
                         <GitMerge className="mr-1 h-3.5 w-3.5" />
                         Merge next
                       </Button>

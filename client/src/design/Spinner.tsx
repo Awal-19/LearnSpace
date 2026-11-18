@@ -19,4 +19,3 @@ export function Spinner({ className, label }: SpinnerProps) {
     />
   );
 }
-

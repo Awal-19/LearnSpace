@@ -102,4 +102,3 @@ export function AdminAuditLogPage() {
     </div>
   );
 }
-

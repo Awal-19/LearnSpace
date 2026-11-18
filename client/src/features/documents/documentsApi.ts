@@ -68,13 +68,7 @@ export interface DocumentDetailResponse {
 }
 
 export type GeneratedQuestionType =
-  | 'mcq'
-  | 'true_false'
-  | 'short_answer'
-  | 'essay'
-  | 'fill_blank'
-  | 'calculation'
-  | 'flashcard';
+  'mcq' | 'true_false' | 'short_answer' | 'essay' | 'fill_blank' | 'calculation' | 'flashcard';
 
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -138,8 +132,18 @@ export function listDocuments(
   );
 }
 
-export function getDocumentDetail(id: string, signal?: AbortSignal): Promise<DocumentDetailResponse> {
+export function getDocumentDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<DocumentDetailResponse> {
   return request<DocumentDetailResponse>(`/documents/${id}`, { signal });
+}
+
+export function updateDocumentMetadata(
+  id: string,
+  payload: { title?: string; type?: DocumentType; courseId?: string | null },
+): Promise<StudyDoc> {
+  return request<StudyDoc>(`/documents/${id}`, { method: 'PATCH', body: payload });
 }
 
 export function deleteDocument(id: string): Promise<void> {
@@ -301,7 +305,11 @@ export async function streamQuestionAnswer(params: {
       } else if (eventName === 'done') {
         params.onDone(parsed.question as ExtractedQuestion);
       } else if (eventName === 'error') {
-        throw new ApiError(502, String(parsed.code ?? 'AI_PROVIDER_ERROR'), String(parsed.message ?? 'AI error'));
+        throw new ApiError(
+          502,
+          String(parsed.code ?? 'AI_PROVIDER_ERROR'),
+          String(parsed.message ?? 'AI error'),
+        );
       }
     }
   }
@@ -435,4 +443,3 @@ export async function exportQuestionSet(
   a.remove();
   URL.revokeObjectURL(url);
 }
-

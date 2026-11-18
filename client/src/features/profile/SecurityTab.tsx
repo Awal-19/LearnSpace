@@ -136,7 +136,11 @@ export function SecurityTab() {
             : 'You signed up with Google. Add a password if you also want to log in with email.'}
         </p>
 
-        <form onSubmit={handleSubmit(onChangePassword)} className="mt-5 max-w-md space-y-4" noValidate>
+        <form
+          onSubmit={handleSubmit(onChangePassword)}
+          className="mt-5 max-w-md space-y-4"
+          noValidate
+        >
           {pwError ? (
             <div
               role="alert"
@@ -205,7 +209,8 @@ export function SecurityTab() {
               Danger zone
             </h2>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Permanently delete your account, notes, chats, flashcards, and study history. This cannot be undone.
+              Permanently delete your account, notes, chats, flashcards, and study history. This
+              cannot be undone.
             </p>
           </div>
           <Button
@@ -274,4 +279,3 @@ export function SecurityTab() {
     </div>
   );
 }
-

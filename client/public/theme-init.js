@@ -10,4 +10,3 @@
     /* storage unavailable: fall back to light */
   }
 })();
-

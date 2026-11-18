@@ -5,7 +5,11 @@ import { useAuth } from './AuthContext';
 
 function FullPageLoading() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6" role="status" aria-label="Loading">
+    <div
+      className="flex min-h-screen items-center justify-center p-6"
+      role="status"
+      aria-label="Loading"
+    >
       <div className="w-full max-w-sm space-y-3">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-4 w-full" />
@@ -31,4 +35,3 @@ export function RequireAuth() {
   }
   return <Outlet />;
 }
-

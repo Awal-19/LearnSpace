@@ -52,7 +52,11 @@ function CodeBlock({ children, className }: { children?: ReactNode; className?: 
           aria-label="Copy code"
           className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-neutral-300 transition-colors hover:bg-white/[0.08] hover:text-white"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
           {copied ? 'Copied' : 'Copy code'}
         </button>
       </div>
@@ -85,9 +89,7 @@ export function MarkdownContent({ content }: { content: string }) {
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mt-4 mb-1.5 text-base font-semibold text-fg first:mt-0">
-              {children}
-            </h3>
+            <h3 className="mt-4 mb-1.5 text-base font-semibold text-fg first:mt-0">{children}</h3>
           ),
           p: ({ children }) => <p className="leading-7 text-fg">{children}</p>,
           ul: ({ children }) => (

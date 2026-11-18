@@ -32,7 +32,9 @@ export function BottomNav() {
                   <span
                     className={cn(
                       'flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-fast',
-                      isActive ? 'bg-primary-600/12 dark:bg-primary-500/20' : '',
+                      isActive
+                        ? 'bg-primary-50 text-primary-600 dark:bg-primary-500/20 dark:text-primary-300'
+                        : '',
                     )}
                   >
                     <Icon className="h-4 w-4" aria-hidden="true" />

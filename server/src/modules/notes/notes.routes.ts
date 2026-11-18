@@ -5,13 +5,7 @@ import { AppError } from '../../lib/errors';
 import { requireAuth, requireVerifiedEmail } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validateBody, validateQuery } from '../../middleware/validate';
-import {
-  createCourseSchema,
-  createNoteSchema,
-  listNotesQuerySchema,
-  updateCourseSchema,
-  updateNoteSchema,
-} from './notes.schemas';
+import { createNoteSchema, listNotesQuerySchema, updateNoteSchema } from './notes.schemas';
 import type { NotesService } from './notes.service';
 
 const uuidSchema = z.string().uuid();
@@ -38,44 +32,6 @@ export function notesRouter({ notes, env, isEmailVerified }: NotesRouterDeps): R
     keyGenerator: (req) => req.user?.id ?? req.ip ?? 'unknown',
     skip: () => env.NODE_ENV === 'test',
   });
-
-  // Courses
-  router.get(
-    '/courses',
-    auth,
-    asyncHandler(async (req, res) => {
-      res.json(await notes.listCourses(req.user!.id));
-    }),
-  );
-
-  router.post(
-    '/courses',
-    auth,
-    validateBody(createCourseSchema),
-    asyncHandler(async (req, res) => {
-      res.status(201).json(await notes.createCourse(req.user!.id, req.body));
-    }),
-  );
-
-  router.patch(
-    '/courses/:id',
-    auth,
-    validateBody(updateCourseSchema),
-    asyncHandler(async (req, res) => {
-      const id = parseUuid(req.params.id, 'Course');
-      res.json(await notes.updateCourse(req.user!.id, id, req.body));
-    }),
-  );
-
-  router.delete(
-    '/courses/:id',
-    auth,
-    asyncHandler(async (req, res) => {
-      const id = parseUuid(req.params.id, 'Course');
-      await notes.deleteCourse(req.user!.id, id);
-      res.status(204).end();
-    }),
-  );
 
   // Notes
   router.get(
@@ -143,4 +99,3 @@ export function notesRouter({ notes, env, isEmailVerified }: NotesRouterDeps): R
 
   return router;
 }
-

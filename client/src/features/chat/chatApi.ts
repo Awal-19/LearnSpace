@@ -16,6 +16,7 @@ export interface MessageAttachment {
 export interface Conversation {
   id: string;
   title: string;
+  courseId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,10 +35,12 @@ export interface ChatMessage {
   createdAt: string;
   sources?: RagSource[];
   attachments?: MessageAttachment[];
+  errorMessage?: string;
 }
 
 export interface StudyDocument {
   id: string;
+  courseId: string | null;
   filename: string;
   sizeBytes: number;
   pageCount: number;
@@ -53,19 +56,33 @@ export interface AiUsage {
   resetsAt: string;
 }
 
-export function listConversations(q?: string) {
+export function listConversations(q?: string, courseId?: string) {
   const params = new URLSearchParams();
   if (q?.trim()) params.set('q', q.trim());
+  if (courseId) params.set('courseId', courseId);
   const qs = params.toString();
   return request<{ items: Conversation[]; nextCursor: string | null }>(
     `/conversations${qs ? `?${qs}` : ''}`,
   );
 }
 
-export function createConversation(title?: string) {
+export function createConversation(
+  titleOrOpts?: string | { title?: string; courseId?: string | null },
+) {
+  const body =
+    typeof titleOrOpts === 'string'
+      ? titleOrOpts
+        ? { title: titleOrOpts }
+        : {}
+      : titleOrOpts
+        ? {
+            ...(titleOrOpts.title ? { title: titleOrOpts.title } : {}),
+            ...(titleOrOpts.courseId !== undefined ? { courseId: titleOrOpts.courseId } : {}),
+          }
+        : {};
   return request<Conversation>('/conversations', {
     method: 'POST',
-    body: title ? { title } : {},
+    body,
   });
 }
 
@@ -75,11 +92,18 @@ export function getConversation(id: string) {
   );
 }
 
-export function renameConversation(id: string, title: string) {
+export function updateConversation(
+  id: string,
+  patch: { title?: string; courseId?: string | null },
+) {
   return request<Conversation>(`/conversations/${id}`, {
     method: 'PATCH',
-    body: { title },
+    body: patch,
   });
+}
+
+export function renameConversation(id: string, title: string) {
+  return updateConversation(id, { title });
 }
 
 export function deleteConversation(id: string) {
@@ -94,9 +118,10 @@ export function listDocuments() {
   return request<StudyDocument[]>('/ai/documents');
 }
 
-export function uploadLecturePdf(file: File) {
+export function uploadLecturePdf(file: File, courseId?: string | null) {
   const formData = new FormData();
   formData.append('file', file);
+  if (courseId) formData.append('courseId', courseId);
   return request<StudyDocument>('/ai/upload-notes', {
     method: 'POST',
     body: formData,
@@ -213,4 +238,3 @@ export async function fetchAttachmentBlob(url: string): Promise<Blob> {
   }
   return res.blob();
 }
-

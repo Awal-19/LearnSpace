@@ -83,24 +83,21 @@ export function useChatStream() {
 
       try {
         const token = getAccessToken();
-        const response = await fetch(
-          `${API_BASE_URL}/conversations/${conversationId}/messages`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'text/event-stream',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              content,
-              action,
-              ...(selection ? { selection } : {}),
-              ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-            }),
-            signal: controller.signal,
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        );
+          body: JSON.stringify({
+            content,
+            action,
+            ...(selection ? { selection } : {}),
+            ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+          }),
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           let code = 'UNKNOWN';
@@ -188,4 +185,3 @@ export function useChatStream() {
 
   return { isStreaming, send, stop };
 }
-

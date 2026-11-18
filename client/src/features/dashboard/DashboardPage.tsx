@@ -3,11 +3,15 @@ import {
   ArrowRight,
   BookOpen,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
+  ChevronRight,
   Clock,
   FileText,
   Flame,
   GraduationCap,
+  Layers,
+  MapPin,
   MessageSquare,
   Sparkles,
   Timer,
@@ -15,8 +19,15 @@ import {
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
-import { Badge, Button, Card, ErrorState, Skeleton, VerifiedBadge } from '../../design';
+import { Avatar, Badge, Button, Card, ErrorState, Skeleton, VerifiedBadge } from '../../design';
 import { request } from '../../lib/apiClient';
+import {
+  formatCountdownMinutes,
+  formatMinutes,
+  type TimetableType,
+} from '../timetable/timetableApi';
+import { EXAM_TYPE_LABELS, formatExamCountdown, type ExamType } from '../exams/examsApi';
+import { ProgressAnalyticsSection } from './ProgressAnalyticsSection';
 
 interface DashboardTask {
   id: string;
@@ -26,11 +37,56 @@ interface DashboardTask {
   status: 'todo' | 'done';
 }
 
+interface DashboardClassSlot {
+  id: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string | null;
+  courseColor: string | null;
+  lecturer: string | null;
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  venue: string | null;
+  type: TimetableType;
+}
+
+interface DashboardNextClass extends DashboardClassSlot {
+  status: 'in_progress' | 'upcoming';
+  startsInMinutes: number;
+  endsInMinutes: number;
+  dayOffset: number;
+  dayLabel: string;
+}
+
+interface DashboardExamItem {
+  id: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string | null;
+  courseColor: string | null;
+  title: string;
+  examType: ExamType;
+  startsAt: string;
+  durationMinutes: number | null;
+  venue: string | null;
+  weightPercent: number | null;
+  topics: string[];
+}
+
 interface DashboardResponse {
   greetingName: string;
+  timezone?: string;
   todayTasks: DashboardTask[];
   overdueCount: number;
   upcoming: DashboardTask[];
+  todayClasses?: DashboardClassSlot[];
+  nextClass?: DashboardNextClass | null;
+  upcomingExams?: DashboardExamItem[];
+  nextExam?: DashboardExamItem | null;
+  dueFlashcardsCount?: number;
+  todayStudyHours?: number;
+  todayTasksDoneCount?: number;
   stats: { streakDays: number; hoursLast7Days: number };
   recentConversations: Array<{ id: string; title: string; updatedAt: string }>;
   unreadNotifications: number;
@@ -81,10 +137,15 @@ export function DashboardPage() {
 
   const data = dashQuery.data;
   const greeting = `${timeGreeting(new Date().getHours())}, ${data.greetingName}`;
-  const streakPct = Math.min(100, Math.round((data.stats.streakDays / 7) * 100));
-  const hoursGoalPct = Math.min(100, Math.round((data.stats.hoursLast7Days / 14) * 100));
   const doneToday = data.todayTasks.filter((t) => t.status === 'done').length;
   const totalToday = data.todayTasks.length;
+  const todayTasksDone = data.todayTasksDoneCount ?? doneToday;
+  const todayStudyHours = data.todayStudyHours ?? 0;
+  const todayClasses = data.todayClasses ?? [];
+  const nextClass = data.nextClass ?? null;
+  const upcomingExams = data.upcomingExams ?? [];
+  const nextExam = data.nextExam ?? upcomingExams[0] ?? null;
+  const dueFlashcardsCount = data.dueFlashcardsCount ?? 0;
 
   const completeTask = async (id: string) => {
     await request(`/tasks/${id}`, { method: 'PATCH', body: { status: 'done' } });
@@ -98,74 +159,117 @@ export function DashboardPage() {
       label: 'AI Tutor',
       desc: 'Ask questions & get step-by-step help',
       icon: MessageSquare,
-      accent: 'bg-primary-600/10 text-primary-600 dark:text-primary-400',
+      accent: 'bg-primary-50 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400',
     },
     {
       to: '/documents',
       label: 'Study from Docs',
       desc: 'Past questions, slides & practice sets',
       icon: FileText,
-      accent: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+      accent: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
     },
     {
       to: '/notes',
       label: 'Course Notes',
       desc: 'Organize & search your lecture notes',
       icon: BookOpen,
-      accent: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+      accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     },
     {
       to: '/study',
       label: 'Flashcards & Quiz',
       desc: 'Active recall & spaced practice',
       icon: GraduationCap,
-      accent: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+      accent: 'bg-primary-50 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400',
     },
     {
       to: '/planner',
       label: 'Study Planner',
       desc: 'Track deadlines & study tasks',
       icon: CalendarClock,
-      accent: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+      accent: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
     },
     {
       to: '/focus',
       label: 'Focus Timer',
       desc: 'Deep work Pomodoro sessions',
       icon: Timer,
-      accent: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+      accent: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
     },
   ];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       {/* Hero Welcome Banner */}
-      <Card className="relative overflow-hidden border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-6 dark:border-primary-500/20 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-7">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-500/25 bg-primary-500/10 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:text-primary-300">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Your Learning Hub</span>
+      <Card className="app-hero-glass relative overflow-hidden rounded-[24px] p-6 sm:p-7">
+        {/* Soft curved translucent wave ribbons inside right edge */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 420 220"
+          className="pointer-events-none absolute -right-4 -top-6 z-0 h-[230px] w-[420px] opacity-80 dark:opacity-20"
+        >
+          <defs>
+            <linearGradient id="heroBannerWave" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#EFF6FF" stopOpacity="0.1" />
+              <stop offset="55%" stopColor="#DBEAFE" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="#93C5FD" stopOpacity="0.45" />
+            </linearGradient>
+          </defs>
+          <path d="M40,220 C120,125 225,135 280,0 L420,0 L420,220 Z" fill="url(#heroBannerWave)" />
+          <path
+            d="M145,220 C225,130 310,150 385,15 L420,15 L420,220 Z"
+            fill="url(#heroBannerWave)"
+          />
+        </svg>
+
+        <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            {user ? (
+              <Link
+                to={path('/profile')}
+                aria-label="Open your profile"
+                className="mt-1 hidden shrink-0 rounded-full ring-4 ring-white/90 shadow-md transition-transform hover:scale-105 dark:ring-surface sm:inline-flex"
+              >
+                <Avatar
+                  name={user.name}
+                  src={user.avatarUrl}
+                  size="lg"
+                  className="h-14 w-14 text-lg"
+                />
+              </Link>
+            ) : null}
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-200/80 bg-primary-100/70 px-3 py-1 text-xs font-medium text-primary-700 shadow-sm dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Your Learning Hub</span>
+              </div>
+              <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold tracking-tight text-fg sm:text-3xl">
+                <span>{greeting}</span>
+                {user?.emailVerified ? <VerifiedBadge className="h-5 w-5" /> : null}
+              </h1>
+              <p className="max-w-xl text-sm text-muted">
+                {totalToday > 0
+                  ? `You have ${totalToday} task${totalToday === 1 ? '' : 's'} scheduled today${data.overdueCount > 0 ? ` and ${data.overdueCount} overdue` : ''}.`
+                  : 'You are all caught up for today. Pick a study tool below to keep your momentum going.'}
+              </p>
             </div>
-            <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold tracking-tight text-fg sm:text-3xl">
-              <span>{greeting}</span>
-              {user?.emailVerified ? <VerifiedBadge className="h-5 w-5" /> : null}
-            </h1>
-            <p className="max-w-xl text-sm text-muted">
-              {totalToday > 0
-                ? `You have ${totalToday} task${totalToday === 1 ? '' : 's'} scheduled today${data.overdueCount > 0 ? ` and ${data.overdueCount} overdue` : ''}.`
-                : 'You are all caught up for today. Pick a study tool below to keep your momentum going.'}
-            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <Link to={path('/chat')}>
-              <Button size="md">
+              <Button
+                size="md"
+                className="rounded-full bg-gradient-to-r from-primary-600 to-primary-500 px-5 shadow-[0_8px_20px_rgba(37,99,235,0.28)] hover:from-primary-700 hover:to-primary-600"
+              >
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
                 Ask AI Tutor
               </Button>
             </Link>
             <Link to={path('/focus')}>
-              <Button size="md" variant="secondary">
+              <Button
+                size="md"
+                variant="secondary"
+                className="rounded-full border-white/90 bg-white/90 px-5 shadow-sm hover:bg-white dark:border-line dark:bg-surface"
+              >
                 <Timer className="h-4 w-4" aria-hidden="true" />
                 Start Focus
               </Button>
@@ -174,79 +278,350 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      {/* KPI Stat Cards with Progress Bars */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="space-y-3 p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500">
-                <Flame className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-xs font-medium text-muted">Study Streak</p>
-                <p className="text-xl font-bold text-fg tabular-nums">
-                  {data.stats.streakDays} {data.stats.streakDays === 1 ? 'day' : 'days'}
-                </p>
-              </div>
-            </div>
-            <Badge tone="warning">7d goal</Badge>
+      {/* Daily Summary Card */}
+      <Card className="p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-fg">Daily summary</h2>
+            <p className="text-xs text-muted">
+              Today&apos;s snapshot across study hours, tasks, flashcards, classes, and exams
+            </p>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface2">
-            <div
-              className="h-full rounded-full bg-amber-500 transition-all duration-slow"
-              style={{ width: `${streakPct}%` }}
-            />
+          <div className="flex items-center gap-2">
+            <Badge tone="warning">
+              <Flame className="mr-1 h-3 w-3" aria-hidden="true" />
+              {data.stats.streakDays}d streak
+            </Badge>
+            <Badge tone="primary">{data.stats.hoursLast7Days}h in 7d</Badge>
           </div>
-        </Card>
+        </div>
 
-        <Card className="space-y-3 p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400">
-                <Clock className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-xs font-medium text-muted">Study Time (7d)</p>
-                <p className="text-xl font-bold text-fg tabular-nums">{data.stats.hoursLast7Days}h</p>
-              </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Link
+            to={path('/focus')}
+            className="rounded-xl border border-line/85 bg-surface2/40 p-3.5 transition-colors hover:border-primary-300"
+          >
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>Hours studied</span>
+              <Clock
+                className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400"
+                aria-hidden="true"
+              />
             </div>
-            <Badge tone="primary">14h target</Badge>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface2">
-            <div
-              className="h-full rounded-full bg-primary-600 transition-all duration-slow"
-              style={{ width: `${hoursGoalPct}%` }}
-            />
-          </div>
-        </Card>
+            <p className="mt-1.5 font-display text-lg font-bold text-fg tabular-nums">
+              {todayStudyHours}h today
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted">
+              {data.stats.hoursLast7Days}h over 7 days
+            </p>
+          </Link>
 
-        <Card className="space-y-3 p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-xs font-medium text-muted">Today&apos;s Tasks</p>
-                <p className="text-xl font-bold text-fg tabular-nums">
-                  {doneToday}/{totalToday}
-                </p>
-              </div>
+          <Link
+            to={path('/planner')}
+            className="rounded-xl border border-line/85 bg-surface2/40 p-3.5 transition-colors hover:border-primary-300"
+          >
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>Tasks done</span>
+              <CheckCircle2
+                className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                aria-hidden="true"
+              />
             </div>
-            {data.overdueCount > 0 ? (
-              <Badge tone="danger">{data.overdueCount} overdue</Badge>
+            <p className="mt-1.5 font-display text-lg font-bold text-fg tabular-nums">
+              {todayTasksDone} done
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted">
+              {totalToday} open today
+              {data.overdueCount > 0 ? ` · ${data.overdueCount} overdue` : ''}
+            </p>
+          </Link>
+
+          <Link
+            to={path('/study?tab=decks')}
+            className="rounded-xl border border-line/85 bg-surface2/40 p-3.5 transition-colors hover:border-primary-300"
+          >
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>Due flashcards</span>
+              <Layers className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+            </div>
+            <p className="mt-1.5 font-display text-lg font-bold text-fg tabular-nums">
+              {dueFlashcardsCount} due
+            </p>
+            <p className="mt-0.5 text-[11px] text-primary-600 dark:text-primary-400">
+              {dueFlashcardsCount > 0 ? 'Review queue →' : 'Caught up'}
+            </p>
+          </Link>
+
+          <Link
+            to={path('/timetable')}
+            className="rounded-xl border border-line/85 bg-surface2/40 p-3.5 transition-colors hover:border-primary-300"
+          >
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>Next class</span>
+              <CalendarDays
+                className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400"
+                aria-hidden="true"
+              />
+            </div>
+            <p className="mt-1.5 truncate text-sm font-bold text-fg">
+              {nextClass
+                ? nextClass.courseCode
+                  ? `${nextClass.courseCode} · ${nextClass.courseName}`
+                  : nextClass.courseName
+                : 'No upcoming class'}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-muted">
+              {nextClass
+                ? nextClass.status === 'in_progress'
+                  ? `In progress · ends ${formatMinutes(nextClass.endMinute)}`
+                  : `${nextClass.dayLabel} · ${formatMinutes(nextClass.startMinute)}`
+                : 'Add classes in Timetable'}
+            </p>
+          </Link>
+
+          <Link
+            to={path('/exams')}
+            className="rounded-xl border border-line/85 bg-surface2/40 p-3.5 transition-colors hover:border-primary-300"
+          >
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>Next exam</span>
+              <CalendarClock
+                className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+            </div>
+            <p className="mt-1.5 truncate text-sm font-bold text-fg">
+              {nextExam ? nextExam.title : 'No upcoming exam'}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-muted">
+              {nextExam
+                ? `${formatExamCountdown(nextExam.startsAt).label}${nextExam.courseCode ? ` · ${nextExam.courseCode}` : ''}`
+                : 'Schedule exams'}
+            </p>
+          </Link>
+        </div>
+      </Card>
+
+      {/* Progress Analytics (date range filter, charts, best study hours, weak topics) */}
+      <ProgressAnalyticsSection />
+
+      {/* Next Class & Today's Schedule */}
+      <Card className="p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:bg-primary-500/15 dark:text-primary-400">
+              <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-fg">
+                Next class &amp; today&apos;s schedule
+              </h2>
+              {data.timezone ? (
+                <p className="text-[11px] text-muted">Shown in {data.timezone}</p>
+              ) : null}
+            </div>
+          </div>
+          <Link
+            to={path('/timetable')}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
+          >
+            Open timetable
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-[1.05fr_1fr]">
+          {/* Next class spotlight */}
+          <div
+            className="flex flex-col justify-between rounded-2xl border border-line/90 bg-primary-50/40 p-4 dark:bg-surface2/50"
+            style={
+              nextClass
+                ? { borderLeftWidth: '4px', borderLeftColor: nextClass.courseColor ?? '#2563EB' }
+                : undefined
+            }
+          >
+            {nextClass ? (
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Next class
+                  </span>
+                  <Badge tone={nextClass.status === 'in_progress' ? 'success' : 'primary'}>
+                    {nextClass.status === 'in_progress'
+                      ? `In progress · ends ${formatMinutes(nextClass.endMinute)}`
+                      : nextClass.dayOffset === 0
+                        ? `Starts ${formatCountdownMinutes(nextClass.startsInMinutes)}`
+                        : `${nextClass.dayLabel} · ${formatMinutes(nextClass.startMinute)}`}
+                  </Badge>
+                </div>
+
+                <div>
+                  <Link
+                    to={path(`/courses/${nextClass.courseId}`)}
+                    className="inline-flex flex-wrap items-center gap-2 font-display text-lg font-bold text-fg transition-colors hover:text-primary-600 dark:hover:text-primary-400"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: nextClass.courseColor ?? '#2563EB' }}
+                    />
+                    {nextClass.courseCode ? <span>{nextClass.courseCode} ·</span> : null}
+                    <span>{nextClass.courseName}</span>
+                  </Link>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted">
+                    <span className="inline-flex items-center gap-1 font-medium text-fg tabular-nums">
+                      <Clock className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" />
+                      {formatMinutes(nextClass.startMinute)} – {formatMinutes(nextClass.endMinute)}
+                    </span>
+                    <Badge tone="neutral">
+                      {nextClass.type.charAt(0).toUpperCase() + nextClass.type.slice(1)}
+                    </Badge>
+                    {nextClass.venue ? (
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                        {nextClass.venue}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             ) : (
-              <Badge tone="success">On track</Badge>
+              <div className="py-2 text-center sm:text-left">
+                <p className="text-sm font-medium text-fg">No upcoming classes yet</p>
+                <p className="mt-1 text-xs text-muted">
+                  Add lectures, labs, or tutorials in Timetable to get countdowns and reminders.
+                </p>
+                <Link
+                  to={path('/timetable')}
+                  className="mt-2.5 inline-block text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  Set up weekly timetable
+                </Link>
+              </div>
             )}
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface2">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-slow"
-              style={{ width: `${totalToday > 0 ? Math.round((doneToday / totalToday) * 100) : 100}%` }}
-            />
+
+          {/* Today's schedule list */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Today&apos;s classes ({todayClasses.length})
+            </p>
+            {todayClasses.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line bg-surface2/30 p-4 text-center text-xs text-muted">
+                No classes scheduled for today.
+              </div>
+            ) : (
+              <div className="divide-y divide-line/80 rounded-xl border border-line/80 bg-surface px-3">
+                {todayClasses.map((slot) => {
+                  const isHighlighted =
+                    nextClass !== null && nextClass.id === slot.id && nextClass.dayOffset === 0;
+                  return (
+                    <div
+                      key={slot.id}
+                      className="flex items-center justify-between gap-3 py-2.5 text-xs"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: slot.courseColor ?? '#2563EB' }}
+                        />
+                        <Link
+                          to={path(`/courses/${slot.courseId}`)}
+                          className={`truncate font-medium hover:text-primary-600 ${
+                            isHighlighted
+                              ? 'text-primary-700 dark:text-primary-300 font-semibold'
+                              : 'text-fg'
+                          }`}
+                        >
+                          {slot.courseCode
+                            ? `${slot.courseCode} · ${slot.courseName}`
+                            : slot.courseName}
+                        </Link>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 text-muted tabular-nums">
+                        {slot.venue ? <span className="hidden sm:inline">{slot.venue}</span> : null}
+                        <span className="font-medium text-fg">
+                          {formatMinutes(slot.startMinute)}–{formatMinutes(slot.endMinute)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </Card>
-      </div>
+        </div>
+      </Card>
+
+      {/* Exam Countdowns */}
+      <Card className="p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <CalendarClock className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-fg">Upcoming exam countdowns</h2>
+              <p className="text-[11px] text-muted">
+                Track exam dates and build AI revision schedules into your Planner
+              </p>
+            </div>
+          </div>
+          <Link
+            to={path('/exams')}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
+          >
+            Open exams &amp; revision
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+
+        {upcomingExams.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-line bg-surface2/30 p-4 text-center text-xs text-muted">
+            No upcoming exams scheduled.{' '}
+            <Link
+              to={path('/exams')}
+              className="font-semibold text-primary-600 hover:underline dark:text-primary-400"
+            >
+              Add an exam date
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {upcomingExams.map((ex) => {
+              const cd = formatExamCountdown(ex.startsAt);
+              const accent = ex.courseColor ?? '#2563EB';
+              return (
+                <Link
+                  key={ex.id}
+                  to={path(`/courses/${ex.courseId}`)}
+                  style={{ borderTopWidth: '3px', borderTopColor: accent }}
+                  className="flex flex-col justify-between gap-2.5 rounded-xl border border-line/85 bg-surface p-3.5 shadow-sm transition-colors hover:border-primary-300"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <Badge tone={cd.tone}>{cd.label}</Badge>
+                      <span className="text-[11px] font-medium text-muted">
+                        {EXAM_TYPE_LABELS[ex.examType] ?? ex.examType}
+                        {ex.weightPercent !== null ? ` · ${ex.weightPercent}%` : ''}
+                      </span>
+                    </div>
+                    <p className="truncate text-xs font-semibold text-muted">
+                      {ex.courseCode ? `${ex.courseCode} · ${ex.courseName}` : ex.courseName}
+                    </p>
+                    <p className="truncate text-sm font-bold text-fg">{ex.title}</p>
+                  </div>
+                  <p className="text-[11px] text-muted">
+                    {new Date(ex.startsAt).toLocaleString()}
+                    {ex.venue ? ` · ${ex.venue}` : ''}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* Main Two-Column Activity */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -269,11 +644,14 @@ export function DashboardPage() {
             </div>
 
             {data.todayTasks.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-line bg-surface2/40 p-6 text-center">
+              <div className="rounded-xl border border-dashed border-primary-200/80 bg-primary-50/35 p-6 text-center dark:border-line dark:bg-surface2/40">
+                <div className="mx-auto mb-2.5 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 shadow-sm dark:bg-primary-500/15 dark:text-primary-400">
+                  <CalendarClock className="h-5 w-5" aria-hidden="true" />
+                </div>
                 <p className="text-sm text-muted">No tasks due today.</p>
                 <Link
                   to={path('/planner')}
-                  className="mt-2 inline-block text-xs font-semibold text-primary-600 hover:underline"
+                  className="mt-1.5 inline-block text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
                 >
                   Schedule a study task
                 </Link>
@@ -296,9 +674,7 @@ export function DashboardPage() {
                       />
                       <span className="truncate font-medium">{t.title}</span>
                     </button>
-                    <Badge tone={t.priority === 'high' ? 'danger' : 'neutral'}>
-                      {t.priority}
-                    </Badge>
+                    <Badge tone={t.priority === 'high' ? 'danger' : 'neutral'}>{t.priority}</Badge>
                   </div>
                 ))}
               </div>
@@ -335,13 +711,13 @@ export function DashboardPage() {
           </div>
 
           {data.recentConversations.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-line bg-surface2/40 p-6 text-center">
+            <div className="rounded-xl border border-dashed border-primary-200/80 bg-primary-50/35 p-6 text-center dark:border-line dark:bg-surface2/40">
               <p className="text-sm text-muted">
                 No conversations yet. Ask AWAL anything about your courses!
               </p>
               <Link
                 to={path('/chat')}
-                className="mt-2 inline-block text-xs font-semibold text-primary-600 hover:underline"
+                className="mt-2 inline-block text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400"
               >
                 Start a conversation
               </Link>
@@ -352,10 +728,10 @@ export function DashboardPage() {
                 <Link
                   key={c.id}
                   to={path(`/chat/${c.id}`)}
-                  className="group -mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-3 text-sm transition-colors hover:bg-surface2/50 hover:text-primary-600"
+                  className="group -mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-3 text-sm transition-colors hover:bg-primary-50/45 hover:text-primary-600 dark:hover:bg-surface2/50"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600 ring-2 ring-primary-100/70 dark:bg-primary-500/15 dark:text-primary-400 dark:ring-primary-500/10">
                       <MessageSquare className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span className="truncate font-medium">{c.title}</span>
@@ -372,29 +748,33 @@ export function DashboardPage() {
 
       {/* Quick Launch Learning Hub */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
           Quick Actions &amp; Learning Tools
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {quickTools.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.to}
                 to={path(item.to)}
-                className="group flex items-start gap-3.5 rounded-2xl border border-line/90 bg-surface p-4 shadow-sm transition-all duration-fast ease-soft hover:-translate-y-0.5 hover:border-primary-400/70 hover:shadow-md"
+                className="group flex items-center gap-3.5 rounded-2xl border border-line/80 bg-surface p-4 shadow-sm transition-all duration-fast ease-soft hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md dark:hover:border-primary-500/40"
               >
                 <span
                   className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-fast group-hover:scale-105 ${item.accent}`}
                 >
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-fg group-hover:text-primary-600 dark:group-hover:text-primary-400">
                     {item.label}
                   </p>
                   <p className="mt-0.5 text-xs text-muted">{item.desc}</p>
                 </div>
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 text-muted/60 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-primary-600 dark:group-hover:text-primary-400"
+                  aria-hidden="true"
+                />
               </Link>
             );
           })}

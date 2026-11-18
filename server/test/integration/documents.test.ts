@@ -102,13 +102,7 @@ function makeFakePrisma() {
       findUnique: async ({ where }: { where: { id: string } }) => documents.get(where.id) ?? null,
       findMany: async ({ where }: { where: { userId: string } }) =>
         Array.from(documents.values()).filter((d) => d.userId === where.userId),
-      update: async ({
-        where,
-        data,
-      }: {
-        where: { id: string };
-        data: Record<string, unknown>;
-      }) => {
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const d = documents.get(where.id);
         if (!d) throw new Error('Not found');
         Object.assign(d, data, { updatedAt: new Date() });
@@ -139,13 +133,7 @@ function makeFakePrisma() {
         );
         return list[list.length - 1] ?? null;
       },
-      update: async ({
-        where,
-        data,
-      }: {
-        where: { id: string };
-        data: Record<string, unknown>;
-      }) => {
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const j = jobs.get(where.id);
         if (!j) throw new Error('Not found');
         Object.assign(j, data);
@@ -214,13 +202,7 @@ function makeFakePrisma() {
         }
         return row;
       },
-      update: async ({
-        where,
-        data,
-      }: {
-        where: { id: string };
-        data: Record<string, unknown>;
-      }) => {
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const s = sets.get(where.id);
         if (!s) throw new Error('Not found');
         Object.assign(s, data);
@@ -337,7 +319,8 @@ describe('Study from Documents integration', () => {
                     topic: 'Divide and Conquer',
                     prompt: 'Compare merge sort and quicksort space complexity.',
                     options: null,
-                    correctAnswer: 'Merge sort uses O(n) auxiliary space while quicksort uses O(log n) stack space.',
+                    correctAnswer:
+                      'Merge sort uses O(n) auxiliary space while quicksort uses O(log n) stack space.',
                     explanation: 'Merging requires temporary arrays.',
                     sourceRef: 'Slide 2',
                   },
@@ -411,7 +394,9 @@ describe('Study from Documents integration', () => {
         await new Promise((r) => setTimeout(r, 30));
       }
       const last = store.jobs.get(jobId);
-      throw new Error(`Job ${jobId} timed out (status=${String(last?.status)}, error=${String(last?.error)})`);
+      throw new Error(
+        `Job ${jobId} timed out (status=${String(last?.status)}, error=${String(last?.error)})`,
+      );
     };
 
     return { app, store, jobs, llm, waitForJob };
@@ -430,7 +415,10 @@ describe('Study from Documents integration', () => {
       .attach('file', fakePdf, { filename: 'bad.pdf', contentType: 'application/pdf' })
       .expect(415);
 
-    const bigJpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(10 * 1024 * 1024 + 50)]);
+    const bigJpg = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff]),
+      Buffer.alloc(10 * 1024 * 1024 + 50),
+    ]);
     await request(app)
       .post('/api/v1/documents')
       .set('Authorization', `Bearer ${tokenA}`)
@@ -439,9 +427,7 @@ describe('Study from Documents integration', () => {
       .expect(413);
   });
 
-  it(
-    'detects questions from PDF, DOCX, and photo, and denies cross-user access (404)',
-    async () => {
+  it('detects questions from PDF, DOCX, and photo, and denies cross-user access (404)', async () => {
     const { app, waitForJob } = buildHarness();
 
     // 1. PDF upload & detect
@@ -551,7 +537,10 @@ describe('Study from Documents integration', () => {
 
   it('generates all 7 question types, marks attempts, saves to library, and exports PDF/DOCX', async () => {
     const { app, waitForJob } = buildHarness();
-    const txtBuf = Buffer.from('Slide 1: Binary search is O(log n).\nSlide 2: Merge sort uses O(n) space.', 'utf8');
+    const txtBuf = Buffer.from(
+      'Slide 1: Binary search is O(log n).\nSlide 2: Merge sort uses O(n) space.',
+      'utf8',
+    );
 
     const up = await request(app)
       .post('/api/v1/documents')
@@ -565,7 +554,15 @@ describe('Study from Documents integration', () => {
       .post(`/api/v1/documents/${up.body.document.id}/generate-questions`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
-        types: ['mcq', 'true_false', 'short_answer', 'essay', 'fill_blank', 'calculation', 'flashcard'],
+        types: [
+          'mcq',
+          'true_false',
+          'short_answer',
+          'essay',
+          'fill_blank',
+          'calculation',
+          'flashcard',
+        ],
         count: 7,
         difficulty: 'mixed',
         scope: 'whole',

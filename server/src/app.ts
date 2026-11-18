@@ -17,15 +17,22 @@ import { aiRouter } from './modules/ai/ai.routes';
 import type { AiService } from './modules/ai/ai.service';
 import { adminRouter, studentEngagementRouter } from './modules/admin/admin.routes';
 import type { AdminService } from './modules/admin/admin.service';
+import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { attachmentsRouter } from './modules/ai/attachments.routes';
 import type { AttachmentsService } from './modules/ai/attachments.service';
 import { documentsRouter } from './modules/documents/documents.routes';
 import type { DocumentsService } from './modules/documents/documents.service';
 import { authRouter } from './modules/auth/auth.routes';
 import type { AuthService } from './modules/auth/auth.service';
+import { coursesRouter } from './modules/courses/courses.routes';
+import type { CoursesService } from './modules/courses/courses.service';
 import { dashboardRouter } from './modules/dashboard/dashboard.service';
+import { examsRouter } from './modules/exams/exams.routes';
+import type { ExamsService } from './modules/exams/exams.service';
 import { focusRouter } from './modules/focus/focus.routes';
 import type { FocusService } from './modules/focus/focus.service';
+import { gpaRouter } from './modules/gpa/gpa.routes';
+import type { GpaService } from './modules/gpa/gpa.service';
 import { notesRouter } from './modules/notes/notes.routes';
 import type { NotesService } from './modules/notes/notes.service';
 import { plannerRouter } from './modules/planner/planner.routes';
@@ -34,19 +41,28 @@ import { ragRouter } from './modules/rag/rag.routes';
 import type { RagService } from './modules/rag/rag.service';
 import { studyRouter } from './modules/study/study.routes';
 import type { StudyService } from './modules/study/study.service';
+import { timetableRouter } from './modules/timetable/timetable.routes';
+import type { TimetableService } from './modules/timetable/timetable.service';
 import { usersRouter } from './modules/users/users.routes';
 import type { UsersService } from './modules/users/users.service';
 
 export interface AppDeps extends HealthDeps {
   auth?: AuthService;
   users?: UsersService;
+  courses?: CoursesService;
+  timetable?: TimetableService;
+  exams?: { service: ExamsService; isEmailVerified: (userId: string) => Promise<boolean> };
   ai?: { service: AiService; isEmailVerified: (userId: string) => Promise<boolean> };
   notes?: { service: NotesService; isEmailVerified: (userId: string) => Promise<boolean> };
   planner?: PlannerService;
   focus?: FocusService;
+  gpa?: GpaService;
   study?: { service: StudyService; isEmailVerified: (userId: string) => Promise<boolean> };
   rag?: { service: RagService; isEmailVerified: (userId: string) => Promise<boolean> };
-  attachments?: { service: AttachmentsService; isEmailVerified: (userId: string) => Promise<boolean> };
+  attachments?: {
+    service: AttachmentsService;
+    isEmailVerified: (userId: string) => Promise<boolean>;
+  };
   documents?: { service: DocumentsService; isEmailVerified: (userId: string) => Promise<boolean> };
   admin?: { service: AdminService; prisma: PrismaClient };
   dashboardPrisma?: PrismaClient;
@@ -104,7 +120,11 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   const mutationLimiter = createRateLimiter({
     windowMs: 60_000,
     limit: Math.min(env.RATE_LIMIT_GLOBAL_PER_MIN, 120),
-    skip: (req) => req.path.startsWith(`${API_PREFIX}/health`) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+    skip: (req) =>
+      req.path.startsWith(`${API_PREFIX}/health`) ||
+      req.method === 'GET' ||
+      req.method === 'HEAD' ||
+      req.method === 'OPTIONS',
   });
 
   app.use(readLimiter);
@@ -172,6 +192,22 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   if (deps.users) {
     app.use(API_PREFIX, usersRouter(deps.users, env));
   }
+  if (deps.courses) {
+    app.use(API_PREFIX, coursesRouter(deps.courses, env));
+  }
+  if (deps.timetable) {
+    app.use(API_PREFIX, timetableRouter(deps.timetable, env));
+  }
+  if (deps.exams) {
+    app.use(
+      API_PREFIX,
+      examsRouter({
+        exams: deps.exams.service,
+        env,
+        isEmailVerified: deps.exams.isEmailVerified,
+      }),
+    );
+  }
   if (deps.ai) {
     app.use(
       API_PREFIX,
@@ -193,6 +229,9 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   }
   if (deps.focus) {
     app.use(API_PREFIX, focusRouter(deps.focus, env));
+  }
+  if (deps.gpa) {
+    app.use(API_PREFIX, gpaRouter(deps.gpa, env));
   }
   if (deps.study) {
     app.use(
@@ -236,10 +275,14 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   }
   if (deps.dashboardPrisma) {
     app.use(API_PREFIX, dashboardRouter(deps.dashboardPrisma, env));
+    app.use(API_PREFIX, analyticsRouter(deps.dashboardPrisma, env));
   }
   if (deps.admin) {
     app.use(API_PREFIX, studentEngagementRouter(deps.admin.service, env));
-    app.use('/api/admin', adminRouter({ admin: deps.admin.service, prisma: deps.admin.prisma, env }));
+    app.use(
+      '/api/admin',
+      adminRouter({ admin: deps.admin.service, prisma: deps.admin.prisma, env }),
+    );
   }
 
   app.use(notFound);
@@ -247,4 +290,3 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
 
   return app;
 }
-

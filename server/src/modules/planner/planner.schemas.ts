@@ -1,15 +1,10 @@
 import { z } from 'zod';
 
-const reminderOffsetSchema = z.union([
-  z.literal(0),
-  z.literal(60),
-  z.literal(1440),
-  z.null(),
-]);
+const reminderOffsetSchema = z.union([z.literal(0), z.literal(60), z.literal(1440), z.null()]);
 
 export const listTasksQuerySchema = z.object({
   view: z.enum(['today', 'upcoming', 'overdue', 'done', 'all']).default('all'),
-  courseId: z.string().trim().optional(),
+  courseId: z.union([z.literal('none'), z.string().uuid()]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().uuid().optional(),
 });
@@ -51,4 +46,3 @@ export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;
-

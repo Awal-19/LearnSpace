@@ -232,7 +232,14 @@ export function createDocumentJobQueue(deps: {
     });
 
     const collected: Array<{
-      type: 'mcq' | 'true_false' | 'short_answer' | 'essay' | 'fill_blank' | 'calculation' | 'flashcard';
+      type:
+        | 'mcq'
+        | 'true_false'
+        | 'short_answer'
+        | 'essay'
+        | 'fill_blank'
+        | 'calculation'
+        | 'flashcard';
       difficulty: 'easy' | 'medium' | 'hard';
       topic: string;
       prompt: string;
@@ -461,4 +468,3 @@ export function createDocumentJobQueue(deps: {
     },
   };
 }
-

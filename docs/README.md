@@ -2,40 +2,41 @@
 
 A simple, fast, calm learning platform for university students: an AI tutor, notes, flashcards and quizzes, a study planner and a focus timer, with real stats computed from real activity.
 
-> **Status:** Phases 0–8 code, tests, CI, and deployment configurations written, **not yet executed** in this environment (see [ROADMAP.md](ROADMAP.md) and [USER_GUIDE.md](USER_GUIDE.md)).
-> Sections marked _(planned)_ describe the target state and become true as phases land.
+> **Status:** Core workspace, academic modules (Courses, Timetable, Exams & AI Revision Plans, Study from Documents, SM-2 Flashcards & Quizzes, GPA Calculator, Progress Analytics, Data Export), and Admin Console implemented and verified with automated test suites (see [ROADMAP.md](ROADMAP.md) and [USER_GUIDE.md](USER_GUIDE.md)).
 
 ## Documentation index
 
-| Doc | Purpose |
-|---|---|
-| [SRS.md](SRS.md) | Problem, scope, requirements, user stories + acceptance criteria |
+| Doc                                | Purpose                                                              |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| [USER_GUIDE.md](USER_GUIDE.md)     | End-user walkthrough for all student features                        |
+| [ADMIN_GUIDE.md](ADMIN_GUIDE.md)   | Admin console permissions, moderation, and analytics guide           |
+| [SRS.md](SRS.md)                   | Problem, scope, requirements, user stories + acceptance criteria     |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System diagram, components, auth flow, AI chat flow, stack decisions |
-| [DATABASE.md](DATABASE.md) | ER diagram, tables, indexes |
-| [API.md](API.md) | Every REST endpoint, error codes |
-| [SECURITY.md](SECURITY.md) | Threat model, auth strategy, data protection |
-| [UI_UX.md](UI_UX.md) | Sitemap, flows, wireframes, design tokens |
-| [TEST_PLAN.md](TEST_PLAN.md) | Test cases per feature, how to run |
-| [ROADMAP.md](ROADMAP.md) | Phases with checkboxes |
+| [DATABASE.md](DATABASE.md)         | ER diagram, tables, indexes                                          |
+| [API.md](API.md)                   | Every REST endpoint, error codes                                     |
+| [SECURITY.md](SECURITY.md)         | Threat model, auth strategy, data protection                         |
+| [UI_UX.md](UI_UX.md)               | Sitemap, flows, wireframes, design tokens                            |
+| [TEST_PLAN.md](TEST_PLAN.md)       | Test cases per feature, how to run                                   |
+| [ROADMAP.md](ROADMAP.md)           | Phases with checkboxes                                               |
 
 ## Features
 
-**Core:** email/password auth (verification, reset, refresh sessions) and optional Google sign-in · polished split-screen login/sign-up · profile with avatar upload and real stats · AI Study Assistant (streaming chat, saved conversations, quick actions) · dashboard.
+**Core:** email/password auth (OTP verification, reset, refresh sessions) and optional Google sign-in · split-screen login/sign-up · profile with custom avatar studio and real stats · Courses hub linking notes, documents, tasks, focus, flashcards, quizzes, and chats · AI Study Assistant (streaming multimodal chat, saved conversations, quick actions) · Progress Analytics & redesigned Daily Summary dashboard · personal JSON data export.
 
-**Extra (kept simple):** notes by course with search and AI summary · AI flashcards and quizzes with score history · study planner with in-app (and optional email) reminders · Pomodoro timer that logs real study time · dark mode and notification settings.
+**Academic tools:** Study from Documents (Past Questions & Slide Question Generator) · Timetable with clash detection and class reminders · Exams with countdowns and AI Revision Plans synced to Planner · notes by course with FTS and AI summary · study planner with local-timezone reminders · Pomodoro timer · SM-2 spaced-repetition flashcards (CSV import, card images, keyboard/swipe review) & AI quizzes · GPA & CGPA calculator (custom scales, retakes, trend chart, target planner) · Admin Console.
 
 ## Stack (summary; reasoning in [ARCHITECTURE.md](ARCHITECTURE.md#7-technology-decisions))
 
-| Layer | Choice |
-|---|---|
+| Layer     | Choice                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------- |
 | Front end | React 18 + Vite + TypeScript, Tailwind CSS, React Router, TanStack Query, React Hook Form + Zod |
-| Back end | Node 20 + Express + TypeScript, Zod validation, pino logging |
-| Database | PostgreSQL 16 + Prisma (migrations) |
-| Avatars | Cloudinary |
-| Email | Resend |
-| AI | Google Gemini API behind a provider interface (swappable) |
-| Quality | ESLint, Prettier, Vitest, Supertest, Playwright |
-| DevOps | Docker + docker-compose, GitHub Actions, Vercel (client), Render (server + Postgres) |
+| Back end  | Node 20 + Express + TypeScript, Zod validation, pino logging                                    |
+| Database  | PostgreSQL 16 + Prisma (migrations)                                                             |
+| Avatars   | Cloudinary                                                                                      |
+| Email     | Resend                                                                                          |
+| AI        | Google Gemini API behind a provider interface (swappable)                                       |
+| Quality   | ESLint, Prettier, Vitest, Supertest, Playwright                                                 |
+| DevOps    | Docker + docker-compose, GitHub Actions, Vercel (client), Render (server + Postgres)            |
 
 ## Repository layout
 
@@ -59,14 +60,14 @@ learnspace/                      (repository root)
 
 Nothing is faked. These are the external services; each is free-tier capable. Exact variable names are in `server/.env.example`.
 
-| Needed from | Used for | Env var(s) | Needed by phase |
-|---|---|---|---|
-| PostgreSQL (local via Docker) | Data | `DATABASE_URL` | 1 |
-| Resend (resend.com) | Verification/reset/reminder emails | `RESEND_API_KEY`, `EMAIL_FROM` | 2 |
-| Cloudinary | Avatar storage | `CLOUDINARY_URL` | 3 |
-| Google AI Studio (aistudio.google.com) | LLM | `GEMINI_API_KEY` | 4 |
-| Google Cloud OAuth client _(optional)_ | "Continue with Google" | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | 2 |
-| Vercel, Render accounts | Hosting | n/a | 8 |
+| Needed from                            | Used for                           | Env var(s)                                 | Needed by phase |
+| -------------------------------------- | ---------------------------------- | ------------------------------------------ | --------------- |
+| PostgreSQL (local via Docker)          | Data                               | `DATABASE_URL`                             | 1               |
+| Resend (resend.com)                    | Verification/reset/reminder emails | `RESEND_API_KEY`, `EMAIL_FROM`             | 2               |
+| Cloudinary                             | Avatar storage                     | `CLOUDINARY_URL`                           | 3               |
+| Google AI Studio (aistudio.google.com) | LLM                                | `GEMINI_API_KEY`                           | 4               |
+| Google Cloud OAuth client _(optional)_ | "Continue with Google"             | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | 2               |
+| Vercel, Render accounts                | Hosting                            | n/a                                        | 8               |
 
 JWT secrets are generated by you locally (`openssl rand -base64 48`) and never committed.
 
@@ -96,17 +97,17 @@ PowerShell: use `Copy-Item` instead of `cp`. Run `npm run format` once before yo
 
 **Everything in containers instead:** `docker compose up --build` (needs `JWT_SECRET` in root `.env`; migrations run on server start).
 
-| Command | Does |
-|---|---|
-| `npm run dev` | Client + server with hot reload |
-| `npm run lint` / `lint:fix` | ESLint |
-| `npm run format` / `format:check` | Prettier |
-| `npm run typecheck` | `tsc --noEmit` for server and client |
-| `npm test` | Vitest: server unit + integration (no DB needed yet), client component/unit |
-| `npm run test:coverage` | Same, with coverage |
-| `npm run test:e2e` | Playwright smoke tests (`npx playwright install chromium` first; needs the stack running or starts it) |
-| `npm run build` | Production builds |
-| `npm run db:migrate` / `db:deploy` / `db:studio` / `db:reset` | Prisma migrate dev / deploy / Studio / reset |
+| Command                                                       | Does                                                                                                   |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `npm run dev`                                                 | Client + server with hot reload                                                                        |
+| `npm run lint` / `lint:fix`                                   | ESLint                                                                                                 |
+| `npm run format` / `format:check`                             | Prettier                                                                                               |
+| `npm run typecheck`                                           | `tsc --noEmit` for server and client                                                                   |
+| `npm test`                                                    | Vitest: server unit + integration (no DB needed yet), client component/unit                            |
+| `npm run test:coverage`                                       | Same, with coverage                                                                                    |
+| `npm run test:e2e`                                            | Playwright smoke tests (`npx playwright install chromium` first; needs the stack running or starts it) |
+| `npm run build`                                               | Production builds                                                                                      |
+| `npm run db:migrate` / `db:deploy` / `db:studio` / `db:reset` | Prisma migrate dev / deploy / Studio / reset                                                           |
 
 **What you can see after Phase 1**
 
@@ -127,4 +128,3 @@ PowerShell: use `Copy-Item` instead of `cp`. Run `npm run format` once before yo
 - TypeScript everywhere, strict mode.
 - Every endpoint: validated (Zod), authenticated unless listed public, tested.
 - Docs are updated in the same PR as the code they describe.
-

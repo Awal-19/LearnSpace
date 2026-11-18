@@ -1,6 +1,7 @@
 import { Camera, Check, RefreshCw, RotateCcw } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Modal } from '../../design';
+import { useCameraStream } from '../../lib/useCameraStream';
 
 interface CameraCaptureModalProps {
   open: boolean;
@@ -13,22 +14,15 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
   onClose,
   onCapture,
 }: CameraCaptureModalProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const capturedUrlRef = useRef<string | null>(null);
-
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
-  const [error, setError] = useState<string | null>(null);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
 
-  const stopStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }, []);
+  const { videoRef, error, starting, toggleFacingMode, captureBlob } = useCameraStream({
+    active: open && !capturedUrl,
+    initialFacingMode: 'environment',
+    unavailableHint: 'Use "Upload image" instead.',
+  });
 
   const clearCaptured = useCallback(() => {
     if (capturedUrlRef.current) {
@@ -41,87 +35,20 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
 
   useEffect(() => {
     if (!open) {
-      stopStream();
       clearCaptured();
-      return;
     }
+  }, [open, clearCaptured]);
 
-    let cancelled = false;
-    setError(null);
-
-    if (!window.isSecureContext && window.location.hostname !== 'localhost') {
-      setError('Camera access requires HTTPS (or localhost). Open the app over an HTTPS tunnel to use the camera.');
-      return;
+  const handleCapture = async () => {
+    const blob = await captureBlob(0.85);
+    if (!blob) return;
+    if (capturedUrlRef.current) {
+      URL.revokeObjectURL(capturedUrlRef.current);
     }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Your browser does not support camera capture. Use "Upload image" instead.');
-      return;
-    }
-
-    void (async () => {
-      stopStream();
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode }, width: { ideal: 1600 }, height: { ideal: 1200 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        if (cancelled) return;
-        const name = err instanceof DOMException ? err.name : '';
-        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          setError('Camera permission was denied. Allow camera access in your browser settings and try again.');
-        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-          setError('No camera was found on this device. Use "Upload image" instead.');
-        } else {
-          setError('Could not start the camera right now.');
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      stopStream();
-    };
-  }, [open, facingMode, stopStream, clearCaptured]);
-
-  const handleCapture = () => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        if (capturedUrlRef.current) {
-          URL.revokeObjectURL(capturedUrlRef.current);
-        }
-        const url = URL.createObjectURL(blob);
-        capturedUrlRef.current = url;
-        setCapturedBlob(blob);
-        setCapturedUrl(url);
-      },
-      'image/jpeg',
-      0.85,
-    );
-  };
-
-  const handleRetake = () => {
-    clearCaptured();
+    const url = URL.createObjectURL(blob);
+    capturedUrlRef.current = url;
+    setCapturedBlob(blob);
+    setCapturedUrl(url);
   };
 
   const handleUsePhoto = () => {
@@ -151,6 +78,11 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
               muted
               className={capturedUrl ? 'hidden' : 'h-full w-full object-contain'}
             />
+            {starting && !capturedUrl ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs font-medium text-white/80">
+                Starting camera…
+              </div>
+            ) : null}
             {capturedUrl ? (
               <img
                 src={capturedUrl}
@@ -163,12 +95,7 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           {!capturedUrl && !error ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setFacingMode((m) => (m === 'environment' ? 'user' : 'environment'))}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={toggleFacingMode}>
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Switch camera
             </Button>
@@ -182,7 +109,7 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
             </Button>
             {capturedUrl ? (
               <>
-                <Button type="button" variant="secondary" onClick={handleRetake}>
+                <Button type="button" variant="secondary" onClick={clearCaptured}>
                   <RotateCcw className="h-4 w-4" aria-hidden="true" />
                   Retake
                 </Button>
@@ -192,7 +119,11 @@ export const CameraCaptureModal = memo(function CameraCaptureModal({
                 </Button>
               </>
             ) : (
-              <Button type="button" disabled={Boolean(error)} onClick={handleCapture}>
+              <Button
+                type="button"
+                disabled={Boolean(error) || starting}
+                onClick={() => void handleCapture()}
+              >
                 <Camera className="h-4 w-4" aria-hidden="true" />
                 Capture
               </Button>

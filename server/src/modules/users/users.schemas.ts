@@ -53,10 +53,39 @@ export const updateSettingsSchema = z.object({
   focusMinutes: z.number().int().min(1).max(120).optional(),
   shortBreakMinutes: z.number().int().min(1).max(60).optional(),
   longBreakMinutes: z.number().int().min(1).max(90).optional(),
+  classReminderMinutes: z.number().int().min(0).max(1440).optional(),
+  examReminderMinutes: z.number().int().min(0).max(10080).optional(),
 });
 
+const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid hex color');
+
+export const avatarConfigSchema = z.object({
+  faceShape: z.enum(['oval', 'round', 'square', 'heart']),
+  skinTone: hexColorSchema,
+  hairStyle: z.enum([
+    'short',
+    'curly',
+    'wavy',
+    'long',
+    'bob',
+    'bun',
+    'fade',
+    'buzz',
+    'hijabi',
+    'none',
+  ]),
+  hairColor: hexColorSchema,
+  eyes: z.enum(['calm', 'happy', 'focused', 'wink', 'glasses', 'lashes']),
+  eyebrows: z.enum(['natural', 'arched', 'thick', 'soft']),
+  nose: z.enum(['classic', 'button', 'defined', 'soft']),
+  mouth: z.enum(['smile', 'grin', 'serene', 'smirk', 'open']),
+  clothing: z.enum(['crewneck', 'hoodie', 'collar', 'blazer', 'turtleneck']),
+  clothingColor: hexColorSchema,
+  backgroundColor: hexColorSchema,
+});
+
+export type AvatarConfig = z.infer<typeof avatarConfigSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
-

@@ -22,4 +22,3 @@ describe('password policy and hashing (T-AUTH-01, T-AUTH-03)', () => {
     expect(passwordSchema.safeParse('Passw0rdOK').success).toBe(true);
   });
 });
-

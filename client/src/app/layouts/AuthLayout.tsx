@@ -33,12 +33,26 @@ export function AuthLayout() {
           preserveAspectRatio="xMidYMid slice"
         >
           <defs>
-            <linearGradient id="lsGlassRibbonA" x1="520" y1="0" x2="1440" y2="900" gradientUnits="userSpaceOnUse">
+            <linearGradient
+              id="lsGlassRibbonA"
+              x1="520"
+              y1="0"
+              x2="1440"
+              y2="900"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
               <stop offset="50%" stopColor="#DBEAFE" stopOpacity="0.65" />
               <stop offset="100%" stopColor="#93C5FD" stopOpacity="0.35" />
             </linearGradient>
-            <linearGradient id="lsGlassRibbonB" x1="780" y1="900" x2="1440" y2="120" gradientUnits="userSpaceOnUse">
+            <linearGradient
+              id="lsGlassRibbonB"
+              x1="780"
+              y1="900"
+              x2="1440"
+              y2="120"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop offset="0%" stopColor="#BFDBFE" stopOpacity="0.6" />
               <stop offset="55%" stopColor="#EFF6FF" stopOpacity="0.7" />
               <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.4" />
@@ -104,15 +118,17 @@ export function AuthLayout() {
           <div className="space-y-6">
             {/* Eyebrow badge */}
             <div className="inline-flex items-center gap-2 rounded-full border border-primary-200/80 bg-primary-50/90 px-3.5 py-1.5 text-xs font-medium text-primary-700 shadow-sm backdrop-blur-sm dark:border-primary-500/25 dark:bg-primary-500/15 dark:text-primary-300">
-              <Sparkles className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" aria-hidden="true" />
+              <Sparkles
+                className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400"
+                aria-hidden="true"
+              />
               <span>Smarter Learning. Brighter Future.</span>
             </div>
 
             <div className="space-y-4">
               <h2 className="font-display text-3xl font-bold leading-[1.12] tracking-[-0.03em] text-fg sm:text-[42px] xl:text-[46px]">
                 Your learning
-                <br className="hidden sm:block" />{' '}
-                journey,{' '}
+                <br className="hidden sm:block" /> journey,{' '}
                 <span className="bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
                   reimagined.
                 </span>
@@ -149,11 +165,24 @@ export function AuthLayout() {
         </div>
 
         {/* Bottom Caption */}
-        <p className="mt-8 text-xs font-medium text-muted lg:mt-10">
-          Built for ambitious students.
-        </p>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-muted lg:mt-10">
+          <p>Built for ambitious students.</p>
+          <nav aria-label="Legal documents" className="flex items-center gap-4">
+            <Link
+              to="/terms-and-conditions"
+              className="transition-colors hover:text-primary-600 hover:underline dark:hover:text-primary-400"
+            >
+              Terms and Conditions
+            </Link>
+            <Link
+              to="/privacy-policy"
+              className="transition-colors hover:text-primary-600 hover:underline dark:hover:text-primary-400"
+            >
+              Privacy Policy
+            </Link>
+          </nav>
+        </div>
       </div>
     </div>
   );
 }
-

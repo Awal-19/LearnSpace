@@ -114,7 +114,10 @@ function createAdminMockPrisma() {
     createdAt: Date;
   }> = [];
 
-  const filterDate = <T extends { createdAt: Date }>(rows: T[], where?: { createdAt?: { gte?: Date; lte?: Date } }) => {
+  const filterDate = <T extends { createdAt: Date }>(
+    rows: T[],
+    where?: { createdAt?: { gte?: Date; lte?: Date } },
+  ) => {
     if (!where?.createdAt) return rows;
     return rows.filter((r) => {
       if (where.createdAt?.gte && r.createdAt < where.createdAt.gte) return false;
@@ -134,7 +137,13 @@ function createAdminMockPrisma() {
         }
         return null;
       },
-      findMany: async ({ where, take }: { where?: { id?: { in?: string[] }; createdAt?: { gte?: Date; lte?: Date } }; take?: number } = {}) => {
+      findMany: async ({
+        where,
+        take,
+      }: {
+        where?: { id?: { in?: string[] }; createdAt?: { gte?: Date; lte?: Date } };
+        take?: number;
+      } = {}) => {
         let rows = [...users];
         if (where?.id?.in) rows = rows.filter((u) => where.id!.in!.includes(u.id));
         if (where?.createdAt) rows = filterDate(rows, where);
@@ -170,7 +179,13 @@ function createAdminMockPrisma() {
         Object.assign(user, data, { updatedAt: new Date() });
         return user;
       },
-      updateMany: async ({ where, data }: { where: { id?: { in?: string[] } }; data: Partial<UserRow> }) => {
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id?: { in?: string[] } };
+        data: Partial<UserRow>;
+      }) => {
         const ids = where.id?.in ?? [];
         let count = 0;
         for (const u of users) {
@@ -181,9 +196,25 @@ function createAdminMockPrisma() {
         }
         return { count };
       },
+      groupBy: async ({ by }: { by: Array<'programme' | 'level'> }) => {
+        const key = by[0] ?? 'programme';
+        const counts = new Map<string | null, number>();
+        for (const u of users) {
+          const val = u[key] ?? null;
+          counts.set(val, (counts.get(val) ?? 0) + 1);
+        }
+        return Array.from(counts.entries()).map(([val, count]) => ({
+          [key]: val,
+          _count: { _all: count },
+        }));
+      },
     },
     refreshToken: {
-      create: async ({ data }: { data: Omit<RefreshRow, 'id' | 'revokedAt' | 'replacedById' | 'createdAt'> }) => {
+      create: async ({
+        data,
+      }: {
+        data: Omit<RefreshRow, 'id' | 'revokedAt' | 'replacedById' | 'createdAt'>;
+      }) => {
         const row: RefreshRow = {
           id: randomUUID(),
           ...data,
@@ -196,7 +227,13 @@ function createAdminMockPrisma() {
       },
       findUnique: async ({ where }: { where: { tokenHash: string } }) =>
         refreshTokens.find((t) => t.tokenHash === where.tokenHash) ?? null,
-      updateMany: async ({ where, data }: { where: { userId?: string; revokedAt?: null }; data: { revokedAt: Date } }) => {
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { userId?: string; revokedAt?: null };
+        data: { revokedAt: Date };
+      }) => {
         let count = 0;
         for (const t of refreshTokens) {
           if (where.userId && t.userId !== where.userId) continue;
@@ -251,7 +288,9 @@ function createAdminMockPrisma() {
     },
     document: {
       count: async ({ where }: { where?: { status?: string } } = {}) =>
-        where?.status ? documents.filter((d) => d.status === where.status).length : documents.length,
+        where?.status
+          ? documents.filter((d) => d.status === where.status).length
+          : documents.length,
       findMany: async ({ where }: { where?: { createdAt?: { gte?: Date; lte?: Date } } } = {}) =>
         filterDate(documents, where),
     },
@@ -261,9 +300,23 @@ function createAdminMockPrisma() {
     },
     course: {
       findMany: async () => [],
+      count: async () => 3,
     },
+    quiz: { count: async () => 4 },
+    deck: { count: async () => 5 },
+    card: { count: async () => 40 },
+    task: { count: async () => 10 },
+    studySession: { aggregate: async () => ({ _sum: { durationSeconds: 7200 } }) },
+    timetableEntry: { count: async () => 6 },
+    exam: { count: async () => 2 },
+    revisionPlan: { count: async () => 1 },
+    reviewLog: { count: async () => 25 },
+    documentPracticeAttempt: { count: async () => 7 },
+    gradingScale: { count: async () => 2 },
+    gradeRecord: { count: async () => 12 },
     quizAttempt: {
       count: async () => quizAttempts.length,
+      findMany: async () => [],
     },
     errorLog: {
       findMany: async () => errorLogs,
@@ -417,6 +470,8 @@ describe('Admin Dashboard integration', () => {
       sendOtpEmail: vi.fn().mockResolvedValue(undefined),
       sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
       sendTaskReminderEmail: vi.fn().mockResolvedValue(undefined),
+      sendClassReminderEmail: vi.fn().mockResolvedValue(undefined),
+      sendExamReminderEmail: vi.fn().mockResolvedValue(undefined),
     };
     const storage = {
       isConfigured: () => false,
@@ -511,7 +566,12 @@ describe('Admin Dashboard integration', () => {
       { id: randomUUID(), userId: student.id, course: 'CSCD 201', createdAt: new Date() },
     );
     prisma._seed.quizAttempts.push({ id: randomUUID(), userId: student.id, createdAt: new Date() });
-    prisma._seed.documents.push({ id: randomUUID(), userId: student.id, status: 'ready', createdAt: new Date() });
+    prisma._seed.documents.push({
+      id: randomUUID(),
+      userId: student.id,
+      status: 'ready',
+      createdAt: new Date(),
+    });
 
     const res = await request(app)
       .get('/api/admin/overview?range=30d')
@@ -541,7 +601,9 @@ describe('Admin Dashboard integration', () => {
 
     expect(auditCsvRes.status).toBe(200);
     expect(auditCsvRes.headers['content-type']).toContain('text/csv');
-    expect(auditCsvRes.text).toContain('id,actorEmail,action,targetType,targetId,reason,ip,createdAt');
+    expect(auditCsvRes.text).toContain(
+      'id,actorEmail,action,targetType,targetId,reason,ip,createdAt',
+    );
     expect(auditCsvRes.text).toContain('user.force_logout');
 
     const bulkCsvRes = await request(app)
@@ -589,7 +651,9 @@ describe('Admin Dashboard integration', () => {
     expect(okRes.status).toBe(200);
     expect(okRes.body.conversation.messages).toHaveLength(1);
     expect(okRes.body.conversation.messages[0].content).toBe('Explain merge sort complexity.');
-    expect(prisma._seed.auditLogs.some((l) => l.action === 'moderation.inspect_conversation')).toBe(true);
+    expect(prisma._seed.auditLogs.some((l) => l.action === 'moderation.inspect_conversation')).toBe(
+      true,
+    );
   });
 
   it('blocks regular admins from /api/admin/super/* and from suspending another admin', async () => {
@@ -612,7 +676,11 @@ describe('Admin Dashboard integration', () => {
 
   it('prevents demoting the last remaining super_admin and enforces step-up on platform settings', async () => {
     const passwordHash = await hashPassword('SuperPass123!');
-    const superAdmin = makeUser({ role: 'super_admin', email: 'onlysuper@ug.edu.gh', passwordHash });
+    const superAdmin = makeUser({
+      role: 'super_admin',
+      email: 'onlysuper@ug.edu.gh',
+      passwordHash,
+    });
     prisma._seed.users.push(superAdmin);
 
     // Self-demotion blocked
@@ -636,5 +704,38 @@ describe('Admin Dashboard integration', () => {
       .send({ minPasswordLength: 10, reason: 'Enforce 10-char passwords' });
     expect(okStepUpRes.status).toBe(200);
     expect(prisma._seed.auditLogs.some((l) => l.action === 'super.settings_updated')).toBe(true);
+  });
+
+  it('returns anonymized aggregate learning metrics across all academic features without exposing PII', async () => {
+    const admin = makeUser({ role: 'admin', email: 'stats-admin@ug.edu.gh' });
+    const student = makeUser({
+      role: 'student',
+      email: 'student-secret@ug.edu.gh',
+      programme: 'BSc CS',
+      level: 'Year 3',
+    });
+    prisma._seed.users.push(admin, student);
+
+    const res = await request(app)
+      .get('/api/admin/learning')
+      .set('Authorization', authHeader(admin));
+
+    expect(res.status).toBe(200);
+    expect(res.body.totals).toMatchObject({
+      totalQuizzes: 4,
+      totalDecks: 5,
+      totalCards: 40,
+      totalCourses: 3,
+      totalTimetableEntries: 6,
+      totalExams: 2,
+      totalRevisionPlans: 1,
+      totalFlashcardReviews: 25,
+      totalPracticeAttempts: 7,
+      totalGradingScales: 2,
+      totalGradeRecords: 12,
+      totalStudyHours: 2,
+    });
+    expect(JSON.stringify(res.body)).not.toContain('student-secret@ug.edu.gh');
+    expect(JSON.stringify(res.body)).not.toContain('passwordHash');
   });
 });

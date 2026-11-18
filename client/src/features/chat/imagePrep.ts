@@ -5,7 +5,11 @@ let workerInstance: Worker | null = null;
 let workerJobId = 0;
 
 function getImagePrepWorker(): Worker | null {
-  if (typeof window === 'undefined' || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+  if (
+    typeof window === 'undefined' ||
+    typeof Worker === 'undefined' ||
+    typeof OffscreenCanvas === 'undefined'
+  ) {
     return null;
   }
   if (!workerInstance) {

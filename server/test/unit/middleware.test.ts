@@ -97,4 +97,3 @@ describe('requestId middleware', () => {
     expect(res.headers['x-request-id']).not.toBe('bad id with spaces!');
   });
 });
-

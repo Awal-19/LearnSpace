@@ -2,12 +2,30 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AuthContext, type AuthContextValue } from '../../app/AuthContext';
+import { ThemeProvider } from '../../app/ThemeProvider';
 import { ToastProvider } from '../../design';
 import { request, setAccessToken, setRefreshHandler } from '../../lib/apiClient';
+import { PrivacyPolicyPage } from '../legal/PrivacyPolicyPage';
+import { TermsPage } from '../legal/TermsPage';
 import { LoginPage } from './LoginPage';
 import { SignupPage } from './SignupPage';
+
+beforeAll(() => {
+  if (typeof HTMLDialogElement !== 'undefined') {
+    if (!HTMLDialogElement.prototype.showModal) {
+      HTMLDialogElement.prototype.showModal = function showModal() {
+        this.setAttribute('open', '');
+      };
+    }
+    if (!HTMLDialogElement.prototype.close) {
+      HTMLDialogElement.prototype.close = function close() {
+        this.removeAttribute('open');
+      };
+    }
+  }
+});
 
 function renderWithAuth(ui: React.ReactNode, setSession = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -28,6 +46,10 @@ function renderWithAuth(ui: React.ReactNode, setSession = vi.fn()) {
           <MemoryRouter initialEntries={['/login']}>
             <Routes>
               <Route path="/login" element={ui} />
+              <Route path="/signup" element={ui} />
+              <Route path="/verify-email" element={<div>Verify email screen</div>} />
+              <Route path="/terms-and-conditions" element={<TermsPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route path="/" element={<div>Dashboard home</div>} />
             </Routes>
           </MemoryRouter>
@@ -133,6 +155,157 @@ describe('SignupPage', () => {
       }
     });
   });
+
+  it('starts unchecked and blocks registration until Terms and Conditions are accepted', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/providers')) {
+        return new Response(JSON.stringify({ google: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ requiresVerification: true, email: 'ama@uni.edu' }), {
+        status: 201,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ToastProvider>
+          <AuthContext.Provider
+            value={{
+              status: 'unauthenticated',
+              user: null,
+              setSession: vi.fn(),
+              updateUser: vi.fn(),
+              clearSession: vi.fn(),
+              logout: vi.fn(async () => undefined),
+              markEmailVerified: vi.fn(),
+            }}
+          >
+            <MemoryRouter initialEntries={['/signup']}>
+              <Routes>
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/verify-email" element={<div>Verify email screen</div>} />
+              </Routes>
+            </MemoryRouter>
+          </AuthContext.Provider>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /I agree to the Terms and Conditions and Privacy Policy/i,
+    });
+    expect(checkbox).not.toBeChecked();
+
+    await userEvent.type(screen.getByLabelText('Full name'), 'Ama Mensah');
+    await userEvent.type(screen.getByLabelText('Email'), 'ama@uni.edu');
+    await userEvent.type(screen.getByLabelText('Password'), 'Passw0rdOK');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(
+      await screen.findByText(
+        'Please accept the Terms and Conditions and Privacy Policy to continue.',
+      ),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/auth/signup'),
+      expect.anything(),
+    );
+
+    // Clicking Terms and Conditions / Privacy Policy opens modal without checking the box or losing form values
+    await userEvent.click(screen.getByRole('link', { name: 'Terms and Conditions' }));
+    expect(await screen.findByText('14. Contact Information')).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await userEvent.click(screen.getByRole('link', { name: 'Privacy Policy' }));
+    expect(
+      await screen.findByText('6. Infrastructure & Third-Party Service Providers'),
+    ).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    // Check consent and submit successfully
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(await screen.findByText('Verify email screen')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/signup'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"acceptTerms":true'),
+      }),
+    );
+
+    // Remounting / refreshing keeps the consent checkbox unchecked
+    unmount();
+    renderWithAuth(<SignupPage />);
+    expect(
+      screen.getByRole('checkbox', {
+        name: /I agree to the Terms and Conditions and Privacy Policy/i,
+      }),
+    ).not.toBeChecked();
+  });
+
+  it('renders dedicated Terms and Conditions and Privacy Policy pages with back-to-registration links', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/terms-and-conditions']}>
+            <Routes>
+              <Route path="/terms-and-conditions" element={<TermsPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Terms and Conditions' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Effective Date: November 18, 2026/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: '6. AI Assistant and AI-Generated Content' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: '14. Contact Information' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Sign up/i })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
+
+    unmount();
+
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/privacy-policy']}>
+            <Routes>
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Privacy Policy' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: '7. Security Practices Implemented' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Sign up/i })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
+  });
 });
 
 describe('apiClient silent refresh (T-AUTH-16)', () => {
@@ -165,4 +338,3 @@ describe('apiClient silent refresh (T-AUTH-16)', () => {
     expect(calls).toBe(2);
   });
 });
-

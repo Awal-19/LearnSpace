@@ -19,6 +19,11 @@ import {
 import { hashPassword, verifyPassword } from '../../lib/password';
 import { buildPdfBuffer } from '../documents/documents.export';
 import { computeStreaks, localDateString } from '../users/stats';
+import {
+  collectUserStorageAssets,
+  deleteCollectedUserStorageAssets,
+  scrubDeletedUserLoginHistory,
+} from '../users/userCleanup';
 import { getAppSettings, invalidateAppSettingsCache, recordAuditLog } from './admin.logging';
 import type {
   acceptAdminInviteSchema,
@@ -457,8 +462,14 @@ export function createAdminService(deps: AdminServiceDeps) {
         prisma.user.findUnique({ where: { id: targetUserId } }),
       ]);
       if (!target) throw new AppError('NOT_FOUND', 'User not found');
-      if ((target.role === 'admin' || target.role === 'super_admin') && actor?.role !== 'super_admin') {
-        throw new AppError('FORBIDDEN', 'Only a super_admin can suspend or reactivate admin accounts');
+      if (
+        (target.role === 'admin' || target.role === 'super_admin') &&
+        actor?.role !== 'super_admin'
+      ) {
+        throw new AppError(
+          'FORBIDDEN',
+          'Only a super_admin can suspend or reactivate admin accounts',
+        );
       }
 
       const updated = await prisma.user.update({
@@ -466,7 +477,7 @@ export function createAdminService(deps: AdminServiceDeps) {
         data: {
           status,
           suspendedAt: status === 'suspended' ? new Date() : null,
-          suspendedReason: status === 'suspended' ? (reason?.trim() || 'Suspended by admin') : null,
+          suspendedReason: status === 'suspended' ? reason?.trim() || 'Suspended by admin' : null,
         },
         select: { id: true, email: true, status: true, suspendedAt: true, suspendedReason: true },
       });
@@ -637,7 +648,10 @@ export function createAdminService(deps: AdminServiceDeps) {
         }),
       ]);
       if (!target) throw new AppError('NOT_FOUND', 'User not found');
-      if ((target.role === 'admin' || target.role === 'super_admin') && actor?.role !== 'super_admin') {
+      if (
+        (target.role === 'admin' || target.role === 'super_admin') &&
+        actor?.role !== 'super_admin'
+      ) {
         throw new AppError('FORBIDDEN', 'Only a super_admin can delete admin accounts');
       }
       if (target.role === 'super_admin') {
@@ -647,10 +661,10 @@ export function createAdminService(deps: AdminServiceDeps) {
         }
       }
 
-      if (target.avatarPublicId) {
-        await storage.deleteAvatar(target.avatarPublicId).catch(() => undefined);
-      }
+      const assets = await collectUserStorageAssets(prisma, targetUserId, target.avatarPublicId);
       await prisma.user.delete({ where: { id: targetUserId } });
+      await scrubDeletedUserLoginHistory(prisma, logger, targetUserId, target.email);
+      await deleteCollectedUserStorageAssets(storage, logger, targetUserId, assets);
       await recordAuditLog(prisma, {
         actorId,
         action: 'user.delete',
@@ -707,7 +721,8 @@ export function createAdminService(deps: AdminServiceDeps) {
           lastActiveAt: true,
         },
       });
-      const header = 'id,email,name,role,status,emailVerified,programme,level,createdAt,lastActiveAt';
+      const header =
+        'id,email,name,role,status,emailVerified,programme,level,createdAt,lastActiveAt';
       const lines = rows.map((r) =>
         [
           r.id,
@@ -741,46 +756,54 @@ export function createAdminService(deps: AdminServiceDeps) {
       startToday.setUTCHours(0, 0, 0, 0);
       const startMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-      const [settings, aggRange, aggToday, aggMonth, errorCount, byFeature, topUsersRaw, eventsInRange] =
-        await Promise.all([
-          getAppSettings(prisma),
-          prisma.usageEvent.aggregate({
-            where: { createdAt: { gte: from, lte: to } },
-            _count: { _all: true },
-            _sum: { tokensIn: true, tokensOut: true, costUsd: true },
-            _avg: { durationMs: true },
-          }),
-          prisma.usageEvent.aggregate({
-            where: { createdAt: { gte: startToday } },
-            _sum: { costUsd: true, tokensIn: true, tokensOut: true },
-            _count: { _all: true },
-          }),
-          prisma.usageEvent.aggregate({
-            where: { createdAt: { gte: startMonth } },
-            _sum: { costUsd: true },
-          }),
-          prisma.usageEvent.count({
-            where: { createdAt: { gte: from, lte: to }, status: 'error' },
-          }),
-          prisma.usageEvent.groupBy({
-            by: ['feature'],
-            where: { createdAt: { gte: from, lte: to } },
-            _count: { _all: true },
-            _sum: { tokensIn: true, tokensOut: true, costUsd: true },
-          }),
-          prisma.usageEvent.groupBy({
-            by: ['userId'],
-            where: { createdAt: { gte: from, lte: to }, userId: { not: null } },
-            _count: { _all: true },
-            _sum: { tokensIn: true, tokensOut: true, costUsd: true },
-            orderBy: { _sum: { costUsd: 'desc' } },
-            take: 10,
-          }),
-          prisma.usageEvent.findMany({
-            where: { createdAt: { gte: from, lte: to } },
-            select: { createdAt: true, costUsd: true, tokensIn: true, tokensOut: true },
-          }),
-        ]);
+      const [
+        settings,
+        aggRange,
+        aggToday,
+        aggMonth,
+        errorCount,
+        byFeature,
+        topUsersRaw,
+        eventsInRange,
+      ] = await Promise.all([
+        getAppSettings(prisma),
+        prisma.usageEvent.aggregate({
+          where: { createdAt: { gte: from, lte: to } },
+          _count: { _all: true },
+          _sum: { tokensIn: true, tokensOut: true, costUsd: true },
+          _avg: { durationMs: true },
+        }),
+        prisma.usageEvent.aggregate({
+          where: { createdAt: { gte: startToday } },
+          _sum: { costUsd: true, tokensIn: true, tokensOut: true },
+          _count: { _all: true },
+        }),
+        prisma.usageEvent.aggregate({
+          where: { createdAt: { gte: startMonth } },
+          _sum: { costUsd: true },
+        }),
+        prisma.usageEvent.count({
+          where: { createdAt: { gte: from, lte: to }, status: 'error' },
+        }),
+        prisma.usageEvent.groupBy({
+          by: ['feature'],
+          where: { createdAt: { gte: from, lte: to } },
+          _count: { _all: true },
+          _sum: { tokensIn: true, tokensOut: true, costUsd: true },
+        }),
+        prisma.usageEvent.groupBy({
+          by: ['userId'],
+          where: { createdAt: { gte: from, lte: to }, userId: { not: null } },
+          _count: { _all: true },
+          _sum: { tokensIn: true, tokensOut: true, costUsd: true },
+          orderBy: { _sum: { costUsd: 'desc' } },
+          take: 10,
+        }),
+        prisma.usageEvent.findMany({
+          where: { createdAt: { gte: from, lte: to } },
+          select: { createdAt: true, costUsd: true, tokensIn: true, tokensOut: true },
+        }),
+      ]);
 
       const topUserIds = topUsersRaw.map((t) => t.userId).filter((id): id is string => Boolean(id));
       const userRows =
@@ -792,7 +815,10 @@ export function createAdminService(deps: AdminServiceDeps) {
           : [];
       const userMap = new Map(userRows.map((u) => [u.id, u]));
 
-      const dailyMap = new Map<string, { date: string; requests: number; costUsd: number; tokens: number }>();
+      const dailyMap = new Map<
+        string,
+        { date: string; requests: number; costUsd: number; tokens: number }
+      >();
       for (const ev of eventsInRange) {
         const key = dayKey(ev.createdAt);
         const cur = dailyMap.get(key) ?? { date: key, requests: 0, costUsd: 0, tokens: 0 };
@@ -813,7 +839,8 @@ export function createAdminService(deps: AdminServiceDeps) {
           costTodayUsd,
           costMonthUsd: Number((aggMonth._sum.costUsd ?? 0).toFixed(4)),
           avgDurationMs: Math.round(aggRange._avg.durationMs ?? 0),
-          errorRatePct: totalRequests > 0 ? Number(((errorCount / totalRequests) * 100).toFixed(2)) : 0,
+          errorRatePct:
+            totalRequests > 0 ? Number(((errorCount / totalRequests) * 100).toFixed(2)) : 0,
           alertTriggered: costTodayUsd >= settings.dailyCostAlertUsd,
         },
         limits: {
@@ -1114,7 +1141,9 @@ export function createAdminService(deps: AdminServiceDeps) {
             userId: flag.targetUserId,
             type: 'system',
             title: 'Account moderation warning',
-            body: input.reviewNote || 'Your recent activity was flagged for violating LearnSpace guidelines.',
+            body:
+              input.reviewNote ||
+              'Your recent activity was flagged for violating LearnSpace guidelines.',
           },
         });
       } else if (input.status === 'suspended' && flag.targetUserId !== actorId) {
@@ -1157,6 +1186,15 @@ export function createAdminService(deps: AdminServiceDeps) {
         topCoursesRaw,
         byProgramme,
         byLevel,
+        totalCourses,
+        totalTimetableEntries,
+        totalExams,
+        totalRevisionPlans,
+        totalFlashcardReviews,
+        totalDocuments,
+        totalPracticeAttempts,
+        totalGradingScales,
+        totalGradeRecords,
       ] = await Promise.all([
         prisma.quiz.count(),
         prisma.quizAttempt.count(),
@@ -1183,6 +1221,17 @@ export function createAdminService(deps: AdminServiceDeps) {
           by: ['level'],
           _count: { _all: true },
         }),
+        prisma.course?.count ? prisma.course.count() : Promise.resolve(0),
+        prisma.timetableEntry?.count ? prisma.timetableEntry.count() : Promise.resolve(0),
+        prisma.exam?.count ? prisma.exam.count() : Promise.resolve(0),
+        prisma.revisionPlan?.count ? prisma.revisionPlan.count() : Promise.resolve(0),
+        prisma.reviewLog?.count ? prisma.reviewLog.count() : Promise.resolve(0),
+        prisma.document?.count ? prisma.document.count() : Promise.resolve(0),
+        prisma.documentPracticeAttempt?.count
+          ? prisma.documentPracticeAttempt.count()
+          : Promise.resolve(0),
+        prisma.gradingScale?.count ? prisma.gradingScale.count() : Promise.resolve(0),
+        prisma.gradeRecord?.count ? prisma.gradeRecord.count() : Promise.resolve(0),
       ]);
 
       const avgQuizScorePct =
@@ -1214,6 +1263,15 @@ export function createAdminService(deps: AdminServiceDeps) {
           totalStudyHours: Number(
             (((studySessionsSum._sum.durationSeconds ?? 0) as number) / 3600).toFixed(1),
           ),
+          totalCourses,
+          totalTimetableEntries,
+          totalExams,
+          totalRevisionPlans,
+          totalFlashcardReviews,
+          totalDocuments,
+          totalPracticeAttempts,
+          totalGradingScales,
+          totalGradeRecords,
         },
         popularCourses: topCoursesRaw
           .map((c) => ({
@@ -1456,12 +1514,7 @@ export function createAdminService(deps: AdminServiceDeps) {
       return updated;
     },
 
-    async replyFeedback(
-      actorId: string,
-      id: string,
-      message: string,
-      ip: string | undefined,
-    ) {
+    async replyFeedback(actorId: string, id: string, message: string, ip: string | undefined) {
       const report = await prisma.feedbackReport.findUnique({
         where: { id },
         include: { user: { select: { id: true, email: true, name: true } } },
@@ -1695,7 +1748,8 @@ export function createAdminService(deps: AdminServiceDeps) {
             orderBy: { createdAt: 'desc' },
             take: 10_000,
           });
-          const header = 'id,userId,feature,model,tokensIn,tokensOut,costUsd,durationMs,status,createdAt';
+          const header =
+            'id,userId,feature,model,tokensIn,tokensOut,costUsd,durationMs,status,createdAt';
           const lines = rows.map((r) =>
             [
               r.id,
@@ -2034,7 +2088,10 @@ export function createAdminService(deps: AdminServiceDeps) {
       });
     },
 
-    async acceptAdminInvite(input: z.infer<typeof acceptAdminInviteSchema>, ip: string | undefined) {
+    async acceptAdminInvite(
+      input: z.infer<typeof acceptAdminInviteSchema>,
+      ip: string | undefined,
+    ) {
       const now = new Date();
       const invite = await prisma.adminInvite.findUnique({
         where: { tokenHash: hashToken(input.token) },
@@ -2179,7 +2236,10 @@ export function createAdminService(deps: AdminServiceDeps) {
             ? { allowedFileTypesJson: allowedFileTypesJson as unknown as Prisma.InputJsonValue }
             : {}),
           ...(maintenanceAllowlistJson !== undefined
-            ? { maintenanceAllowlistJson: maintenanceAllowlistJson as unknown as Prisma.InputJsonValue }
+            ? {
+                maintenanceAllowlistJson:
+                  maintenanceAllowlistJson as unknown as Prisma.InputJsonValue,
+              }
             : {}),
           currentVersion: nextVersion,
           updatedById: actorId,
@@ -2231,27 +2291,75 @@ export function createAdminService(deps: AdminServiceDeps) {
         where: { id: 'global' },
         data: {
           appName: typeof snap.appName === 'string' ? snap.appName : before.appName,
-          supportEmail: typeof snap.supportEmail === 'string' ? snap.supportEmail : before.supportEmail,
-          maintenanceMode: typeof snap.maintenanceMode === 'boolean' ? snap.maintenanceMode : before.maintenanceMode,
-          maintenanceMessage: typeof snap.maintenanceMessage === 'string' ? snap.maintenanceMessage : before.maintenanceMessage,
-          featureChat: typeof snap.featureChat === 'boolean' ? snap.featureChat : before.featureChat,
-          featureUploads: typeof snap.featureUploads === 'boolean' ? snap.featureUploads : before.featureUploads,
-          featureDocuments: typeof snap.featureDocuments === 'boolean' ? snap.featureDocuments : before.featureDocuments,
-          featureSignups: typeof snap.featureSignups === 'boolean' ? snap.featureSignups : before.featureSignups,
-          featureGoogleLogin: typeof snap.featureGoogleLogin === 'boolean' ? snap.featureGoogleLogin : before.featureGoogleLogin,
-          dailyMessageLimit: typeof snap.dailyMessageLimit === 'number' ? snap.dailyMessageLimit : before.dailyMessageLimit,
-          maxUploadBytes: typeof snap.maxUploadBytes === 'number' ? snap.maxUploadBytes : before.maxUploadBytes,
-          dailyUploadQuota: typeof snap.dailyUploadQuota === 'number' ? snap.dailyUploadQuota : before.dailyUploadQuota,
-          dailyCostAlertUsd: typeof snap.dailyCostAlertUsd === 'number' ? snap.dailyCostAlertUsd : before.dailyCostAlertUsd,
-          monthlyCostCapUsd: typeof snap.monthlyCostCapUsd === 'number' ? snap.monthlyCostCapUsd : before.monthlyCostCapUsd,
-          sessionLifetimeMinutes: typeof snap.sessionLifetimeMinutes === 'number' ? snap.sessionLifetimeMinutes : before.sessionLifetimeMinutes,
-          minPasswordLength: typeof snap.minPasswordLength === 'number' ? snap.minPasswordLength : before.minPasswordLength,
-          requireEmailVerification: typeof snap.requireEmailVerification === 'boolean' ? snap.requireEmailVerification : before.requireEmailVerification,
-          requireAdminOtp: typeof snap.requireAdminOtp === 'boolean' ? snap.requireAdminOtp : before.requireAdminOtp,
-          maxLoginAttempts: typeof snap.maxLoginAttempts === 'number' ? snap.maxLoginAttempts : before.maxLoginAttempts,
-          lockoutMinutes: typeof snap.lockoutMinutes === 'number' ? snap.lockoutMinutes : before.lockoutMinutes,
+          supportEmail:
+            typeof snap.supportEmail === 'string' ? snap.supportEmail : before.supportEmail,
+          maintenanceMode:
+            typeof snap.maintenanceMode === 'boolean'
+              ? snap.maintenanceMode
+              : before.maintenanceMode,
+          maintenanceMessage:
+            typeof snap.maintenanceMessage === 'string'
+              ? snap.maintenanceMessage
+              : before.maintenanceMessage,
+          featureChat:
+            typeof snap.featureChat === 'boolean' ? snap.featureChat : before.featureChat,
+          featureUploads:
+            typeof snap.featureUploads === 'boolean' ? snap.featureUploads : before.featureUploads,
+          featureDocuments:
+            typeof snap.featureDocuments === 'boolean'
+              ? snap.featureDocuments
+              : before.featureDocuments,
+          featureSignups:
+            typeof snap.featureSignups === 'boolean' ? snap.featureSignups : before.featureSignups,
+          featureGoogleLogin:
+            typeof snap.featureGoogleLogin === 'boolean'
+              ? snap.featureGoogleLogin
+              : before.featureGoogleLogin,
+          dailyMessageLimit:
+            typeof snap.dailyMessageLimit === 'number'
+              ? snap.dailyMessageLimit
+              : before.dailyMessageLimit,
+          maxUploadBytes:
+            typeof snap.maxUploadBytes === 'number' ? snap.maxUploadBytes : before.maxUploadBytes,
+          dailyUploadQuota:
+            typeof snap.dailyUploadQuota === 'number'
+              ? snap.dailyUploadQuota
+              : before.dailyUploadQuota,
+          dailyCostAlertUsd:
+            typeof snap.dailyCostAlertUsd === 'number'
+              ? snap.dailyCostAlertUsd
+              : before.dailyCostAlertUsd,
+          monthlyCostCapUsd:
+            typeof snap.monthlyCostCapUsd === 'number'
+              ? snap.monthlyCostCapUsd
+              : before.monthlyCostCapUsd,
+          sessionLifetimeMinutes:
+            typeof snap.sessionLifetimeMinutes === 'number'
+              ? snap.sessionLifetimeMinutes
+              : before.sessionLifetimeMinutes,
+          minPasswordLength:
+            typeof snap.minPasswordLength === 'number'
+              ? snap.minPasswordLength
+              : before.minPasswordLength,
+          requireEmailVerification:
+            typeof snap.requireEmailVerification === 'boolean'
+              ? snap.requireEmailVerification
+              : before.requireEmailVerification,
+          requireAdminOtp:
+            typeof snap.requireAdminOtp === 'boolean'
+              ? snap.requireAdminOtp
+              : before.requireAdminOtp,
+          maxLoginAttempts:
+            typeof snap.maxLoginAttempts === 'number'
+              ? snap.maxLoginAttempts
+              : before.maxLoginAttempts,
+          lockoutMinutes:
+            typeof snap.lockoutMinutes === 'number' ? snap.lockoutMinutes : before.lockoutMinutes,
           aiModel: typeof snap.aiModel === 'string' ? snap.aiModel : before.aiModel,
-          aiSystemPromptVersion: typeof snap.aiSystemPromptVersion === 'string' ? snap.aiSystemPromptVersion : before.aiSystemPromptVersion,
+          aiSystemPromptVersion:
+            typeof snap.aiSystemPromptVersion === 'string'
+              ? snap.aiSystemPromptVersion
+              : before.aiSystemPromptVersion,
           aiMaxTokens: typeof snap.aiMaxTokens === 'number' ? snap.aiMaxTokens : before.aiMaxTokens,
           ...(Array.isArray(snap.allowedFileTypesJson)
             ? { allowedFileTypesJson: snap.allowedFileTypesJson as Prisma.InputJsonValue }

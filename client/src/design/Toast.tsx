@@ -90,10 +90,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               key={toast.id}
               className="pointer-events-auto flex w-full max-w-sm animate-fade-up items-start gap-3 rounded-lg border border-line bg-surface p-4 shadow-lg"
             >
-              <Icon className={cn('mt-0.5 h-5 w-5 shrink-0', accents[toast.kind])} aria-hidden="true" />
+              <Icon
+                className={cn('mt-0.5 h-5 w-5 shrink-0', accents[toast.kind])}
+                aria-hidden="true"
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">{toast.title}</p>
-                {toast.description && <p className="mt-0.5 text-sm text-muted">{toast.description}</p>}
+                {toast.description && (
+                  <p className="mt-0.5 text-sm text-muted">{toast.description}</p>
+                )}
               </div>
               <button
                 type="button"
@@ -115,4 +120,3 @@ export function useToast(): ToastApi {
   if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
   return ctx;
 }
-

@@ -17,6 +17,7 @@ import {
   saveSetToLibrarySchema,
   saveToNotesSchema,
   submitPracticeAttemptSchema,
+  updateDocumentSchema,
   uploadDocumentMetaSchema,
 } from './documents.schemas';
 import type { DocumentsService } from './documents.service';
@@ -48,11 +49,7 @@ export interface DocumentsRouterDeps {
   isEmailVerified: (userId: string) => Promise<boolean>;
 }
 
-export function documentsRouter({
-  documents,
-  env,
-  isEmailVerified,
-}: DocumentsRouterDeps): Router {
+export function documentsRouter({ documents, env, isEmailVerified }: DocumentsRouterDeps): Router {
   const router = Router();
   const auth = requireAuth(env.JWT_SECRET);
   const verified = requireVerifiedEmail(isEmailVerified);
@@ -77,14 +74,18 @@ export function documentsRouter({
 
       const parsed = uploadDocumentMetaSchema.safeParse({
         type: req.body?.type,
-        title: typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title : undefined,
+        title:
+          typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title : undefined,
         courseId:
           typeof req.body?.courseId === 'string' && req.body.courseId.trim()
             ? req.body.courseId
             : undefined,
       });
       if (!parsed.success) {
-        throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid document metadata');
+        throw new AppError(
+          'VALIDATION_ERROR',
+          parsed.error.issues[0]?.message ?? 'Invalid document metadata',
+        );
       }
 
       const result = await documents.upload({
@@ -123,6 +124,24 @@ export function documentsRouter({
       }
       const detail = await documents.getDetail(req.user!.id, parsedId.data);
       res.json(detail);
+    }),
+  );
+
+  router.patch(
+    '/documents/:id',
+    auth,
+    validate({ body: updateDocumentSchema }),
+    asyncHandler(async (req, res) => {
+      const parsedId = uuidSchema.safeParse(req.params.id);
+      if (!parsedId.success) {
+        throw new AppError('NOT_FOUND', 'Document not found');
+      }
+      const updated = await documents.updateMetadata(
+        req.user!.id,
+        parsedId.data,
+        req.body as z.infer<typeof updateDocumentSchema>,
+      );
+      res.json(updated);
     }),
   );
 
@@ -341,7 +360,11 @@ export function documentsRouter({
         throw new AppError('NOT_FOUND', 'Question set not found');
       }
       const body = req.body as z.infer<typeof submitPracticeAttemptSchema>;
-      const attempt = await documents.submitPracticeAttempt(req.user!.id, parsedSetId.data, body.answers);
+      const attempt = await documents.submitPracticeAttempt(
+        req.user!.id,
+        parsedSetId.data,
+        body.answers,
+      );
       res.status(201).json({ attempt });
     }),
   );
@@ -371,7 +394,11 @@ export function documentsRouter({
         throw new AppError('NOT_FOUND', 'Question set not found');
       }
       const body = req.body as z.infer<typeof exportDocumentSchema>;
-      const exported = await documents.exportQuestionSet(req.user!.id, parsedSetId.data, body.format);
+      const exported = await documents.exportQuestionSet(
+        req.user!.id,
+        parsedSetId.data,
+        body.format,
+      );
       res.setHeader('Content-Type', exported.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${exported.filename}"`);
       res.send(exported.buffer);
@@ -380,4 +407,3 @@ export function documentsRouter({
 
   return router;
 }
-

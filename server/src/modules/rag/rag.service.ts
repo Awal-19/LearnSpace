@@ -5,6 +5,7 @@ import { AppError } from '../../lib/errors';
 
 export interface PublicStudyDocument {
   id: string;
+  courseId: string | null;
   filename: string;
   sizeBytes: number;
   pageCount: number;
@@ -21,12 +22,66 @@ export interface RetrievedChunk {
 }
 
 const STOPWORDS = new Set([
-  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was',
-  'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new',
-  'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'let', 'put', 'say', 'she', 'too',
-  'use', 'what', 'when', 'where', 'which', 'while', 'with', 'this', 'that', 'from',
-  'they', 'been', 'have', 'were', 'will', 'would', 'there', 'their', 'about', 'into',
-  'explain', 'please', 'help', 'understand',
+  'the',
+  'and',
+  'for',
+  'are',
+  'but',
+  'not',
+  'you',
+  'all',
+  'can',
+  'had',
+  'her',
+  'was',
+  'one',
+  'our',
+  'out',
+  'day',
+  'get',
+  'has',
+  'him',
+  'his',
+  'how',
+  'its',
+  'may',
+  'new',
+  'now',
+  'old',
+  'see',
+  'two',
+  'who',
+  'boy',
+  'did',
+  'let',
+  'put',
+  'say',
+  'she',
+  'too',
+  'use',
+  'what',
+  'when',
+  'where',
+  'which',
+  'while',
+  'with',
+  'this',
+  'that',
+  'from',
+  'they',
+  'been',
+  'have',
+  'were',
+  'will',
+  'would',
+  'there',
+  'their',
+  'about',
+  'into',
+  'explain',
+  'please',
+  'help',
+  'understand',
 ]);
 
 /** Checks PDF magic bytes (%PDF-) rather than trusting Content-Type or extension. */
@@ -36,7 +91,10 @@ export function isPdfBuffer(buffer: Buffer): boolean {
 
 /** Splits extracted document text into overlapping chunks for retrieval. */
 export function chunkText(rawText: string, maxChars = 900, overlap = 150): string[] {
-  const normalized = rawText.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
+  const normalized = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
   if (!normalized) return [];
 
   const chunks: string[] = [];
@@ -72,10 +130,7 @@ function tokenize(text: string): string[] {
 export function formatRagContext(chunks: RetrievedChunk[]): string {
   if (chunks.length === 0) return '';
   const body = chunks
-    .map(
-      (c) =>
-        `[Source: ${c.filename} | Section ${c.chunkIndex + 1}]\n${c.content}`,
-    )
+    .map((c) => `[Source: ${c.filename} | Section ${c.chunkIndex + 1}]\n${c.content}`)
     .join('\n\n---\n\n');
 
   return `<lecture_notes>\n${body}\n</lecture_notes>`;
@@ -87,15 +142,29 @@ export interface RagServiceDeps {
 }
 
 export interface RagService {
-  uploadPdf(userId: string, filename: string, buffer: Buffer): Promise<PublicStudyDocument>;
-  listDocuments(userId: string): Promise<PublicStudyDocument[]>;
+  uploadPdf(
+    userId: string,
+    filename: string,
+    buffer: Buffer,
+    courseId?: string | null,
+  ): Promise<PublicStudyDocument>;
+  listDocuments(userId: string, courseId?: string): Promise<PublicStudyDocument[]>;
   deleteDocument(userId: string, documentId: string): Promise<void>;
-  retrieveRelevantChunks(userId: string, query: string, limit?: number): Promise<RetrievedChunk[]>;
+  retrieveRelevantChunks(
+    userId: string,
+    query: string,
+    limit?: number,
+    courseId?: string | null,
+  ): Promise<RetrievedChunk[]>;
 }
 
 export function createRagService({ prisma, logger }: RagServiceDeps): RagService {
   return {
-    async uploadPdf(userId, filename, buffer) {
+    async uploadPdf(userId, filename, buffer, courseId = null) {
+      if (courseId) {
+        const course = await prisma.course.findFirst({ where: { id: courseId, userId } });
+        if (!course) throw new AppError('NOT_FOUND', 'Course not found');
+      }
       if (!isPdfBuffer(buffer)) {
         throw new AppError('UNSUPPORTED_MEDIA_TYPE', 'Uploaded file must be a valid PDF document');
       }
@@ -127,6 +196,7 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
       const doc = await prisma.studyDocument.create({
         data: {
           userId,
+          courseId: courseId ?? null,
           filename: safeName,
           sizeBytes: buffer.length,
           pageCount,
@@ -142,6 +212,7 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
 
       return {
         id: doc.id,
+        courseId: (doc as { courseId?: string | null }).courseId ?? null,
         filename: doc.filename,
         sizeBytes: doc.sizeBytes,
         pageCount: doc.pageCount,
@@ -150,15 +221,17 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
       };
     },
 
-    async listDocuments(userId) {
+    async listDocuments(userId, courseId) {
+      const courseFilter = courseId === 'none' ? { courseId: null } : courseId ? { courseId } : {};
       const docs = await prisma.studyDocument.findMany({
-        where: { userId },
+        where: { userId, ...courseFilter },
         orderBy: { createdAt: 'desc' },
         include: { _count: { select: { chunks: true } } },
       });
 
       return docs.map((d) => ({
         id: d.id,
+        courseId: (d as { courseId?: string | null }).courseId ?? null,
         filename: d.filename,
         sizeBytes: d.sizeBytes,
         pageCount: d.pageCount,
@@ -173,13 +246,13 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
       await prisma.studyDocument.delete({ where: { id: documentId } });
     },
 
-    async retrieveRelevantChunks(userId, query, limit = 4) {
+    async retrieveRelevantChunks(userId, query, limit = 4, courseId = null) {
       const queryTerms = Array.from(new Set(tokenize(query)));
       if (queryTerms.length === 0) return [];
 
       const rows = await prisma.documentChunk.findMany({
         where: { userId },
-        include: { document: { select: { filename: true } } },
+        include: { document: { select: { filename: true, courseId: true } } },
         take: 400,
       });
 
@@ -195,6 +268,10 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
           }
         }
         if (score > 0) {
+          const docCourseId = (row.document as { courseId?: string | null }).courseId ?? null;
+          if (courseId && docCourseId === courseId) {
+            score += 0.5;
+          }
           scored.push({
             documentId: row.documentId,
             filename: row.document.filename,
@@ -210,4 +287,3 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
     },
   };
 }
-

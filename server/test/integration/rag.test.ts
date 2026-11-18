@@ -5,7 +5,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { createLogger } from '../../src/lib/logger';
 import { signAccessToken } from '../../src/lib/tokens';
-import { chunkText, createRagService, formatRagContext, isPdfBuffer } from '../../src/modules/rag/rag.service';
+import {
+  chunkText,
+  createRagService,
+  formatRagContext,
+  isPdfBuffer,
+} from '../../src/modules/rag/rag.service';
 import { testEnv } from '../helpers';
 
 interface DocRow {
@@ -175,4 +180,3 @@ describe('RAG helpers & endpoints', () => {
     expect(otherDel.status).toBe(404);
   });
 });
-

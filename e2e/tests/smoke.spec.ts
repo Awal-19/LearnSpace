@@ -30,4 +30,3 @@ test('mobile layout has no horizontal scroll (T-UI-05)', async ({ page }) => {
   );
   expect(overflow).toBe(false);
 });
-

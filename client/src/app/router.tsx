@@ -99,6 +99,21 @@ const ProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const CoursesPage = lazy(() =>
+  import('../features/courses/CoursesPage').then((m) => ({ default: m.CoursesPage })),
+);
+const CourseDetailPage = lazy(() =>
+  import('../features/courses/CourseDetailPage').then((m) => ({ default: m.CourseDetailPage })),
+);
+const TimetablePage = lazy(() =>
+  import('../features/timetable/TimetablePage').then((m) => ({ default: m.TimetablePage })),
+);
+const ExamsPage = lazy(() =>
+  import('../features/exams/ExamsPage').then((m) => ({ default: m.ExamsPage })),
+);
+const GradesPage = lazy(() =>
+  import('../features/gpa/GradesPage').then((m) => ({ default: m.GradesPage })),
+);
 
 function withSuspense(node: ReactNode) {
   return <Suspense fallback={<Skeleton className="h-40 w-full" />}>{node}</Suspense>;
@@ -109,6 +124,14 @@ export const appRoutes: RouteObject[] = [
   {
     index: true,
     element: withSuspense(<DashboardPage />),
+  },
+  {
+    path: 'courses',
+    element: withSuspense(<CoursesPage />),
+  },
+  {
+    path: 'courses/:courseId',
+    element: withSuspense(<CourseDetailPage />),
   },
   {
     path: 'chat',
@@ -131,6 +154,14 @@ export const appRoutes: RouteObject[] = [
     element: withSuspense(<PlannerPage />),
   },
   {
+    path: 'timetable',
+    element: withSuspense(<TimetablePage />),
+  },
+  {
+    path: 'exams',
+    element: withSuspense(<ExamsPage />),
+  },
+  {
     path: 'focus',
     element: withSuspense(<FocusPage />),
   },
@@ -141,6 +172,10 @@ export const appRoutes: RouteObject[] = [
   {
     path: 'study/*',
     element: withSuspense(<StudyPage />),
+  },
+  {
+    path: 'grades',
+    element: withSuspense(<GradesPage />),
   },
   {
     path: 'documents',
@@ -186,7 +221,16 @@ const devRoutes: RouteObject[] = import.meta.env.DEV
     ]
   : [];
 
+const TermsPage = lazy(() =>
+  import('../features/legal/TermsPage').then((m) => ({ default: m.TermsPage })),
+);
+const PrivacyPolicyPage = lazy(() =>
+  import('../features/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })),
+);
+
 export const routes: RouteObject[] = [
+  { path: '/terms-and-conditions', element: withSuspense(<TermsPage />) },
+  { path: '/privacy-policy', element: withSuspense(<PrivacyPolicyPage />) },
   {
     element: <AuthLayout />,
     children: [
@@ -201,9 +245,7 @@ export const routes: RouteObject[] = [
   },
   {
     element: <RequireAuth />,
-    children: [
-      { path: '/', element: <AppLayout />, children: appRoutes },
-    ],
+    children: [{ path: '/', element: <AppLayout />, children: appRoutes }],
   },
   {
     path: '/admin',
@@ -235,4 +277,3 @@ export const routes: RouteObject[] = [
 ];
 
 export const createAppRouter = () => createBrowserRouter(routes);
-

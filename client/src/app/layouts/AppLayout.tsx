@@ -1,7 +1,7 @@
 import { AlertTriangle, MailWarning, Megaphone, MessageSquarePlus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Button, Input, Modal, Textarea, useToast } from '../../design';
 import { fetchActiveAnnouncements, submitStudentFeedback } from '../../features/admin/adminApi';
 import { ApiError, request } from '../../lib/apiClient';
@@ -202,9 +202,12 @@ function FeedbackWidget() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Send feedback"
-        className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2 text-xs font-medium text-fg shadow-md transition hover:bg-surface2 lg:bottom-5 lg:right-6"
+        className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-2 rounded-full border border-white/85 bg-white/85 px-3.5 py-2 text-xs font-medium text-fg shadow-md backdrop-blur-md transition hover:border-primary-300 hover:bg-white dark:border-line dark:bg-surface dark:hover:bg-surface2 lg:bottom-5 lg:right-6"
       >
-        <MessageSquarePlus className="h-4 w-4 text-accent" aria-hidden="true" />
+        <MessageSquarePlus
+          className="h-4 w-4 text-primary-600 dark:text-primary-400"
+          aria-hidden="true"
+        />
         <span>Feedback</span>
       </button>
 
@@ -223,7 +226,10 @@ function FeedbackWidget() {
             />
           </div>
           <div>
-            <label htmlFor="feedback-category" className="mb-1.5 block text-xs font-medium text-muted">
+            <label
+              htmlFor="feedback-category"
+              className="mb-1.5 block text-xs font-medium text-muted"
+            >
               Category
             </label>
             <select
@@ -276,25 +282,77 @@ function FeedbackWidget() {
 
 /** Authenticated shell: sidebar on desktop, bottom tabs on mobile, content in the middle. */
 export function AppLayout({ base = '' }: { base?: string }) {
+  const { pathname } = useLocation();
+  const relPath = base && pathname.startsWith(base) ? pathname.slice(base.length) : pathname;
+  const isChatRoute = relPath === '/chat' || relPath.startsWith('/chat/');
+
   return (
-    <div className="min-h-screen">
+    <div
+      className={
+        isChatRoute
+          ? 'relative h-dvh min-h-dvh overflow-hidden bg-app'
+          : 'relative min-h-screen overflow-x-clip bg-app'
+      }
+    >
+      {/* Subtle top-right frosted blue ribbon ambience matching the calm workspace shell */}
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 720 320"
+        className="pointer-events-none fixed right-0 top-0 z-0 h-[280px] w-[620px] opacity-65 dark:opacity-15"
+      >
+        <defs>
+          <linearGradient id="appShellWave" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#EFF6FF" stopOpacity="0" />
+            <stop offset="55%" stopColor="#DBEAFE" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#93C5FD" stopOpacity="0.28" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M120,0 C240,120 420,90 540,210 C610,275 675,295 720,305 L720,0 Z"
+          fill="url(#appShellWave)"
+        />
+        <path
+          d="M270,0 C395,105 520,75 640,175 C680,208 702,228 720,242 L720,0 Z"
+          fill="url(#appShellWave)"
+        />
+      </svg>
+
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
       <Sidebar />
-      <div className="lg:pl-sidebar">
+      <div
+        className={
+          isChatRoute
+            ? 'relative z-10 flex h-full flex-col lg:pl-sidebar'
+            : 'relative z-10 lg:pl-sidebar'
+        }
+      >
         <TopBar base={base} />
         <main
           id="main-content"
           tabIndex={-1}
-          className="mx-auto w-full max-w-content animate-fade-up px-4 py-6 pb-28 outline-none sm:px-6 lg:pb-10"
+          className={
+            isChatRoute
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden pb-16 outline-none lg:pb-0'
+              : 'mx-auto w-full max-w-content animate-fade-up px-4 py-6 pb-28 outline-none sm:px-6 lg:pb-10'
+          }
         >
-          <AnnouncementsAndMaintenanceBanner />
-          <VerifyEmailBanner />
+          {isChatRoute ? (
+            <div className="shrink-0 px-4 pt-3 empty:hidden sm:px-6">
+              <AnnouncementsAndMaintenanceBanner />
+              <VerifyEmailBanner />
+            </div>
+          ) : (
+            <>
+              <AnnouncementsAndMaintenanceBanner />
+              <VerifyEmailBanner />
+            </>
+          )}
           <Outlet />
         </main>
       </div>
-      <FeedbackWidget />
+      {!isChatRoute ? <FeedbackWidget /> : null}
       <BottomNav />
     </div>
   );

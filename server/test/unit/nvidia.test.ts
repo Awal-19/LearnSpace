@@ -24,9 +24,7 @@ describe('createNvidiaProvider', () => {
     const stream = new ReadableStream({
       start(controller) {
         const enc = new TextEncoder();
-        controller.enqueue(
-          enc.encode('data: {"choices":[{"delta":{"content":"Step 1: "}}]}\n\n'),
-        );
+        controller.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"Step 1: "}}]}\n\n'));
         controller.enqueue(
           enc.encode(
             'data: {"choices":[{"delta":{"content":"Define base case."}}],"usage":{"prompt_tokens":42,"completion_tokens":15}}\n\n',
@@ -42,10 +40,9 @@ describe('createNvidiaProvider', () => {
       .mockResolvedValueOnce(new Response(stream, { status: 200 }));
 
     const chunks = [];
-    for await (const chunk of provider.stream(
-      [{ role: 'user', content: 'Explain recursion' }],
-      { systemPrompt: 'You are a tutor.' },
-    )) {
+    for await (const chunk of provider.stream([{ role: 'user', content: 'Explain recursion' }], {
+      systemPrompt: 'You are a tutor.',
+    })) {
       chunks.push(chunk);
     }
 
@@ -72,10 +69,12 @@ describe('createNvidiaProvider', () => {
 
     const env = testEnv({ NVIDIA_API_KEY: 'nvapi-test-key' });
     const provider = createNvidiaProvider(env, createLogger(env));
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('unavailable', { status: 503 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('unavailable', { status: 503 }),
+    );
 
-    await expect(
-      provider.generateText('Hello'),
-    ).rejects.toMatchObject({ code: 'AI_UNAVAILABLE' } satisfies Partial<AppError>);
+    await expect(provider.generateText('Hello')).rejects.toMatchObject({
+      code: 'AI_UNAVAILABLE',
+    } satisfies Partial<AppError>);
   });
 });

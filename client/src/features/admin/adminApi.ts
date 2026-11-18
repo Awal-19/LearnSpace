@@ -134,7 +134,11 @@ export function fetchAdminUserDetail(userId: string) {
   return adminRequest<AdminUserDetailResponse>(`/users/${userId}`);
 }
 
-export function updateAdminUserStatus(userId: string, status: 'active' | 'suspended', reason?: string) {
+export function updateAdminUserStatus(
+  userId: string,
+  status: 'active' | 'suspended',
+  reason?: string,
+) {
   return adminRequest<{ user: { id: string; status: string } }>(`/users/${userId}/status`, {
     method: 'PATCH',
     body: { status, reason },
@@ -343,6 +347,15 @@ export interface AdminLearningResponse {
     completedTasks: number;
     taskCompletionRatePct: number;
     totalStudyHours: number;
+    totalCourses: number;
+    totalTimetableEntries: number;
+    totalExams: number;
+    totalRevisionPlans: number;
+    totalFlashcardReviews: number;
+    totalDocuments: number;
+    totalPracticeAttempts: number;
+    totalGradingScales: number;
+    totalGradeRecords: number;
   };
   popularCourses: Array<{
     id: string;
@@ -610,7 +623,6 @@ export function unlockAdminConsole(password: string) {
   });
 }
 
-
 export interface AdminPermissions {
   can_manage_users?: boolean;
   can_moderate_content?: boolean;
@@ -747,9 +759,7 @@ export function fetchPlatformSettings() {
   }>('/super/settings', { baseUrl: ADMIN_API_BASE_URL });
 }
 
-export function updatePlatformSettings(
-  body: Partial<PlatformSettings> & { reason?: string },
-) {
+export function updatePlatformSettings(body: Partial<PlatformSettings> & { reason?: string }) {
   return request<{ settings: PlatformSettings }>('/super/settings', {
     method: 'PATCH',
     body,

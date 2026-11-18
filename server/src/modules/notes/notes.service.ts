@@ -2,20 +2,7 @@ import type { Note, PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { AppError } from '../../lib/errors';
 import type { LLMProvider } from '../../lib/llm/provider';
-import type {
-  CreateCourseInput,
-  CreateNoteInput,
-  ListNotesQuery,
-  UpdateCourseInput,
-  UpdateNoteInput,
-} from './notes.schemas';
-
-export interface PublicCourse {
-  id: string;
-  name: string;
-  color: string | null;
-  noteCount: number;
-}
+import type { CreateNoteInput, ListNotesQuery, UpdateNoteInput } from './notes.schemas';
 
 export interface PublicNote {
   id: string;
@@ -48,11 +35,6 @@ export interface NotesServiceDeps {
 }
 
 export interface NotesService {
-  listCourses(userId: string): Promise<PublicCourse[]>;
-  createCourse(userId: string, input: CreateCourseInput): Promise<PublicCourse>;
-  updateCourse(userId: string, courseId: string, input: UpdateCourseInput): Promise<PublicCourse>;
-  deleteCourse(userId: string, courseId: string): Promise<void>;
-
   listNotes(
     userId: string,
     query: ListNotesQuery,
@@ -78,63 +60,6 @@ export function createNotesService({ prisma, llm, logger }: NotesServiceDeps): N
   }
 
   return {
-    async listCourses(userId) {
-      const courses = await prisma.course.findMany({
-        where: { userId },
-        orderBy: { name: 'asc' },
-        include: { _count: { select: { notes: true } } },
-      });
-      return courses.map((c) => ({
-        id: c.id,
-        name: c.name,
-        color: c.color,
-        noteCount: c._count.notes,
-      }));
-    },
-
-    async createCourse(userId, input) {
-      const existing = await prisma.course.findFirst({
-        where: { userId, name: { equals: input.name, mode: 'insensitive' } },
-      });
-      if (existing) {
-        throw new AppError('CONFLICT', 'A course with this name already exists');
-      }
-      const created = await prisma.course.create({
-        data: {
-          userId,
-          name: input.name,
-          color: input.color ?? '#6366F1',
-        },
-      });
-      return { id: created.id, name: created.name, color: created.color, noteCount: 0 };
-    },
-
-    async updateCourse(userId, courseId, input) {
-      await assertCourseOwned(userId, courseId);
-      if (input.name) {
-        const dup = await prisma.course.findFirst({
-          where: { userId, name: { equals: input.name, mode: 'insensitive' }, id: { not: courseId } },
-        });
-        if (dup) throw new AppError('CONFLICT', 'A course with this name already exists');
-      }
-      const updated = await prisma.course.update({
-        where: { id: courseId },
-        data: input,
-        include: { _count: { select: { notes: true } } },
-      });
-      return {
-        id: updated.id,
-        name: updated.name,
-        color: updated.color,
-        noteCount: updated._count.notes,
-      };
-    },
-
-    async deleteCourse(userId, courseId) {
-      await assertCourseOwned(userId, courseId);
-      await prisma.course.delete({ where: { id: courseId } });
-    },
-
     async listNotes(userId, query) {
       const courseFilter =
         query.courseId === 'none'
@@ -251,7 +176,8 @@ export function createNotesService({ prisma, llm, logger }: NotesServiceDeps): N
       const { text } = await llm.generateText(
         `Summarize these student study notes into clear, concise bullet points highlighting key concepts and definitions.\n\nTitle: ${note.title}\n\nNotes:\n${note.body}`,
         {
-          systemPrompt: 'You are a concise academic study assistant. Return clean Markdown bullet points.',
+          systemPrompt:
+            'You are a concise academic study assistant. Return clean Markdown bullet points.',
           temperature: 0.3,
           maxOutputTokens: 600,
         },
@@ -267,4 +193,3 @@ export function createNotesService({ prisma, llm, logger }: NotesServiceDeps): N
     },
   };
 }
-

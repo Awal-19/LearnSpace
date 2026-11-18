@@ -46,7 +46,11 @@ export const uuidParamSchema = z.string().uuid();
 
 export const inspectContentSchema = z
   .object({
-    reason: z.string().trim().min(5, 'Please provide a moderation reason (at least 5 characters)').max(500),
+    reason: z
+      .string()
+      .trim()
+      .min(5, 'Please provide a moderation reason (at least 5 characters)')
+      .max(500),
   })
   .strict();
 
@@ -60,7 +64,12 @@ export const resolveFlagSchema = z
 export const updateAiLimitsSchema = z
   .object({
     dailyMessageLimit: z.number().int().min(1).max(10_000).optional(),
-    maxUploadBytes: z.number().int().min(1024 * 1024).max(100 * 1024 * 1024).optional(),
+    maxUploadBytes: z
+      .number()
+      .int()
+      .min(1024 * 1024)
+      .max(100 * 1024 * 1024)
+      .optional(),
     dailyUploadQuota: z.number().int().min(1).max(1000).optional(),
     dailyCostAlertUsd: z.number().min(0.1).max(10_000).optional(),
   })
@@ -119,7 +128,12 @@ export const updateAppSettingsSchema = z
     featureDocuments: z.boolean().optional(),
     featureSignups: z.boolean().optional(),
     dailyMessageLimit: z.number().int().min(1).max(10_000).optional(),
-    maxUploadBytes: z.number().int().min(1024 * 1024).max(100 * 1024 * 1024).optional(),
+    maxUploadBytes: z
+      .number()
+      .int()
+      .min(1024 * 1024)
+      .max(100 * 1024 * 1024)
+      .optional(),
     dailyUploadQuota: z.number().int().min(1).max(1000).optional(),
     dailyCostAlertUsd: z.number().min(0.1).max(10_000).optional(),
     allowedFileTypesJson: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
@@ -147,7 +161,6 @@ export const studentFlagMessageSchema = z
     reason: z.string().trim().min(3).max(500),
   })
   .strict();
-
 
 export const adminPermissionsSchema = z
   .object({

@@ -24,4 +24,3 @@ createRoot(container).render(
     </ErrorBoundary>
   </StrictMode>,
 );
-

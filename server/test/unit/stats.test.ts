@@ -66,4 +66,3 @@ describe('detectImageMime', () => {
     expect(detectImageMime(Buffer.from('short'))).toBeNull();
   });
 });
-

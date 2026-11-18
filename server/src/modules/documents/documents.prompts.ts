@@ -76,7 +76,9 @@ export function buildPastQuestionSystemPrompt(params: {
   }
 
   if (refinement === 'simpler') {
-    base.push('Refinement requested: Explain this much more simply using plain language and an intuitive analogy.');
+    base.push(
+      'Refinement requested: Explain this much more simply using plain language and an intuitive analogy.',
+    );
   } else if (refinement === 'another_method') {
     base.push('Refinement requested: Solve/explain this using an alternative method or approach.');
   } else if (refinement === 'regenerate') {
@@ -163,4 +165,3 @@ Return ONLY valid JSON:
     { "questionId": "uuid", "correct": true, "feedback": "..." }
   ]
 }`;
-

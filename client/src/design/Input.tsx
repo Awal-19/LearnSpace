@@ -56,8 +56,7 @@ const describedBy = (id: string, hint: ReactNode, error?: string) =>
   error ? `${id}-error` : hint ? `${id}-hint` : undefined;
 
 export interface InputProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'>,
-    FieldChromeProps {
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'>, FieldChromeProps {
   id?: string;
   leftIcon?: ReactNode;
 }
@@ -94,8 +93,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 });
 
 export interface TextareaProps
-  extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id'>,
-    FieldChromeProps {
+  extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id'>, FieldChromeProps {
   id?: string;
 }
 
@@ -119,4 +117,3 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     </Chrome>
   );
 });
-

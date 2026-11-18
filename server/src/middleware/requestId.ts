@@ -10,4 +10,3 @@ export const requestId: RequestHandler = (req, res, next) => {
   res.setHeader('X-Request-Id', req.requestId);
   next();
 };
-

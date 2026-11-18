@@ -155,7 +155,10 @@ export function detectAttachmentType(
 }
 
 export function sanitizeFilename(name: string): string {
-  const base = path.basename(name).replace(/[^\w.\- ()]/g, '_').trim();
+  const base = path
+    .basename(name)
+    .replace(/[^\w.\- ()]/g, '_')
+    .trim();
   return (base || 'attachment').slice(0, 255);
 }
 
@@ -309,7 +312,10 @@ export function createAttachmentsService({
 
       const scanResult = await scanner.scan(buffer, filename);
       if (!scanResult.clean) {
-        throw new AppError('VALIDATION_ERROR', scanResult.reason ?? 'File rejected by security scan');
+        throw new AppError(
+          'VALIDATION_ERROR',
+          scanResult.reason ?? 'File rejected by security scan',
+        );
       }
 
       let finalBuffer = buffer;
@@ -399,4 +405,3 @@ export function createAttachmentsService({
     },
   };
 }
-

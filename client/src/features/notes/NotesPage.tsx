@@ -1,17 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, FilePlus2, FolderPlus, Search, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { BookOpen, FilePlus2, FolderPlus, Layers, Search, Sparkles, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
-import { Button, Card, EmptyState, ErrorState, Input, Skeleton, Textarea, useToast } from '../../design';
+import { useAppPath } from '../../app/basePath';
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  Skeleton,
+  Textarea,
+  useToast,
+} from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 import { MarkdownContent } from '../chat/MarkdownContent';
-
-interface Course {
-  id: string;
-  name: string;
-  color: string | null;
-  noteCount: number;
-}
+import { CourseBadge } from '../courses/CourseBadge';
+import { listCourses, type CourseSummary } from '../courses/coursesApi';
+import { generateDeck } from '../study/studyApi';
 
 interface Note {
   id: string;
@@ -26,12 +33,16 @@ interface Note {
 
 export function NotesPage() {
   const { user } = useAuth();
+  const { noteId: routeNoteId } = useParams<{ noteId?: string }>();
+  const navigate = useNavigate();
+  const appPath = useAppPath();
   const toast = useToast();
   const qc = useQueryClient();
 
   const [courseFilter, setCourseFilter] = useState<string>('');
   const [search, setSearch] = useState('');
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(routeNoteId ?? null);
   const [newCourseName, setNewCourseName] = useState('');
 
   const [title, setTitle] = useState('');
@@ -40,17 +51,34 @@ export function NotesPage() {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [makingDeck, setMakingDeck] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (routeNoteId) {
+      setActiveNoteId(routeNoteId);
+    }
+  }, [routeNoteId]);
 
   const coursesQuery = useQuery({
     queryKey: ['courses'],
-    queryFn: () => request<Course[]>('/courses'),
+    queryFn: () => listCourses(),
   });
 
+  const coursesMap = useMemo(
+    () => new Map((coursesQuery.data ?? []).map((c) => [c.id, c])),
+    [coursesQuery.data],
+  );
+
   const notesQuery = useQuery({
-    queryKey: ['notes', search, courseFilter],
+    queryKey: ['notes', debouncedSearch, courseFilter],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (search.trim()) params.set('q', search.trim());
+      if (debouncedSearch) params.set('q', debouncedSearch);
       if (courseFilter) params.set('courseId', courseFilter);
       const qs = params.toString();
       return request<{ items: Note[]; nextCursor: string | null }>(`/notes${qs ? `?${qs}` : ''}`);
@@ -66,20 +94,23 @@ export function NotesPage() {
     }
   }, [activeNoteId, notesQuery.data]);
 
+  const syncedNoteKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeNote) {
-      setTitle(activeNote.title);
-      setBody(activeNote.body);
-      setCourseId(activeNote.courseId ?? '');
-      setAiSummary(activeNote.aiSummary);
-    }
-  }, [activeNote?.id, activeNote?.updatedAt]);
+    if (!activeNote) return;
+    const key = `${activeNote.id}:${activeNote.updatedAt}`;
+    if (syncedNoteKeyRef.current === key) return;
+    syncedNoteKeyRef.current = key;
+    setTitle(activeNote.title);
+    setBody(activeNote.body);
+    setCourseId(activeNote.courseId ?? '');
+    setAiSummary(activeNote.aiSummary);
+  }, [activeNote]);
 
   const handleCreateCourse = async () => {
     const trimmed = newCourseName.trim();
     if (!trimmed) return;
     try {
-      await request<Course>('/courses', { method: 'POST', body: { name: trimmed } });
+      await request<CourseSummary>('/courses', { method: 'POST', body: { name: trimmed } });
       setNewCourseName('');
       await qc.invalidateQueries({ queryKey: ['courses'] });
       toast.show({ kind: 'success', title: 'Course added' });
@@ -190,6 +221,45 @@ export function NotesPage() {
     }
   };
 
+  const handleMakeFlashcards = async () => {
+    if (!activeNoteId) return;
+    if (!user?.emailVerified) {
+      toast.show({
+        kind: 'error',
+        title: 'Verify your email first',
+        description: 'Verify your email to generate flashcards with AI.',
+      });
+      return;
+    }
+    setMakingDeck(true);
+    try {
+      await request<Note>(`/notes/${activeNoteId}`, {
+        method: 'PATCH',
+        body: { title: title.trim() || 'Untitled note', body, courseId: courseId || null },
+      });
+      const deck = await generateDeck({
+        noteId: activeNoteId,
+        courseId: courseId || null,
+        count: 10,
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['decks'] }),
+        qc.invalidateQueries({ queryKey: ['decks', 'due-summary'] }),
+        qc.invalidateQueries({ queryKey: ['courses'] }),
+      ]);
+      toast.show({ kind: 'success', title: 'Flashcard deck created' });
+      navigate(appPath(`/study?tab=decks&deckId=${deck.id}`));
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        title: 'Could not create flashcards',
+        description: err instanceof ApiError ? err.message : 'Please try again.',
+      });
+    } finally {
+      setMakingDeck(false);
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[270px_1fr]">
       <div className="space-y-4">
@@ -212,9 +282,15 @@ export function NotesPage() {
           </div>
 
           <div className="space-y-1 pt-3 border-t border-line/80">
-            <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-muted">
-              Courses
-            </p>
+            <div className="flex items-center justify-between px-1 pb-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Courses</p>
+              <Link
+                to={appPath('/courses')}
+                className="text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+              >
+                Manage
+              </Link>
+            </div>
             <button
               type="button"
               onClick={() => setCourseFilter('')}
@@ -242,14 +318,21 @@ export function NotesPage() {
                 key={c.id}
                 type="button"
                 onClick={() => setCourseFilter(c.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
                   courseFilter === c.id
                     ? 'bg-primary-600/10 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
                     : 'text-fg/80 hover:bg-surface2'
                 }`}
               >
-                <span className="truncate">{c.name}</span>
-                <span className="rounded-full bg-surface2 px-2 py-0.5 text-xs font-medium text-muted">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: c.color ?? '#2563EB' }}
+                  />
+                  <span className="truncate">{c.code ? `${c.code} · ${c.name}` : c.name}</span>
+                </span>
+                <span className="shrink-0 rounded-full bg-surface2 px-2 py-0.5 text-xs font-medium text-muted">
                   {c.noteCount}
                 </span>
               </button>
@@ -299,7 +382,12 @@ export function NotesPage() {
                     : 'hover:bg-surface2'
                 }`}
               >
-                <p className="truncate text-sm font-medium">{n.title}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium">{n.title}</p>
+                  {n.courseId && coursesMap.has(n.courseId) ? (
+                    <CourseBadge course={coursesMap.get(n.courseId)} />
+                  ) : null}
+                </div>
                 {n.snippet ? (
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted">{n.snippet}</p>
                 ) : null}
@@ -327,7 +415,12 @@ export function NotesPage() {
           <Card className="p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="sm" loading={saving} onClick={() => void handleSaveNote()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  loading={saving}
+                  onClick={() => void handleSaveNote()}
+                >
                   Save note
                 </Button>
                 <Button
@@ -340,19 +433,30 @@ export function NotesPage() {
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   Summarize with AI
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  loading={makingDeck}
+                  onClick={() => void handleMakeFlashcards()}
+                >
+                  <Layers className="h-4 w-4" aria-hidden="true" />
+                  Make flashcards from this
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="ghost" onClick={() => void handleDeleteNote()}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleDeleteNote()}
+              >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Delete
               </Button>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
-              <Input
-                label="Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
               <div>
                 <label htmlFor="note-course" className="mb-1.5 block text-sm font-medium text-fg">
                   Course
@@ -396,4 +500,3 @@ export function NotesPage() {
     </div>
   );
 }
-

@@ -34,8 +34,8 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    // The server entrypoint may print boot failures before the logger exists.
-    files: ['server/src/server.ts'],
+    // The server entrypoint and CLI operational scripts may print output before/without pino.
+    files: ['server/src/server.ts', 'server/prisma/**/*.ts', 'server/scripts/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
   {
@@ -49,7 +49,8 @@ export default tseslint.config(
         'error',
         {
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-          message: 'dangerouslySetInnerHTML is forbidden. Render Markdown through the sanitised component.',
+          message:
+            'dangerouslySetInnerHTML is forbidden. Render Markdown through the sanitised component.',
         },
       ],
     },
@@ -60,4 +61,3 @@ export default tseslint.config(
   },
   prettier,
 );
-

@@ -115,4 +115,3 @@ export async function buildDocxBuffer(params: {
 
   return Packer.toBuffer(doc);
 }
-

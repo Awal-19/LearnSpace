@@ -90,4 +90,3 @@ export class AppError extends Error {
     this.status = ERROR_STATUS[code];
   }
 }
-

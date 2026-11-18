@@ -25,10 +25,12 @@ export interface PublicTask {
 
 export interface PublicNotification {
   id: string;
-  type: 'task_reminder' | 'system';
+  type: 'task_reminder' | 'class_reminder' | 'exam_reminder' | 'system';
   title: string;
   body: string;
   taskId: string | null;
+  timetableEntryId: string | null;
+  examId: string | null;
   readAt: Date | null;
   createdAt: Date;
 }
@@ -55,6 +57,8 @@ function toPublicNotification(n: Notification): PublicNotification {
     title: n.title,
     body: n.body,
     taskId: n.taskId,
+    timetableEntryId: n.timetableEntryId ?? null,
+    examId: n.examId ?? null,
     readAt: n.readAt,
     createdAt: n.createdAt,
   };
@@ -69,7 +73,10 @@ export function computeRemindAt(dueAt: Date | null, offsetMinutes: number | null
  * Returns [startOfTodayUtc, endOfTodayUtc] for a given IANA timezone by finding the
  * UTC instants matching localDateString(now, tz).
  */
-export function localDayRange(now: Date, timeZone: string): { start: Date; end: Date; todayStr: string } {
+export function localDayRange(
+  now: Date,
+  timeZone: string,
+): { start: Date; end: Date; todayStr: string } {
   const todayStr = localDateString(now, timeZone);
   // Step in 30-min increments across +/-24h around now to find exact local day boundaries without extra deps.
   const windowStart = new Date(now.getTime() - 26 * 3600_000);
@@ -139,7 +146,12 @@ export function createPlannerService({
       const tz = settings?.timezone ?? 'UTC';
       const { start: todayStart, end: todayEnd } = localDayRange(now, tz);
 
-      const courseFilter = query.courseId ? { courseId: query.courseId } : {};
+      const courseFilter =
+        query.courseId === 'none'
+          ? { courseId: null }
+          : query.courseId
+            ? { courseId: query.courseId }
+            : {};
 
       let viewFilter: Record<string, unknown> = {};
       if (query.view === 'today') {
@@ -236,6 +248,13 @@ export function createPlannerService({
         },
       });
 
+      if (input.status !== undefined && prisma.revisionSession?.updateMany) {
+        await prisma.revisionSession.updateMany({
+          where: { taskId, userId },
+          data: { status: input.status === 'done' ? 'completed' : 'planned' },
+        });
+      }
+
       return toPublicTask(updated);
     },
 
@@ -324,9 +343,7 @@ export function createPlannerService({
                 userId: task.userId,
                 type: 'task_reminder',
                 title: `Reminder: ${task.title}`,
-                body: task.dueAt
-                  ? `Due at ${task.dueAt.toISOString()}`
-                  : 'Task reminder',
+                body: task.dueAt ? `Due at ${task.dueAt.toISOString()}` : 'Task reminder',
                 taskId: task.id,
                 dueAtSnapshot: task.dueAt ?? now,
               },
@@ -356,4 +373,3 @@ export function createPlannerService({
     },
   };
 }
-
