@@ -112,7 +112,7 @@ export interface AdminUserDetailResponse {
 }
 
 export function adminRequest<T>(path: string, options: Parameters<typeof request<T>>[1] = {}) {
-  return request<T>(path, { ...options, baseUrl: ADMIN_API_BASE_URL });
+  return request<T>(path, { ...options, baseUrl: ADMIN_API_BASE_URL, cookie: true });
 }
 
 export function fetchAdminOverview(params: { range: AdminRange; from?: string; to?: string }) {
