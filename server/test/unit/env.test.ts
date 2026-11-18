@@ -1,8 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { EnvError, loadEnv } from '../../src/config/env';
+import { afterEach, describe, expect, it } from 'vitest';
+import { EnvError, loadEnv, normalizeDatabaseUrl } from '../../src/config/env';
 import { baseEnv, testEnv } from '../helpers';
 
 describe('loadEnv (T-X-04)', () => {
+  const prevRailwayEnv = process.env.RAILWAY_ENVIRONMENT;
+
+  afterEach(() => {
+    if (prevRailwayEnv === undefined) {
+      delete process.env.RAILWAY_ENVIRONMENT;
+    } else {
+      process.env.RAILWAY_ENVIRONMENT = prevRailwayEnv;
+    }
+  });
   it('accepts a valid configuration and applies defaults', () => {
     const env = testEnv();
     expect(env.PORT).toBe(4000);
@@ -50,5 +59,26 @@ describe('loadEnv (T-X-04)', () => {
         JWT_SECRET: 'change-me-dev-only-secret-at-least-32-chars',
       }),
     ).toThrow(/production/);
+  });
+
+  it('adds sslmode=require for Railway public proxy URLs and leaves internal URLs unchanged', () => {
+    expect(
+      normalizeDatabaseUrl('postgresql://postgres:pw@roundhouse.proxy.rlwy.net:12345/railway'),
+    ).toBe('postgresql://postgres:pw@roundhouse.proxy.rlwy.net:12345/railway?sslmode=require');
+
+    expect(
+      normalizeDatabaseUrl('postgresql://postgres:pw@postgres.railway.internal:5432/railway'),
+    ).toBe('postgresql://postgres:pw@postgres.railway.internal:5432/railway');
+
+    expect(
+      normalizeDatabaseUrl(
+        'postgresql://postgres:pw@roundhouse.proxy.rlwy.net:12345/railway?sslmode=no-verify',
+      ),
+    ).toBe('postgresql://postgres:pw@roundhouse.proxy.rlwy.net:12345/railway?sslmode=no-verify');
+  });
+
+  it('enables trust proxy automatically when running on Railway', () => {
+    const env = loadEnv({ ...baseEnv, RAILWAY_ENVIRONMENT: 'production' });
+    expect(env.TRUST_PROXY).toBe(1);
   });
 });

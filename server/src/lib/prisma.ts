@@ -1,4 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 
-/** Single PrismaClient for the process. Only server.ts imports this (keeps tests DB-free). */
-export const prisma = new PrismaClient({ log: ['warn', 'error'] });
+/** Creates a PrismaClient configured for the validated runtime DATABASE_URL. */
+export function createPrismaClient(databaseUrl?: string): PrismaClient {
+  return new PrismaClient({
+    log: ['warn', 'error'],
+    ...(databaseUrl ? { datasources: { db: { url: databaseUrl } } } : {}),
+  });
+}

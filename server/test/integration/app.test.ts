@@ -114,4 +114,28 @@ describe('global behaviour (T-X-02, T-X-03)', () => {
       expect(res.status).toBe(200);
     }
   });
+
+  it('serves /api/health before CORS, rate limiting, body parsers, auth, and without DB dependency', async () => {
+    const app = makeApp(
+      { RATE_LIMIT_GLOBAL_PER_MIN: '1', CORS_ORIGIN: 'https://learnspace.netlify.app' },
+      {
+        checkDb: async () => {
+          throw new Error('database unreachable');
+        },
+        isEmailVerified: async () => false,
+      },
+    );
+
+    for (let i = 0; i < 4; i += 1) {
+      const live = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://untrusted.example.com');
+      expect(live.status).toBe(200);
+      expect(live.body).toEqual({ status: 'ok' });
+    }
+
+    const ready = await request(app).get('/api/health/ready');
+    expect(ready.status).toBe(503);
+    expect(ready.body).toEqual({ status: 'unavailable' });
+  });
 });

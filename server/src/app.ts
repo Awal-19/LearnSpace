@@ -99,6 +99,10 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     }),
   );
 
+  // Public health routes (/api/health, /api/health/ready) registered before security headers,
+  // CORS restrictions, rate limiters, body parsers, and auth middleware so infra probes always pass.
+  app.use('/api', healthRouter(deps));
+
   app.use(helmet());
   app.use(
     cors({
@@ -111,17 +115,20 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     }),
   );
 
+  const isHealthPath = (path: string) =>
+    path.startsWith(`${API_PREFIX}/health`) || path.startsWith('/api/health');
+
   const readLimiter = createRateLimiter({
     windowMs: 60_000,
     limit: env.RATE_LIMIT_GLOBAL_PER_MIN,
-    skip: (req) => req.path.startsWith(`${API_PREFIX}/health`) || req.method !== 'GET',
+    skip: (req) => isHealthPath(req.path) || req.method !== 'GET',
   });
 
   const mutationLimiter = createRateLimiter({
     windowMs: 60_000,
     limit: Math.min(env.RATE_LIMIT_GLOBAL_PER_MIN, 120),
     skip: (req) =>
-      req.path.startsWith(`${API_PREFIX}/health`) ||
+      isHealthPath(req.path) ||
       req.method === 'GET' ||
       req.method === 'HEAD' ||
       req.method === 'OPTIONS',
@@ -133,7 +140,6 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
-  app.use('/api', healthRouter(deps));
   app.use(API_PREFIX, healthRouter(deps));
   if (deps.auth) {
     app.use(API_PREFIX, authRouter(deps.auth, env));

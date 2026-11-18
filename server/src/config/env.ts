@@ -1,10 +1,43 @@
 import { z } from 'zod';
 
+/** Required variables checked at startup before binding HTTP. */
+export const REQUIRED_ENV_VARS = ['DATABASE_URL', 'JWT_SECRET'] as const;
+
+/** Recommended production environment variables for Railway + cross-origin frontends. */
+export const RECOMMENDED_PROD_ENV_VARS = [
+  'NODE_ENV',
+  'PORT',
+  'CLIENT_URL',
+  'CORS_ORIGIN',
+  'TRUST_PROXY',
+] as const;
+
 /** Treat an empty string (e.g. `KEY=` in .env) as "not set". */
 const optionalString = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z.string().optional(),
 );
+
+/**
+ * Ensures external Railway Postgres proxy URLs (*.rlwy.net / *.railway.app) enable SSL by default
+ * when `sslmode` is unspecified, while preserving internal/local URLs (e.g. *.railway.internal, localhost).
+ */
+export function normalizeDatabaseUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase();
+    const isRailwayPublicProxy =
+      (host.endsWith('.rlwy.net') || host.endsWith('.railway.app')) &&
+      !host.endsWith('.railway.internal');
+    if (isRailwayPublicProxy && !parsed.searchParams.has('sslmode')) {
+      parsed.searchParams.set('sslmode', 'require');
+      return parsed.toString();
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -13,7 +46,7 @@ const schema = z.object({
 
   DATABASE_URL: z
     .string({ required_error: 'DATABASE_URL is required' })
-    .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must start with postgresql://'),
+    .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must start with postgresql:// or postgres://'),
 
   JWT_SECRET: z
     .string({ required_error: 'JWT_SECRET is required' })
@@ -21,12 +54,10 @@ const schema = z.object({
 
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
   CORS_ORIGIN: optionalString,
-  TRUST_PROXY: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(10)
-    .default(process.env.NODE_ENV === 'production' || process.env.RENDER ? 1 : 0),
+  TRUST_PROXY: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.coerce.number().int().min(0).max(10).optional(),
+  ),
   RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().min(1).default(600),
 
   // Later phases. Optional here; the feature that needs them checks at use time.
@@ -58,7 +89,10 @@ const schema = z.object({
   ADMIN_CONSOLE_PASSWORD: optionalString,
 });
 
-export type Env = z.infer<typeof schema> & { CORS_ORIGINS: string[] };
+export type Env = Omit<z.infer<typeof schema>, 'TRUST_PROXY'> & {
+  TRUST_PROXY: number;
+  CORS_ORIGINS: string[];
+};
 
 export class EnvError extends Error {
   constructor(public readonly issues: string[]) {
@@ -86,10 +120,28 @@ export function loadEnv(
     throw new EnvError(['JWT_SECRET: must not use the example value in production']);
   }
 
+  const trustProxy =
+    env.TRUST_PROXY ??
+    (env.NODE_ENV === 'production' ||
+    Boolean(
+      source.RENDER ||
+      source.RAILWAY_ENVIRONMENT ||
+      source.RAILWAY_PROJECT_ID ||
+      source.RAILWAY_STATIC_URL,
+    )
+      ? 1
+      : 0);
+
+  const normalizedDbUrl = normalizeDatabaseUrl(env.DATABASE_URL);
   const origins = (env.CORS_ORIGIN ?? env.CLIENT_URL)
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
-  return { ...env, CORS_ORIGINS: origins };
+  return {
+    ...env,
+    TRUST_PROXY: trustProxy,
+    DATABASE_URL: normalizedDbUrl,
+    CORS_ORIGINS: origins,
+  };
 }

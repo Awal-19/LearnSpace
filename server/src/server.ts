@@ -1,11 +1,21 @@
 import 'dotenv/config';
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import type { Logger } from 'pino';
 import { createApp } from './app';
-import { EnvError, loadEnv, type Env } from './config/env';
+import {
+  EnvError,
+  loadEnv,
+  RECOMMENDED_PROD_ENV_VARS,
+  REQUIRED_ENV_VARS,
+  type Env,
+} from './config/env';
 import { createEmailService } from './lib/email';
 import { createGeminiProvider } from './lib/llm/gemini';
 import { createNvidiaProvider } from './lib/llm/nvidia';
 import { createLogger } from './lib/logger';
-import { prisma } from './lib/prisma';
+import { createPrismaClient } from './lib/prisma';
 import { createStorageService } from './lib/storage';
 import { createAiService } from './modules/ai/ai.service';
 import { createAttachmentsService } from './modules/ai/attachments.service';
@@ -24,17 +34,73 @@ import { createStudyService } from './modules/study/study.service';
 import { createTimetableService } from './modules/timetable/timetable.service';
 import { createUsersService } from './modules/users/users.service';
 
+const execFileAsync = promisify(execFile);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runStartupMigrations(databaseUrl: string, logger: Logger): Promise<boolean> {
+  let prismaCliPath: string;
+  try {
+    prismaCliPath = path.join(
+      path.dirname(require.resolve('prisma/package.json')),
+      'build',
+      'index.js',
+    );
+  } catch (err) {
+    logger.error({ err }, 'Could not resolve Prisma CLI binary for startup migrations');
+    return false;
+  }
+
+  const serverRoot = path.resolve(__dirname, '..');
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await execFileAsync(process.execPath, [prismaCliPath, 'migrate', 'deploy'], {
+        cwd: serverRoot,
+        env: { ...process.env, DATABASE_URL: databaseUrl },
+        timeout: 30_000,
+      });
+      logger.info({ attempt }, 'Database migrations verified');
+      return true;
+    } catch (err) {
+      logger.warn(
+        { err, attempt, maxAttempts },
+        'Startup prisma migrate deploy attempt failed; retrying if attempts remain',
+      );
+      if (attempt < maxAttempts) {
+        await sleep(2_000);
+      }
+    }
+  }
+
+  logger.error('Startup prisma migrate deploy failed; readiness probe will stay 503');
+  return false;
+}
+
 function main(): void {
   let env: Env;
   try {
     env = loadEnv();
   } catch (err) {
     console.error(err instanceof EnvError ? err.message : err);
-    console.error('Copy server/.env.example to server/.env and fill in the values.');
+    console.error(`Required environment variables: ${REQUIRED_ENV_VARS.join(', ')}`);
+    console.error(
+      `Recommended production environment variables: ${RECOMMENDED_PROD_ENV_VARS.join(', ')}`,
+    );
+    console.error(
+      'Set these in server/.env locally or in Railway Service -> Variables before starting.',
+    );
     process.exit(1);
   }
 
+  // Keep process.env.DATABASE_URL synchronized with normalized SSL parameters for Prisma CLI & runtime.
+  process.env.DATABASE_URL = env.DATABASE_URL;
+
   const logger = createLogger(env);
+  const prisma = createPrismaClient(env.DATABASE_URL);
   const email = createEmailService(env, logger);
   const storage = createStorageService(env, logger, prisma);
   const llm = env.NVIDIA_API_KEY
@@ -94,10 +160,18 @@ function main(): void {
     dailyTokenLimit: aiDailyTokenLimit,
   });
 
+  const shouldRunStartupMigrations =
+    (env.NODE_ENV === 'production' || process.env.RUN_STARTUP_MIGRATIONS === 'true') &&
+    process.env.SKIP_STARTUP_MIGRATIONS !== 'true';
+  let migrationsReady = !shouldRunStartupMigrations;
+
   const app = createApp(
     env,
     {
       checkDb: async () => {
+        if (!migrationsReady) {
+          throw new Error('Startup database migrations still in progress');
+        }
         await prisma.$queryRaw`SELECT 1`;
       },
       auth,
@@ -120,34 +194,51 @@ function main(): void {
     logger,
   );
 
-  const reminderTimer = setInterval(() => {
-    void Promise.all([
-      planner.processDueReminders().catch((err) => {
-        logger.warn({ err }, 'Task reminder sweep failed');
-      }),
-      timetable.processDueClassReminders().catch((err) => {
-        logger.warn({ err }, 'Class reminder sweep failed');
-      }),
-      exams.processDueExamReminders().catch((err) => {
-        logger.warn({ err }, 'Exam reminder sweep failed');
-      }),
-    ]);
-  }, 60_000);
-  reminderTimer.unref();
-  documentJobs.startWorker(2_000);
+  let reminderTimer: NodeJS.Timeout | null = null;
+  let shuttingDown = false;
 
-  const server = app.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'LearnSpace API listening');
+  const startBackgroundJobs = () => {
+    if (shuttingDown || reminderTimer) return;
+    reminderTimer = setInterval(() => {
+      void Promise.all([
+        planner.processDueReminders().catch((err) => {
+          logger.warn({ err }, 'Task reminder sweep failed');
+        }),
+        timetable.processDueClassReminders().catch((err) => {
+          logger.warn({ err }, 'Class reminder sweep failed');
+        }),
+        exams.processDueExamReminders().catch((err) => {
+          logger.warn({ err }, 'Exam reminder sweep failed');
+        }),
+      ]);
+    }, 60_000);
+    reminderTimer.unref();
+    documentJobs.startWorker(2_000);
+  };
+
+  // Bind 0.0.0.0:$PORT immediately so /api/health passes Railway probes without waiting on migrations.
+  const server = app.listen(env.PORT, '0.0.0.0', () => {
+    logger.info({ port: env.PORT, host: '0.0.0.0', env: env.NODE_ENV }, 'LearnSpace API listening');
   });
-  // Stay above typical proxy idle timeouts (avoids sporadic 502s behind Render/NGINX).
+  // Stay above typical proxy idle timeouts (avoids sporadic 502s behind Railway/Render/NGINX).
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
 
-  let shuttingDown = false;
+  if (shouldRunStartupMigrations) {
+    void runStartupMigrations(env.DATABASE_URL, logger).then((ok) => {
+      if (ok && !shuttingDown) {
+        migrationsReady = true;
+        startBackgroundJobs();
+      }
+    });
+  } else {
+    startBackgroundJobs();
+  }
+
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    clearInterval(reminderTimer);
+    if (reminderTimer) clearInterval(reminderTimer);
     documentJobs.stopWorker();
     logger.info({ signal }, 'Shutting down');
     server.close(() => {
