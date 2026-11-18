@@ -80,6 +80,54 @@ async function runStartupMigrations(databaseUrl: string, logger: Logger): Promis
   return false;
 }
 
+async function ensureBootstrapAdmin(
+  prisma: ReturnType<typeof createPrismaClient>,
+  adminEmailRaw: string | undefined,
+  logger: Logger,
+): Promise<void> {
+  const adminEmail = adminEmailRaw?.trim().toLowerCase();
+  if (!adminEmail) return;
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (existing) {
+      if (
+        existing.role !== 'super_admin' ||
+        existing.status !== 'active' ||
+        !existing.emailVerified
+      ) {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: { role: 'super_admin', status: 'active', emailVerified: true },
+        });
+        logger.info({ adminEmail }, 'Promoted ADMIN_EMAIL user to super_admin');
+      }
+    } else {
+      const name = adminEmail.split('@')[0]?.slice(0, 100) || 'Admin';
+      await prisma.user.create({
+        data: {
+          email: adminEmail,
+          name,
+          role: 'super_admin',
+          status: 'active',
+          emailVerified: true,
+          passwordHash: null,
+          settings: { create: { timezone: 'UTC' } },
+        },
+      });
+      logger.info({ adminEmail }, 'Bootstrapped super_admin account for ADMIN_EMAIL');
+    }
+
+    await prisma.appSettings.upsert({
+      where: { id: 'global' },
+      create: { id: 'global' },
+      update: {},
+    });
+  } catch (err) {
+    logger.warn({ err, adminEmail }, 'Startup admin bootstrap failed');
+  }
+}
+
 function main(): void {
   let env: Env;
   try {
@@ -229,6 +277,7 @@ function main(): void {
       if (ok && !shuttingDown) {
         migrationsReady = true;
         startBackgroundJobs();
+        void ensureBootstrapAdmin(prisma, env.ADMIN_EMAIL, logger);
       }
     });
   } else {
