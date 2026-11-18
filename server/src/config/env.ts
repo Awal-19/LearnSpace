@@ -67,6 +67,7 @@ const schema = z.object({
   SMTP_URL: optionalString,
   EMAILJS_SERVICE_ID: optionalString,
   EMAILJS_TEMPLATE_ID: optionalString,
+  EMAILJS_RESET_TEMPLATE_ID: optionalString,
   EMAILJS_PUBLIC_KEY: optionalString,
   EMAILJS_PRIVATE_KEY: optionalString,
   GOOGLE_CLIENT_ID: optionalString,

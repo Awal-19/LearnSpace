@@ -154,6 +154,7 @@ export function createEmailService(
     | 'SMTP_URL'
     | 'EMAILJS_SERVICE_ID'
     | 'EMAILJS_TEMPLATE_ID'
+    | 'EMAILJS_RESET_TEMPLATE_ID'
     | 'EMAILJS_PUBLIC_KEY'
     | 'EMAILJS_PRIVATE_KEY'
   >,
@@ -216,13 +217,16 @@ export function createEmailService(
     env.EMAILJS_PRIVATE_KEY,
   );
   if (emailJsConfigured && (provider === 'auto' || provider === 'emailjs')) {
-    const postEmailJs = async (templateParams: Record<string, string>) => {
+    const postEmailJs = async (
+      templateParams: Record<string, string>,
+      templateId: string = env.EMAILJS_TEMPLATE_ID!,
+    ) => {
       const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_id: env.EMAILJS_SERVICE_ID,
-          template_id: env.EMAILJS_TEMPLATE_ID,
+          template_id: templateId,
           user_id: env.EMAILJS_PUBLIC_KEY,
           accessToken: env.EMAILJS_PRIVATE_KEY,
           template_params: templateParams,
@@ -254,13 +258,16 @@ export function createEmailService(
         }),
       sendPasswordResetEmail: (to, name, url) => {
         const payload = resetTemplate(name, url);
-        return postEmailJs({
-          to_email: to,
-          to_name: name,
-          subject: payload.subject,
-          message: payload.text,
-          app_name: 'LearnSpace',
-        });
+        return postEmailJs(
+          {
+            to_email: to,
+            to_name: name,
+            subject: payload.subject,
+            message: payload.text,
+            app_name: 'LearnSpace',
+          },
+          env.EMAILJS_RESET_TEMPLATE_ID ?? env.EMAILJS_TEMPLATE_ID!,
+        );
       },
       sendTaskReminderEmail: (to, name, title, url) => {
         const payload = reminderTemplate(name, title, url);
