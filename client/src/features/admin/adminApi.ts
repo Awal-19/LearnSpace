@@ -612,6 +612,7 @@ export function submitStudentFeedback(body: {
 export function fetchAdminConsoleStatus() {
   return request<{ required: boolean; unlocked: boolean }>('/console-unlock/status', {
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -620,6 +621,7 @@ export function unlockAdminConsole(password: string) {
     method: 'POST',
     body: { password },
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -697,6 +699,7 @@ export interface PlatformSettingsVersion {
 export function fetchStepUpStatus() {
   return request<{ verified: boolean }>('/super/step-up/status', {
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -704,6 +707,7 @@ export function requestStepUpOtp() {
   return request<{ sent: boolean }>('/super/step-up/request-otp', {
     method: 'POST',
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -712,12 +716,14 @@ export function verifyStepUp(body: { password?: string; code?: string }) {
     method: 'POST',
     body,
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
 export function fetchAdminTeam() {
   return request<{ members: AdminTeamMember[]; invites: AdminInviteItem[] }>('/super/team', {
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -728,7 +734,7 @@ export function inviteAdminMember(body: {
 }) {
   return request<{ invite: { id: string; email: string; role: string; expiresAt: string } }>(
     '/super/team/invite',
-    { method: 'POST', body, baseUrl: ADMIN_API_BASE_URL },
+    { method: 'POST', body, baseUrl: ADMIN_API_BASE_URL, cookie: true },
   );
 }
 
@@ -736,6 +742,7 @@ export function revokeAdminInvite(inviteId: string) {
   return request<void>(`/super/invites/${inviteId}`, {
     method: 'DELETE',
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -746,7 +753,7 @@ export function updateAdminPermissions(
 ) {
   return request<{ user: { id: string; email: string; role: string } }>(
     `/super/team/${userId}/permissions`,
-    { method: 'PATCH', body: { permissions, reason }, baseUrl: ADMIN_API_BASE_URL },
+    { method: 'PATCH', body: { permissions, reason }, baseUrl: ADMIN_API_BASE_URL, cookie: true },
   );
 }
 
@@ -756,7 +763,7 @@ export function fetchPlatformSettings() {
     versions: PlatformSettingsVersion[];
     monthlyAiSpendUsd: number;
     aiApiConfigured: boolean;
-  }>('/super/settings', { baseUrl: ADMIN_API_BASE_URL });
+  }>('/super/settings', { baseUrl: ADMIN_API_BASE_URL, cookie: true });
 }
 
 export function updatePlatformSettings(body: Partial<PlatformSettings> & { reason?: string }) {
@@ -764,6 +771,7 @@ export function updatePlatformSettings(body: Partial<PlatformSettings> & { reaso
     method: 'PATCH',
     body,
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 
@@ -772,6 +780,7 @@ export function rollbackPlatformSettings(version: number, reason: string) {
     method: 'POST',
     body: { version, reason },
     baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
 }
 

@@ -110,7 +110,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       });
       res.cookie(ADMIN_UNLOCK_COOKIE, token, {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
         secure: env.NODE_ENV === 'production',
         maxAge: 2 * 60 * 60 * 1000,
         path: '/',
@@ -574,7 +574,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
       });
       res.cookie(SUPER_STEP_UP_COOKIE, token, {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
         secure: env.NODE_ENV === 'production',
         maxAge: 10 * 60 * 1000,
         path: '/',
