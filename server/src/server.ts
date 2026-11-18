@@ -15,6 +15,7 @@ import { createEmailService } from './lib/email';
 import { createGeminiProvider } from './lib/llm/gemini';
 import { createNvidiaProvider } from './lib/llm/nvidia';
 import { createLogger } from './lib/logger';
+import { hashPassword } from './lib/password';
 import { createPrismaClient } from './lib/prisma';
 import { createStorageService } from './lib/storage';
 import { createAiService } from './modules/ai/ai.service';
@@ -83,6 +84,7 @@ async function runStartupMigrations(databaseUrl: string, logger: Logger): Promis
 async function ensureBootstrapAdmin(
   prisma: ReturnType<typeof createPrismaClient>,
   adminEmailRaw: string | undefined,
+  adminConsolePassword: string | undefined,
   logger: Logger,
 ): Promise<void> {
   const adminEmail = adminEmailRaw?.trim().toLowerCase();
@@ -91,19 +93,27 @@ async function ensureBootstrapAdmin(
   try {
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
     if (existing) {
-      if (
-        existing.role !== 'super_admin' ||
-        existing.status !== 'active' ||
-        !existing.emailVerified
-      ) {
+      const needsRoleUpdate =
+        existing.role !== 'super_admin' || existing.status !== 'active' || !existing.emailVerified;
+      const needsPasswordBootstrap = Boolean(adminConsolePassword && !existing.passwordHash);
+      if (needsRoleUpdate || needsPasswordBootstrap) {
+        const passwordHash = needsPasswordBootstrap
+          ? await hashPassword(adminConsolePassword!)
+          : undefined;
         await prisma.user.update({
           where: { id: existing.id },
-          data: { role: 'super_admin', status: 'active', emailVerified: true },
+          data: {
+            role: 'super_admin',
+            status: 'active',
+            emailVerified: true,
+            ...(passwordHash ? { passwordHash } : {}),
+          },
         });
         logger.info({ adminEmail }, 'Promoted ADMIN_EMAIL user to super_admin');
       }
     } else {
       const name = adminEmail.split('@')[0]?.slice(0, 100) || 'Admin';
+      const passwordHash = adminConsolePassword ? await hashPassword(adminConsolePassword) : null;
       await prisma.user.create({
         data: {
           email: adminEmail,
@@ -111,7 +121,7 @@ async function ensureBootstrapAdmin(
           role: 'super_admin',
           status: 'active',
           emailVerified: true,
-          passwordHash: null,
+          passwordHash,
           settings: { create: { timezone: 'UTC' } },
         },
       });
@@ -277,7 +287,7 @@ function main(): void {
       if (ok && !shuttingDown) {
         migrationsReady = true;
         startBackgroundJobs();
-        void ensureBootstrapAdmin(prisma, env.ADMIN_EMAIL, logger);
+        void ensureBootstrapAdmin(prisma, env.ADMIN_EMAIL, env.ADMIN_CONSOLE_PASSWORD, logger);
       }
     });
   } else {
