@@ -246,6 +246,7 @@ export function createEmailService(
           to_name: name,
           subject: payload.subject,
           message: payload.text,
+          action_url: url,
           app_name: 'LearnSpace',
         });
       },
@@ -264,6 +265,8 @@ export function createEmailService(
             to_name: name,
             subject: payload.subject,
             message: payload.text,
+            reset_url: url,
+            action_url: url,
             app_name: 'LearnSpace',
           },
           env.EMAILJS_RESET_TEMPLATE_ID ?? env.EMAILJS_TEMPLATE_ID!,
