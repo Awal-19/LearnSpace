@@ -10,7 +10,12 @@ COPY package.json package-lock.json* ./
 COPY server/package.json server/package.json
 COPY client/package.json client/package.json
 COPY e2e/package.json e2e/package.json
-RUN if [ -f package-lock.json ]; then npm ci -w client --include-workspace-root; \
+RUN if [ -f package-lock.json ]; then \
+      npm ci -w client --include-workspace-root && \
+      ROLLUP_VER=$(node -p "require('./node_modules/rollup/package.json').version") && \
+      ARCH=$(uname -m) && \
+      if [ "$ARCH" = "x86_64" ]; then npm install --no-save --no-package-lock "@rollup/rollup-linux-x64-musl@$ROLLUP_VER"; \
+      elif [ "$ARCH" = "aarch64" ]; then npm install --no-save --no-package-lock "@rollup/rollup-linux-arm64-musl@$ROLLUP_VER"; fi; \
     else npm install -w client --include-workspace-root; fi
 
 # ---- development (docker-compose) ----
