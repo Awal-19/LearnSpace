@@ -32,7 +32,9 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine AS prod
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+ENV API_UPSTREAM=https://learnspace-api-production.up.railway.app
+ENV NGINX_ENVSUBST_FILTER=API_UPSTREAM
+COPY client/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/client/dist /usr/share/nginx/html
 EXPOSE 80
 
