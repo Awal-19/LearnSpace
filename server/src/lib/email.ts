@@ -254,8 +254,10 @@ export function createEmailService(
         postEmailJs({
           to_email: email,
           to_name: name,
+          subject: 'Your LearnSpace verification code',
           otp_code: code,
           expiry_minutes: String(OTP_EXPIRY_MINUTES),
+          app_name: 'LearnSpace',
         }),
       sendPasswordResetEmail: (to, name, url) => {
         const payload = resetTemplate(name, url);
