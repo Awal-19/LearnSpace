@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
+import { safeContentDispositionFilename } from '../../lib/http';
 import { requireAuth, requireVerifiedEmail } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../middleware/validate';
@@ -97,7 +98,7 @@ export function attachmentsRouter({
       res.setHeader('Content-Type', attachment.mimeType);
       res.setHeader(
         'Content-Disposition',
-        `${attachment.kind === 'image' ? 'inline' : 'attachment'}; filename="${attachment.originalName}"`,
+        `${attachment.kind === 'image' ? 'inline' : 'attachment'}; filename="${safeContentDispositionFilename(attachment.originalName, 'attachment')}"`,
       );
       res.send(buffer);
     }),

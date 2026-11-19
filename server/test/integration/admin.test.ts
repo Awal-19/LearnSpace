@@ -441,6 +441,16 @@ function makeUser(overrides: Partial<UserRow> = {}): UserRow {
     suspendedAt: null,
     suspendedReason: null,
     twoFactorEnabled: false,
+    adminPermissionsJson:
+      overrides.role === 'admin' || overrides.role === 'super_admin'
+        ? {
+            can_manage_users: true,
+            can_moderate_content: true,
+            can_view_ai_usage: true,
+            can_send_announcements: true,
+            can_export_data: true,
+          }
+        : undefined,
     lastActiveAt: now,
     studentId: null,
     programme: 'BSc Computer Science',
@@ -505,7 +515,12 @@ describe('Admin Dashboard integration', () => {
 
   it('allows super_admin to promote a user to admin, but blocks a regular admin (403)', async () => {
     const admin = makeUser({ role: 'admin', email: 'admin@ug.edu.gh' });
-    const superAdmin = makeUser({ role: 'super_admin', email: 'super@ug.edu.gh' });
+    const superPasswordHash = await hashPassword('SuperPass123!');
+    const superAdmin = makeUser({
+      role: 'super_admin',
+      email: 'super@ug.edu.gh',
+      passwordHash: superPasswordHash,
+    });
     const target = makeUser({ role: 'student', email: 'target@ug.edu.gh' });
     prisma._seed.users.push(admin, superAdmin, target);
 
@@ -520,6 +535,7 @@ describe('Admin Dashboard integration', () => {
     const okRes = await request(app)
       .patch(`/api/admin/users/${target.id}/role`)
       .set('Authorization', authHeader(superAdmin))
+      .set('x-step-up-password', 'SuperPass123!')
       .send({ role: 'admin', reason: 'Trusted moderator' });
 
     expect(okRes.status).toBe(200);
@@ -683,10 +699,11 @@ describe('Admin Dashboard integration', () => {
     });
     prisma._seed.users.push(superAdmin);
 
-    // Self-demotion blocked
+    // Self-demotion blocked (step-up satisfied, still rejected with 400)
     const selfRes = await request(app)
       .patch(`/api/admin/users/${superAdmin.id}/role`)
       .set('Authorization', authHeader(superAdmin))
+      .set('x-step-up-password', 'SuperPass123!')
       .send({ role: 'admin' });
     expect(selfRes.status).toBe(400);
 
@@ -737,5 +754,102 @@ describe('Admin Dashboard integration', () => {
     });
     expect(JSON.stringify(res.body)).not.toContain('student-secret@ug.edu.gh');
     expect(JSON.stringify(res.body)).not.toContain('passwordHash');
+  });
+
+  it('enforces RBAC, granular permissions, bulk privilege boundaries, and personal step-up across roles', async () => {
+    const superPass = 'SuperStrong9!x';
+    const superAdmin = makeUser({
+      role: 'super_admin',
+      email: 'super-matrix@ug.edu.gh',
+      passwordHash: await hashPassword(superPass),
+    });
+    const restrictedAdmin = makeUser({
+      role: 'admin',
+      email: 'restricted-admin@ug.edu.gh',
+      adminPermissionsJson: {
+        can_manage_users: true,
+        can_moderate_content: true,
+        can_view_ai_usage: true,
+        can_send_announcements: true,
+        can_export_data: false,
+      },
+    });
+    const student = makeUser({ role: 'student', email: 'student-matrix@ug.edu.gh' });
+    const unverified = makeUser({
+      role: 'student',
+      email: 'unverified-matrix@ug.edu.gh',
+      emailVerified: false,
+    });
+    prisma._seed.users.push(superAdmin, restrictedAdmin, student, unverified);
+
+    // 1. Anonymous visitor is rejected with 401
+    expect((await request(app).get('/api/admin/overview')).status).toBe(401);
+
+    // 2. Unverified & Student users are rejected with 403 across admin & super-admin routes
+    for (const caller of [unverified, student]) {
+      expect(
+        (await request(app).get('/api/admin/overview').set('Authorization', authHeader(caller)))
+          .status,
+      ).toBe(403);
+      expect(
+        (await request(app).get('/api/admin/super/team').set('Authorization', authHeader(caller)))
+          .status,
+      ).toBe(403);
+    }
+
+    // 3. Restricted admin (can_export_data: false) is blocked from creating exports
+    const exportRes = await request(app)
+      .post('/api/admin/exports')
+      .set('Authorization', authHeader(restrictedAdmin))
+      .send({ kind: 'users', format: 'csv' });
+    expect(exportRes.status).toBe(403);
+
+    // 4. Regular admin cannot suspend super_admin via bulkUsers (C-2 fix)
+    const bulkSuspendRes = await request(app)
+      .post('/api/admin/users/bulk')
+      .set('Authorization', authHeader(restrictedAdmin))
+      .send({ action: 'suspend', userIds: [superAdmin.id], reason: 'Attempted takeover' });
+    expect(bulkSuspendRes.status).toBe(403);
+
+    // 5. Super-admin role/settings mutations require personal password step-up (not shared console pass)
+    const noStepUp = await request(app)
+      .patch(`/api/admin/users/${student.id}/role`)
+      .set('Authorization', authHeader(superAdmin))
+      .send({ role: 'admin', reason: 'Missing step-up' });
+    expect(noStepUp.status).toBe(403);
+
+    const sharedConsoleAttempt = await request(app)
+      .patch(`/api/admin/users/${student.id}/role`)
+      .set('Authorization', authHeader(superAdmin))
+      .set('x-step-up-password', 'wrong-shared-console-password')
+      .send({ role: 'admin', reason: 'Wrong step-up' });
+    expect(sharedConsoleAttempt.status).toBe(403);
+
+    const validStepUp = await request(app)
+      .patch(`/api/admin/users/${student.id}/role`)
+      .set('Authorization', authHeader(superAdmin))
+      .set('x-step-up-password', superPass)
+      .send({ role: 'admin', reason: 'Verified step-up promotion' });
+    expect(validStepUp.status).toBe(200);
+    expect(validStepUp.body.user.role).toBe('admin');
+  });
+
+  it('neutralizes CSV formula injection payloads in exported user CSVs', async () => {
+    const admin = makeUser({ role: 'admin', email: 'csvadmin@ug.edu.gh' });
+    const formulaStudent = makeUser({
+      role: 'student',
+      email: 'formula@ug.edu.gh',
+      name: '=cmd|"/C calc"!A0',
+    });
+    prisma._seed.users.push(admin, formulaStudent);
+
+    const res = await request(app)
+      .post('/api/admin/users/bulk')
+      .set('Authorization', authHeader(admin))
+      .send({ action: 'export_csv', userIds: [formulaStudent.id] });
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("'=cmd");
+    expect(res.text).not.toMatch(/,\s*=cmd/);
   });
 });

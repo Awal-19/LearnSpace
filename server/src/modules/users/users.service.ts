@@ -191,7 +191,7 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
       await prisma.$transaction([
         prisma.user.update({
           where: { id: userId },
-          data: { passwordHash: newHash },
+          data: { passwordHash: newHash, tokensValidAfter: new Date() },
         }),
         prisma.refreshToken.updateMany({
           where: {

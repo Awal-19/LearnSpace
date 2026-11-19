@@ -232,7 +232,7 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
               <TrendingUp className="h-4 w-4" aria-hidden="true" />
@@ -279,7 +279,7 @@ export function AdminOverviewPage() {
           )}
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400">
               <MessageSquare className="h-4 w-4" aria-hidden="true" />
@@ -317,7 +317,7 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-base font-semibold text-fg">Recent Sign-ups</h2>
             <Link
@@ -356,7 +356,7 @@ export function AdminOverviewPage() {
           )}
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <h2 className="font-display text-base font-semibold text-fg">
             Active Features &amp; Top Courses
           </h2>
@@ -400,7 +400,7 @@ export function AdminOverviewPage() {
           </div>
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-center gap-2">
             <ShieldCheck
               className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
@@ -410,7 +410,7 @@ export function AdminOverviewPage() {
               System Health &amp; Recent Errors
             </h2>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2.5 text-xs">
+          <div className="mt-3 grid grid-cols-1 gap-2.5 text-xs sm:grid-cols-2">
             {Object.entries(systemHealth).map(([k, v]) => (
               <div
                 key={k}
@@ -434,10 +434,10 @@ export function AdminOverviewPage() {
                 {recentErrors.slice(0, 4).map((err) => (
                   <li
                     key={err.id}
-                    className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/5 p-2 text-danger"
+                    className="flex min-w-0 items-start gap-2 rounded-xl border border-danger/20 bg-danger/5 p-2 text-danger"
                   >
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">
+                    <span className="min-w-0 flex-1 break-words">
                       {err.method} {err.route} — {err.message}
                     </span>
                   </li>

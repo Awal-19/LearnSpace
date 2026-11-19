@@ -174,6 +174,16 @@ describe('RAG helpers & endpoints', () => {
     expect(list.status).toBe(200);
     expect(list.body).toHaveLength(1);
 
+    const invalidCourseFilter = await request(app)
+      .get('/api/v1/ai/documents?courseId=not-a-uuid')
+      .set('Authorization', `Bearer ${token}`);
+    expect(invalidCourseFilter.status).toBe(400);
+
+    const noneCourseFilter = await request(app)
+      .get('/api/v1/ai/documents?courseId=none')
+      .set('Authorization', `Bearer ${token}`);
+    expect(noneCourseFilter.status).toBe(200);
+
     const otherDel = await request(app)
       .delete(`/api/v1/ai/documents/${created.id}`)
       .set('Authorization', `Bearer ${otherToken}`);

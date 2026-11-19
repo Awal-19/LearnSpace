@@ -382,16 +382,34 @@ export function AdminContentPage() {
                     Close
                   </Button>
                 </div>
-                {inspectedUpload.signedUrl ? (
-                  <a
-                    href={inspectedUpload.signedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-block text-sm text-primary-600 hover:underline"
-                  >
-                    Open signed asset URL
-                  </a>
-                ) : null}
+                {(() => {
+                  const raw = inspectedUpload.signedUrl;
+                  if (!raw) return null;
+                  let safeHref: string | null = null;
+                  if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\')) {
+                    safeHref = raw;
+                  } else {
+                    try {
+                      const parsed = new URL(raw);
+                      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+                        safeHref = parsed.toString();
+                      }
+                    } catch {
+                      safeHref = null;
+                    }
+                  }
+                  if (!safeHref) return null;
+                  return (
+                    <a
+                      href={safeHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block text-sm text-primary-600 hover:underline"
+                    >
+                      Open signed asset URL
+                    </a>
+                  );
+                })()}
                 <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-surface2 p-3 text-xs">
                   {inspectedUpload.extractedText || '(No extracted text)'}
                 </pre>

@@ -1,4 +1,4 @@
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -68,7 +68,9 @@ function dayKey(d: Date): string {
 }
 
 function csvEscape(value: unknown): string {
-  const s = value === null || value === undefined ? '' : String(value);
+  const raw = value === null || value === undefined ? '' : String(value);
+  // Neutralize spreadsheet formula injection (=, +, -, @, tab, CR) even after leading whitespace.
+  const s = /^[\s\t\r]*[=+\-@]/.test(raw) || /^[\t\r]/.test(raw) ? `'${raw}` : raw;
   if (/[",\n\r]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -682,18 +684,33 @@ export function createAdminService(deps: AdminServiceDeps) {
       ip: string | undefined,
     ) {
       if (input.action === 'suspend') {
+        const actor = await prisma.user.findUnique({
+          where: { id: actorId },
+          select: { role: true },
+        });
         const ids = input.userIds.filter((id) => id !== actorId);
+        if (ids.length > 0 && actor?.role !== 'super_admin') {
+          const targets = await prisma.user.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, role: true },
+          });
+          if (targets.some((t) => t.role === 'admin' || t.role === 'super_admin')) {
+            throw new AppError('FORBIDDEN', 'Only super_admin can suspend admin accounts');
+          }
+        }
+        const current = new Date();
         await prisma.user.updateMany({
           where: { id: { in: ids } },
           data: {
             status: 'suspended',
-            suspendedAt: new Date(),
+            suspendedAt: current,
             suspendedReason: input.reason?.trim() || 'Bulk suspended by admin',
+            tokensValidAfter: current,
           },
         });
         await prisma.refreshToken.updateMany({
           where: { userId: { in: ids }, revokedAt: null },
-          data: { revokedAt: new Date() },
+          data: { revokedAt: current },
         });
         await recordAuditLog(prisma, {
           actorId,
@@ -1576,7 +1593,7 @@ export function createAdminService(deps: AdminServiceDeps) {
         const lines = rows.map((r) =>
           [
             r.id,
-            r.actor.email,
+            r.actor?.email ?? 'deleted-admin',
             r.action,
             r.targetType,
             r.targetId ?? '',
@@ -1900,13 +1917,6 @@ export function createAdminService(deps: AdminServiceDeps) {
       if (!user) throw new AppError('NOT_FOUND', 'User not found');
 
       if (input.password) {
-        if (env.ADMIN_CONSOLE_PASSWORD) {
-          const a = createHash('sha256').update(input.password).digest();
-          const b = createHash('sha256').update(env.ADMIN_CONSOLE_PASSWORD).digest();
-          if (timingSafeEqual(a, b)) {
-            return { verified: true };
-          }
-        }
         if (user.passwordHash) {
           const ok = await verifyPassword(user.passwordHash, input.password);
           if (ok) return { verified: true };
@@ -1970,7 +1980,9 @@ export function createAdminService(deps: AdminServiceDeps) {
 
       const actionCountByUser = new Map<string, number>();
       for (const row of actionCounts) {
-        actionCountByUser.set(row.actorId, row._count._all);
+        if (row.actorId) {
+          actionCountByUser.set(row.actorId, row._count._all);
+        }
       }
 
       const lastLoginByUser = new Map<string, { ip: string | null; at: Date }>();

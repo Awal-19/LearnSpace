@@ -61,7 +61,11 @@ function makeEmptyOwnedPrisma() {
 }
 
 describe('cross-cutting security & IDOR sweep (T-X-*)', () => {
-  const env = testEnv({ NODE_ENV: 'production', CORS_ORIGIN: 'https://app.learnspace.edu' });
+  const env = testEnv({
+    NODE_ENV: 'production',
+    CORS_ORIGIN: 'https://app.learnspace.edu',
+    JWT_SECRET: '9f8e7d6c5b4a32109876543210fedcba9876543210abcdef',
+  });
   const logger = createLogger(env);
   const prisma = makeEmptyOwnedPrisma();
   const llm: LLMProvider = {

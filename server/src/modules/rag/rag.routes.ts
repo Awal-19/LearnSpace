@@ -84,6 +84,13 @@ export function ragRouter({ rag, env, isEmailVerified }: RagRouterDeps): Router 
         typeof req.query.courseId === 'string' && req.query.courseId.trim() !== ''
           ? req.query.courseId.trim()
           : undefined;
+      if (
+        courseId !== undefined &&
+        courseId !== 'none' &&
+        !uuidSchema.safeParse(courseId).success
+      ) {
+        throw new AppError('VALIDATION_ERROR', 'Invalid courseId filter');
+      }
       const docs = await rag.listDocuments(req.user!.id, courseId);
       res.json(docs);
     }),

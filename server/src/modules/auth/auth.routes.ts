@@ -1,5 +1,6 @@
-import { Router, type CookieOptions, type Request } from 'express';
+import { Router, type CookieOptions, type Request as ExpressRequest } from 'express';
 import type { Env } from '../../config/env';
+import { AppError } from '../../lib/errors';
 import { csrfGuard, requireAuth } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
@@ -29,7 +30,7 @@ function refreshCookieOptions(isProd: boolean, persistent: boolean): CookieOptio
   };
 }
 
-function sessionMeta(req: Request) {
+function sessionMeta(req: ExpressRequest) {
   return {
     userAgent: req.header('user-agent')?.slice(0, 250),
     ip: req.ip,
@@ -144,6 +145,8 @@ export function authRouter(
   router.post(
     '/auth/admin-2fa/verify',
     authLimiter,
+    otpIpLimiter,
+    otpEmailLimiter,
     validate({ body: adminTwoFactorSchema }),
     asyncHandler(async (req, res) => {
       const result = await service.verifyAdminTwoFactor(
@@ -236,6 +239,7 @@ export function authRouter(
 
   router.post(
     '/auth/forgot-password',
+    otpIpLimiter,
     emailLimiter,
     validate({ body: forgotPasswordSchema }),
     asyncHandler(async (req, res) => {
@@ -254,13 +258,17 @@ export function authRouter(
     }),
   );
 
-  const resolveGoogleCallbackUrl = (req: Request) =>
-    env.GOOGLE_CALLBACK_URL ?? `${req.protocol}://${req.get('host')}/api/v1/auth/google/callback`;
+  const resolveGoogleCallbackUrl = () => {
+    if (!env.GOOGLE_CALLBACK_URL) {
+      throw new AppError('INTERNAL', 'Google callback URL is not configured');
+    }
+    return env.GOOGLE_CALLBACK_URL;
+  };
 
-  router.get('/auth/google', (req, res) => {
-    const redirectUri = resolveGoogleCallbackUrl(req);
-    const { url, state, codeVerifier } = service.beginGoogleOAuth(redirectUri);
-    res.cookie(OAUTH_COOKIE_NAME, JSON.stringify({ state, codeVerifier }), {
+  router.get('/auth/google', (_req, res) => {
+    const redirectUri = resolveGoogleCallbackUrl();
+    const { url, state, nonce, codeVerifier } = service.beginGoogleOAuth(redirectUri);
+    res.cookie(OAUTH_COOKIE_NAME, JSON.stringify({ state, nonce, codeVerifier }), {
       httpOnly: true,
       secure: isProd,
       sameSite: 'lax',
@@ -276,7 +284,12 @@ export function authRouter(
       const failWith = (reason: 'google_denied' | 'google_state' | 'google_failed') =>
         `${env.CLIENT_URL}/login?error=${reason}`;
       const rawCookie = req.cookies?.[OAUTH_COOKIE_NAME] as string | undefined;
-      res.clearCookie(OAUTH_COOKIE_NAME, { path: '/api/v1/auth/google' });
+      res.clearCookie(OAUTH_COOKIE_NAME, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        path: '/api/v1/auth/google',
+      });
 
       if (typeof req.query.error === 'string') {
         res.redirect(
@@ -292,17 +305,22 @@ export function authRouter(
       }
 
       try {
-        const parsed = JSON.parse(rawCookie) as { state?: string; codeVerifier?: string };
+        const parsed = JSON.parse(rawCookie) as {
+          state?: string;
+          nonce?: string;
+          codeVerifier?: string;
+        };
         if (!parsed.state || !parsed.codeVerifier || parsed.state !== req.query.state) {
           res.redirect(302, failWith('google_state'));
           return;
         }
-        const redirectUri = resolveGoogleCallbackUrl(req);
+        const redirectUri = resolveGoogleCallbackUrl();
         const result = await service.completeGoogleOAuth(
           req.query.code,
           parsed.codeVerifier,
           redirectUri,
           sessionMeta(req),
+          parsed.nonce,
         );
         res.cookie(
           REFRESH_COOKIE_NAME,

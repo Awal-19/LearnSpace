@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
-import { getAccessToken } from '../../lib/apiClient';
+import { API_BASE_URL, getAccessToken } from '../../lib/apiClient';
 
 interface AuthenticatedCardImageProps {
   src: string;
   alt: string;
   className?: string;
+}
+
+function isTrustedApiOrSameOrigin(src: string): boolean {
+  if (src.startsWith('/') && !src.startsWith('//') && !src.startsWith('/\\')) {
+    return true;
+  }
+  if (typeof window === 'undefined') return false;
+  try {
+    const targetOrigin = new URL(src, window.location.origin).origin;
+    const apiOrigin = new URL(API_BASE_URL, window.location.origin).origin;
+    return targetOrigin === window.location.origin || targetOrigin === apiOrigin;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -23,9 +37,10 @@ export function AuthenticatedCardImage({ src, alt, className }: AuthenticatedCar
 
     async function load() {
       try {
-        const token = getAccessToken();
+        const trusted = isTrustedApiOrSameOrigin(src);
+        const token = trusted ? getAccessToken() : null;
         const res = await fetch(src, {
-          credentials: 'include',
+          credentials: trusted ? 'include' : 'omit',
           signal: controller.signal,
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });

@@ -58,7 +58,7 @@ export function AdminLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-app text-fg">
+    <div className="min-h-screen overflow-x-hidden bg-app text-fg">
       {sidebarOpen ? (
         <button
           type="button"
@@ -187,8 +187,8 @@ export function AdminLayout() {
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line/80 bg-surface/85 px-4 backdrop-blur-md sm:px-6">
+      <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
+        <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center justify-between gap-2 border-b border-line/80 bg-surface/85 px-4 backdrop-blur-md sm:gap-3 sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -227,7 +227,7 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
+        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6">
           <Outlet />
         </main>
       </div>

@@ -102,6 +102,71 @@ export class EnvError extends Error {
   }
 }
 
+const WEAK_SECRET_PREFIXES = [
+  'change-me',
+  'replace-with',
+  'dev-secret',
+  'test-secret',
+  'example',
+  'your-',
+];
+
+const WEAK_PASSWORDS = new Set([
+  'postgres',
+  'learnspace',
+  'password',
+  'password123',
+  'changeme',
+  'admin',
+  'admin123',
+  'root',
+  '123456',
+  '12345678',
+]);
+
+function assertProductionSecrets(env: z.infer<typeof schema>): void {
+  if (env.NODE_ENV !== 'production') return;
+
+  const issues: string[] = [];
+  const lowerJwt = env.JWT_SECRET.trim().toLowerCase();
+  if (
+    WEAK_SECRET_PREFIXES.some((prefix) => lowerJwt.startsWith(prefix)) ||
+    lowerJwt === 'secret' ||
+    lowerJwt === 'jwt_secret'
+  ) {
+    issues.push('JWT_SECRET: must not use a placeholder or default value in production');
+  } else if (new Set(env.JWT_SECRET).size < 8) {
+    issues.push('JWT_SECRET: must contain at least 8 distinct characters in production');
+  }
+
+  try {
+    const dbUrl = new URL(env.DATABASE_URL);
+    const host = dbUrl.hostname.toLowerCase();
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const dbPass = decodeURIComponent(dbUrl.password || '')
+      .trim()
+      .toLowerCase();
+    if (!isLocalHost && (!dbPass || WEAK_PASSWORDS.has(dbPass))) {
+      issues.push('DATABASE_URL: must use a strong, non-default database password in production');
+    }
+  } catch {
+    issues.push('DATABASE_URL: must be a valid PostgreSQL connection URL');
+  }
+
+  if (env.ADMIN_CONSOLE_PASSWORD) {
+    const adminPass = env.ADMIN_CONSOLE_PASSWORD.trim();
+    if (adminPass.length < 8 || WEAK_PASSWORDS.has(adminPass.toLowerCase())) {
+      issues.push(
+        'ADMIN_CONSOLE_PASSWORD: must be at least 8 characters and not a default password in production',
+      );
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new EnvError(issues);
+  }
+}
+
 /**
  * Validates configuration. Error messages list variable names and rules only;
  * they never echo the offending values, so secrets cannot leak into logs.
@@ -117,9 +182,7 @@ export function loadEnv(
   }
   const env = result.data;
 
-  if (env.NODE_ENV === 'production' && env.JWT_SECRET.startsWith('change-me')) {
-    throw new EnvError(['JWT_SECRET: must not use the example value in production']);
-  }
+  assertProductionSecrets(env);
 
   const trustProxy =
     env.TRUST_PROXY ??

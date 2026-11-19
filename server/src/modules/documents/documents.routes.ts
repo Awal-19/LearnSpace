@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
+import { safeContentDispositionFilename } from '../../lib/http';
 import { requireAuth, requireVerifiedEmail } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
@@ -161,7 +162,7 @@ export function documentsRouter({ documents, env, isEmailVerified }: DocumentsRo
       res.setHeader('Content-Type', content.mimeType);
       res.setHeader(
         'Content-Disposition',
-        `inline; filename="${content.filename.replace(/"/g, '')}"`,
+        `inline; filename="${safeContentDispositionFilename(content.filename, 'document')}"`,
       );
       res.send(content.bytes);
     }),
@@ -290,7 +291,10 @@ export function documentsRouter({ documents, env, isEmailVerified }: DocumentsRo
       const body = req.body as z.infer<typeof exportDocumentSchema>;
       const exported = await documents.exportAnswers(req.user!.id, parsedId.data, body.format);
       res.setHeader('Content-Type', exported.mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${exported.filename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${safeContentDispositionFilename(exported.filename, 'export')}"`,
+      );
       res.send(exported.buffer);
     }),
   );
@@ -400,7 +404,10 @@ export function documentsRouter({ documents, env, isEmailVerified }: DocumentsRo
         body.format,
       );
       res.setHeader('Content-Type', exported.mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${exported.filename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${safeContentDispositionFilename(exported.filename, 'export')}"`,
+      );
       res.send(exported.buffer);
     }),
   );

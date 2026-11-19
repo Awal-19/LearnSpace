@@ -93,6 +93,13 @@ async function ensureBootstrapAdmin(
   try {
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
     if (existing) {
+      if (existing.role === 'student' && !existing.emailVerified) {
+        logger.warn(
+          { adminEmail },
+          'Refusing to auto-promote unverified student account matching ADMIN_EMAIL',
+        );
+        return;
+      }
       const needsRoleUpdate =
         existing.role !== 'super_admin' || existing.status !== 'active' || !existing.emailVerified;
       const needsPasswordBootstrap = Boolean(adminConsolePassword && !existing.passwordHash);

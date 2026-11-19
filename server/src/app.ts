@@ -163,7 +163,7 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
         }
       : undefined);
 
-  if (verifyEmailCheck) {
+  if (verifyEmailCheck || deps.dashboardPrisma) {
     const authMiddleware = requireAuth(env.JWT_SECRET);
     app.use(API_PREFIX, (req, res, next) => {
       if (req.path.startsWith('/health') || req.path.startsWith('/auth')) {
@@ -183,15 +183,47 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
           next();
           return;
         }
-        void verifyEmailCheck(req.user.id)
-          .then((verified) => {
-            if (!verified) {
+        void (async () => {
+          if (deps.dashboardPrisma) {
+            const row = await deps.dashboardPrisma.user.findUnique({
+              where: { id: req.user!.id },
+              select: {
+                status: true,
+                emailVerified: true,
+                tokensValidAfter: true,
+              },
+            });
+            if (!row) {
+              next(new AppError('UNAUTHENTICATED'));
+              return;
+            }
+            if (row.status === 'suspended') {
+              next(new AppError('ACCOUNT_SUSPENDED'));
+              return;
+            }
+            if (
+              row.tokensValidAfter &&
+              (!req.user!.iat || req.user!.iat * 1000 < row.tokensValidAfter.getTime())
+            ) {
+              next(new AppError('UNAUTHENTICATED'));
+              return;
+            }
+            if (!row.emailVerified) {
               next(new AppError('EMAIL_NOT_VERIFIED'));
               return;
             }
             next();
-          })
-          .catch(next);
+            return;
+          }
+          if (verifyEmailCheck) {
+            const verified = await verifyEmailCheck(req.user!.id);
+            if (!verified) {
+              next(new AppError('EMAIL_NOT_VERIFIED'));
+              return;
+            }
+          }
+          next();
+        })().catch(next);
       });
     });
   }

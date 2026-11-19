@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
+import { safeContentDispositionFilename } from '../../lib/http';
 import {
   requireAdmin,
   requireAuth,
@@ -133,6 +134,40 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
     next();
   });
 
+  const SUPER_STEP_UP_COOKIE = 'learnspace_super_stepup';
+
+  function isStepUpValid(req: Request): boolean {
+    const raw = (req.cookies as Record<string, unknown> | undefined)?.[SUPER_STEP_UP_COOKIE];
+    if (typeof raw !== 'string' || !raw) return false;
+    try {
+      const payload = jwt.verify(raw, env.JWT_SECRET, { algorithms: ['HS256'] }) as {
+        sub?: string;
+        purpose?: string;
+      };
+      return payload.purpose === 'super_step_up' && payload.sub === req.user?.id;
+    } catch {
+      return false;
+    }
+  }
+
+  const requireStepUp = asyncHandler(async (req, _res, next) => {
+    if (isStepUpValid(req)) {
+      next();
+      return;
+    }
+    const headerPassword = req.header('x-step-up-password');
+    const headerCode = req.header('x-step-up-otp');
+    if (headerPassword || headerCode) {
+      await admin.verifyStepUp(req.user!.id, {
+        ...(headerPassword ? { password: headerPassword } : {}),
+        ...(headerCode ? { code: headerCode } : {}),
+      });
+      next();
+      return;
+    }
+    throw new AppError('FORBIDDEN', 'Step-up verification required for this Super Admin action');
+  });
+
   router.get(
     '/overview',
     validate({ query: overviewQuerySchema }),
@@ -145,6 +180,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.get(
     '/users',
+    requirePermission('can_manage_users'),
     validate({ query: listUsersQuerySchema }),
     asyncHandler(async (req, res) => {
       const query = req.query as unknown as z.infer<typeof listUsersQuerySchema>;
@@ -155,6 +191,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.get(
     '/users/:id',
+    requirePermission('can_manage_users'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
@@ -165,6 +202,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.patch(
     '/users/:id/status',
+    requirePermission('can_manage_users'),
     validate({ body: updateUserStatusSchema }),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
@@ -183,6 +221,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.post(
     '/users/:id/force-logout',
+    requirePermission('can_manage_users'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
@@ -193,6 +232,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.post(
     '/users/:id/resend-verification',
+    requirePermission('can_manage_users'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
@@ -203,6 +243,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.post(
     '/users/:id/trigger-reset',
+    requirePermission('can_manage_users'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
@@ -214,6 +255,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
   router.patch(
     '/users/:id/role',
     superAdminOnly,
+    requireStepUp,
     validate({ body: updateUserRoleSchema }),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
@@ -232,6 +274,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.delete(
     '/users/:id',
+    requirePermission('can_manage_users'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
@@ -242,6 +285,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.post(
     '/users/bulk',
+    requirePermission('can_manage_users'),
     validate({ body: bulkUsersSchema }),
     asyncHandler(async (req, res) => {
       const body = req.body as z.infer<typeof bulkUsersSchema>;
@@ -258,6 +302,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.get(
     '/ai-usage',
+    requirePermission('can_view_ai_usage'),
     validate({ query: overviewQuerySchema }),
     asyncHandler(async (req, res) => {
       const query = req.query as unknown as z.infer<typeof overviewQuerySchema>;
@@ -269,6 +314,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
   router.patch(
     '/ai-usage/limits',
     superAdminOnly,
+    requireStepUp,
     validate({ body: updateAiLimitsSchema }),
     asyncHandler(async (req, res) => {
       const body = req.body as z.infer<typeof updateAiLimitsSchema>;
@@ -504,6 +550,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
   router.patch(
     '/settings',
     superAdminOnly,
+    requireStepUp,
     validate({ body: updateAppSettingsSchema }),
     asyncHandler(async (req, res) => {
       const body = req.body as z.infer<typeof updateAppSettingsSchema>;
@@ -513,40 +560,6 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
   );
 
   // ---------------------------------------------------------------- Super Admin Layer
-  const SUPER_STEP_UP_COOKIE = 'learnspace_super_stepup';
-
-  function isStepUpValid(req: Request): boolean {
-    const raw = (req.cookies as Record<string, unknown> | undefined)?.[SUPER_STEP_UP_COOKIE];
-    if (typeof raw !== 'string' || !raw) return false;
-    try {
-      const payload = jwt.verify(raw, env.JWT_SECRET, { algorithms: ['HS256'] }) as {
-        sub?: string;
-        purpose?: string;
-      };
-      return payload.purpose === 'super_step_up' && payload.sub === req.user?.id;
-    } catch {
-      return false;
-    }
-  }
-
-  const requireStepUp = asyncHandler(async (req, _res, next) => {
-    if (isStepUpValid(req)) {
-      next();
-      return;
-    }
-    const headerPassword = req.header('x-step-up-password');
-    const headerCode = req.header('x-step-up-otp');
-    if (headerPassword || headerCode) {
-      await admin.verifyStepUp(req.user!.id, {
-        ...(headerPassword ? { password: headerPassword } : {}),
-        ...(headerCode ? { code: headerCode } : {}),
-      });
-      next();
-      return;
-    }
-    throw new AppError('FORBIDDEN', 'Step-up verification required for this Super Admin action');
-  });
-
   router.get('/super/step-up/status', superAdminOnly, (req, res) => {
     res.json({ verified: isStepUpValid(req) });
   });
@@ -695,6 +708,7 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.post(
     '/exports',
+    requirePermission('can_export_data'),
     validate({ body: createExportSchema }),
     asyncHandler(async (req, res) => {
       const body = req.body as z.infer<typeof createExportSchema>;
@@ -705,23 +719,17 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
 
   router.get(
     '/exports/:id/download',
+    requirePermission('can_export_data'),
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'Export not found');
       const file = await admin.downloadExportJob(req.user!.id, id.data);
       res.setHeader('Content-Type', file.mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${safeContentDispositionFilename(file.fileName, 'export')}"`,
+      );
       res.send(file.bytes);
-    }),
-  );
-
-  router.post(
-    '/auth/admin-invite/accept',
-    validate({ body: acceptAdminInviteSchema }),
-    asyncHandler(async (req, res) => {
-      const body = req.body as z.infer<typeof acceptAdminInviteSchema>;
-      const result = await admin.acceptAdminInvite(body, req.ip);
-      res.json(result);
     }),
   );
 

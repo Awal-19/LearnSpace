@@ -594,4 +594,48 @@ describe('auth endpoints (T-AUTH-01..13)', () => {
       expect(res.body.error.code).toBe('EMAIL_NOT_VERIFIED');
     }
   });
+
+  it('rejects verify-otp for already-verified accounts without issuing a session', async () => {
+    const signupRes = await request(app).post('/api/v1/auth/signup').send({
+      email: 'verified-bypass@example.com',
+      name: 'Verified User',
+      password: 'StudyPass9!x',
+      acceptTerms: true,
+    });
+    expect(signupRes.status).toBe(201);
+    const verifyRes = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'verified-bypass@example.com', code: sentOtpCode! });
+    expect(verifyRes.status).toBe(200);
+
+    const bypassRes = await request(app)
+      .post('/api/v1/auth/verify-otp')
+      .send({ email: 'verified-bypass@example.com', code: '000000' });
+    expect(bypassRes.status).toBe(400);
+    expect(bypassRes.body.accessToken).toBeUndefined();
+  });
+
+  it('does not leak suspension status when login password is wrong', async () => {
+    const signupRes = await request(app).post('/api/v1/auth/signup').send({
+      email: 'suspended-enum@example.com',
+      name: 'Suspended User',
+      password: 'StudyPass9!x',
+      acceptTerms: true,
+    });
+    expect(signupRes.status).toBe(201);
+    const user = store.users.find((u) => u.email === 'suspended-enum@example.com') as UserRow & {
+      status?: string;
+      suspendedReason?: string | null;
+    };
+    user.emailVerified = true;
+    user.status = 'suspended';
+    user.suspendedReason = 'Secret internal ban note';
+
+    const wrongPassRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'suspended-enum@example.com', password: 'WrongPassword123' });
+    expect(wrongPassRes.status).toBe(401);
+    expect(wrongPassRes.body.error.code).toBe('INVALID_CREDENTIALS');
+    expect(JSON.stringify(wrongPassRes.body)).not.toContain('Secret internal ban note');
+  });
 });

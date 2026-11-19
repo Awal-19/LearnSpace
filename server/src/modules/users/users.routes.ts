@@ -162,7 +162,13 @@ export function usersRouter(users: UsersService, env: Env): Router {
     validateBody(deleteAccountSchema),
     asyncHandler(async (req, res) => {
       await users.deleteAccount(req.user!.id, req.body, req.user!.iat);
-      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/v1/auth' });
+      const isProd = env.NODE_ENV === 'production';
+      res.clearCookie(REFRESH_COOKIE_NAME, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        path: '/api/v1/auth',
+      });
       res.status(204).end();
     }),
   );

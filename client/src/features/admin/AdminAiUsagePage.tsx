@@ -217,34 +217,36 @@ export function AdminAiUsagePage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <h2 className="font-display text-base font-semibold">Top Users by Usage</h2>
           {topUsers.length === 0 ? (
             <p className="mt-3 text-sm text-muted">No usage recorded yet.</p>
           ) : (
-            <table className="mt-3 w-full text-left text-sm">
-              <thead className="border-b border-line text-xs uppercase text-muted">
-                <tr>
-                  <th className="py-2">User</th>
-                  <th className="py-2">Requests</th>
-                  <th className="py-2">Tokens</th>
-                  <th className="py-2 text-right">Est. Cost</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line/80">
-                {topUsers.map((u) => (
-                  <tr key={u.userId} className="transition-colors hover:bg-surface2/40">
-                    <td className="py-2.5">
-                      <p className="font-medium">{u.name}</p>
-                      <p className="text-xs text-muted">{u.email}</p>
-                    </td>
-                    <td className="py-2.5 tabular-nums">{u.requests}</td>
-                    <td className="py-2.5 tabular-nums">{u.tokens.toLocaleString()}</td>
-                    <td className="py-2.5 text-right font-medium tabular-nums">${u.costUsd}</td>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-line text-xs uppercase text-muted">
+                  <tr>
+                    <th className="py-2">User</th>
+                    <th className="py-2">Requests</th>
+                    <th className="py-2">Tokens</th>
+                    <th className="py-2 text-right">Est. Cost</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-line/80">
+                  {topUsers.map((u) => (
+                    <tr key={u.userId} className="transition-colors hover:bg-surface2/40">
+                      <td className="py-2.5">
+                        <p className="font-medium">{u.name}</p>
+                        <p className="text-xs text-muted">{u.email}</p>
+                      </td>
+                      <td className="py-2.5 tabular-nums">{u.requests}</td>
+                      <td className="py-2.5 tabular-nums">{u.tokens.toLocaleString()}</td>
+                      <td className="py-2.5 text-right font-medium tabular-nums">${u.costUsd}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
 

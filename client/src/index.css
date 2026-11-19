@@ -9,10 +9,21 @@
     @apply bg-app text-fg antialiased;
     font-family: 'Inter Variable', Inter, system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
+    overflow-x: clip;
   }
 
   body {
     @apply min-h-screen;
+    overflow-x: clip;
+  }
+
+  /* Prevent iOS Safari from auto-zooming when focusing inputs smaller than 16px */
+  @media (max-width: 639px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
   }
 
   h1,

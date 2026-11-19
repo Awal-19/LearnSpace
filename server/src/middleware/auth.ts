@@ -124,7 +124,7 @@ export function requirePermission(permission: AdminPermission): RequestHandler {
       next();
       return;
     }
-    if (req.adminPermissions?.[permission] === false) {
+    if (req.adminPermissions?.[permission] !== true) {
       next(new AppError('FORBIDDEN', `Missing required permission: ${permission}`));
       return;
     }

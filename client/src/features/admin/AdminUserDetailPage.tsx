@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, KeyRound, LogOut, Mail, Shield, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { Avatar, Badge, Button, Card, Skeleton, useToast, VerifiedBadge } from '../../design';
 import { ApiError } from '../../lib/apiClient';
+import { StepUpModal } from './StepUpModal';
 import {
   deleteAdminUser,
   fetchAdminUserDetail,
@@ -19,8 +20,11 @@ export function AdminUserDetailPage() {
   const { userId = '' } = useParams<{ userId: string }>();
   const { user: actor } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [stepUpOpen, setStepUpOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
   const query = useQuery({
     queryKey: ['admin', 'user', userId],
@@ -51,8 +55,23 @@ export function AdminUserDetailPage() {
     try {
       await fn();
       toast.show({ kind: 'success', title: successMsg });
-      await query.refetch();
+      await Promise.all([
+        query.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] }),
+      ]);
     } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        err.message.toLowerCase().includes('step-up')
+      ) {
+        setPendingAction(() => async () => {
+          await runAction(fn, successMsg);
+        });
+        setStepUpOpen(true);
+        return;
+      }
       toast.show({
         kind: 'error',
         title: 'Action failed',
@@ -93,8 +112,19 @@ export function AdminUserDetailPage() {
     try {
       await deleteAdminUser(user.id);
       toast.show({ kind: 'success', title: 'User account deleted' });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] }),
+        queryClient.removeQueries({ queryKey: ['admin', 'user', user.id] }),
+      ]);
       navigate('/admin/users', { replace: true });
     } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        toast.show({ kind: 'info', title: 'User was already deleted' });
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+        navigate('/admin/users', { replace: true });
+        return;
+      }
       toast.show({
         kind: 'error',
         title: 'Delete failed',
@@ -285,6 +315,19 @@ export function AdminUserDetailPage() {
           )}
         </Card>
       </div>
+
+      <StepUpModal
+        open={stepUpOpen}
+        onClose={() => {
+          setStepUpOpen(false);
+          setPendingAction(null);
+        }}
+        onVerified={async () => {
+          const fn = pendingAction;
+          setPendingAction(null);
+          if (fn) await fn();
+        }}
+      />
     </div>
   );
 }

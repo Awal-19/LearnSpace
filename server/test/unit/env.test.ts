@@ -81,4 +81,29 @@ describe('loadEnv (T-X-04)', () => {
     const env = loadEnv({ ...baseEnv, RAILWAY_ENVIRONMENT: 'production' });
     expect(env.TRUST_PROXY).toBe(1);
   });
+
+  it('refuses low-entropy JWT_SECRET, weak DB password, and weak ADMIN_CONSOLE_PASSWORD in production without echoing secrets', () => {
+    const weakJwt = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    expect(() => loadEnv({ ...baseEnv, NODE_ENV: 'production', JWT_SECRET: weakJwt })).toThrow(
+      /JWT_SECRET/,
+    );
+
+    const weakDb = 'postgresql://learnspace:learnspace@db.prod.example.com:5432/learnspace';
+    try {
+      loadEnv({ ...baseEnv, NODE_ENV: 'production', DATABASE_URL: weakDb });
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(EnvError);
+      expect((err as Error).message).toMatch(/DATABASE_URL/);
+      expect((err as Error).message).not.toContain('learnspace');
+    }
+
+    expect(() =>
+      loadEnv({
+        ...baseEnv,
+        NODE_ENV: 'production',
+        ADMIN_CONSOLE_PASSWORD: 'password123',
+      }),
+    ).toThrow(/ADMIN_CONSOLE_PASSWORD/);
+  });
 });

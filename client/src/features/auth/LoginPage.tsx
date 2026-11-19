@@ -18,7 +18,16 @@ interface LoginResponse {
 }
 
 function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
+  if (
+    !raw ||
+    !raw.startsWith('/') ||
+    raw.startsWith('//') ||
+    raw.startsWith('/\\') ||
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(raw)
+  ) {
+    return '/';
+  }
   return raw;
 }
 

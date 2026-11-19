@@ -306,25 +306,6 @@ export function createAuthService(deps: AuthServiceDeps) {
         throw new AppError('INVALID_CREDENTIALS');
       }
 
-      if (user.status === 'suspended') {
-        await recordLoginHistory(prisma, {
-          userId: user.id,
-          email: user.email,
-          method: 'email',
-          success: false,
-          ip: meta.ip,
-          userAgent: meta.userAgent,
-          suspicious: true,
-          reason: 'account_suspended',
-        });
-        throw new AppError(
-          'ACCOUNT_SUSPENDED',
-          user.suspendedReason
-            ? `Your account has been suspended: ${user.suspendedReason}`
-            : undefined,
-        );
-      }
-
       if (user.lockedUntil && user.lockedUntil > current) {
         const retryAfterSeconds = Math.ceil(
           (user.lockedUntil.getTime() - current.getTime()) / 1000,
@@ -401,26 +382,41 @@ export function createAuthService(deps: AuthServiceDeps) {
         );
       }
 
+      if (user.status === 'suspended') {
+        await recordLoginHistory(prisma, {
+          userId: user.id,
+          email: user.email,
+          method: 'email',
+          success: false,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          suspicious: true,
+          reason: 'account_suspended',
+        });
+        throw new AppError(
+          'ACCOUNT_SUSPENDED',
+          user.suspendedReason
+            ? `Your account has been suspended: ${user.suspendedReason}`
+            : undefined,
+        );
+      }
+
       const isAdmin = user.role === 'admin' || user.role === 'super_admin';
       if (isAdmin && user.twoFactorEnabled) {
         const code = String(randomInt(100000, 1000000));
-        const codeHash = hashToken(`${user.id}:${code}`);
+        const codeHash = hashToken(code);
         const expiresAt = new Date(current.getTime() + ADMIN_2FA_TTL_MS);
         await prisma.$transaction([
-          prisma.emailToken.updateMany({
-            where: { userId: user.id, type: 'admin_2fa', usedAt: null },
+          prisma.otpCode.updateMany({
+            where: { userId: user.id, purpose: 'admin_2fa', usedAt: null },
             data: { usedAt: current },
           }),
-          prisma.emailToken.create({
-            data: { userId: user.id, type: 'admin_2fa', tokenHash: codeHash, expiresAt },
+          prisma.otpCode.create({
+            data: { userId: user.id, purpose: 'admin_2fa', codeHash, expiresAt },
           }),
         ]);
         try {
-          await email.sendVerificationEmail(
-            user.email,
-            user.name,
-            `Your LearnSpace Admin 2FA code is: ${code} (expires in 10 minutes)`,
-          );
+          await email.sendOtpEmail({ email: user.email, name: user.name, code });
         } catch (err) {
           logger.error({ err, userId: user.id }, 'Failed to send admin 2FA OTP');
         }
@@ -448,24 +444,41 @@ export function createAuthService(deps: AuthServiceDeps) {
       code: string,
       meta: SessionMeta,
     ): Promise<AuthSessionResult> {
-      const user = await prisma.user.findUnique({ where: { email: emailInput } });
+      const user = await prisma.user.findUnique({ where: { email: emailInput.toLowerCase() } });
       if (!user || user.status === 'suspended') {
         throw new AppError('INVALID_TOKEN', 'Invalid or expired verification code');
       }
       const current = now();
-      const codeHash = hashToken(`${user.id}:${code}`);
-      const record = await prisma.emailToken.findUnique({ where: { tokenHash: codeHash } });
-      if (
-        !record ||
-        record.userId !== user.id ||
-        record.type !== 'admin_2fa' ||
-        record.usedAt !== null ||
-        record.expiresAt <= current
-      ) {
+      const otp = await prisma.otpCode.findFirst({
+        where: { userId: user.id, purpose: 'admin_2fa', usedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!otp || otp.expiresAt <= current) {
+        if (otp) {
+          await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
+        }
         throw new AppError('INVALID_TOKEN', 'Invalid or expired verification code');
       }
-      await prisma.emailToken.update({
-        where: { id: record.id },
+      if (otp.attempts >= 5) {
+        await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
+        throw new AppError('RATE_LIMITED', 'Too many incorrect attempts. Sign in again.');
+      }
+      if (otp.codeHash !== hashToken(code)) {
+        const nextAttempts = otp.attempts + 1;
+        await prisma.otpCode.update({
+          where: { id: otp.id },
+          data: {
+            attempts: nextAttempts,
+            ...(nextAttempts >= 5 ? { usedAt: current } : {}),
+          },
+        });
+        if (nextAttempts >= 5) {
+          throw new AppError('RATE_LIMITED', 'Too many incorrect attempts. Sign in again.');
+        }
+        throw new AppError('INVALID_TOKEN', 'Invalid or expired verification code');
+      }
+      await prisma.otpCode.update({
+        where: { id: otp.id },
         data: { usedAt: current },
       });
       await recordLoginHistory(prisma, {
@@ -518,6 +531,10 @@ export function createAuthService(deps: AuthServiceDeps) {
         throw new AppError('REFRESH_INVALID');
       }
       if (user.status === 'suspended') {
+        await prisma.refreshToken.updateMany({
+          where: { familyId: existing.familyId, revokedAt: null },
+          data: { revokedAt: current },
+        });
         throw new AppError('ACCOUNT_SUSPENDED');
       }
 
@@ -569,10 +586,17 @@ export function createAuthService(deps: AuthServiceDeps) {
     },
 
     async logoutAll(userId: string): Promise<void> {
-      await prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: now() },
-      });
+      const current = now();
+      await prisma.$transaction([
+        prisma.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: current },
+        }),
+        prisma.user.update({
+          where: { id: userId },
+          data: { tokensValidAfter: current },
+        }),
+      ]);
     },
 
     async verifyEmail(rawToken: string): Promise<{ verified: true }> {
@@ -654,7 +678,12 @@ export function createAuthService(deps: AuthServiceDeps) {
         prisma.emailToken.update({ where: { id: record.id }, data: { usedAt: current } }),
         prisma.user.update({
           where: { id: record.userId },
-          data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
+          data: {
+            passwordHash,
+            failedLoginCount: 0,
+            lockedUntil: null,
+            tokensValidAfter: current,
+          },
         }),
         prisma.refreshToken.updateMany({
           where: { userId: record.userId, revokedAt: null },
@@ -675,6 +704,7 @@ export function createAuthService(deps: AuthServiceDeps) {
         throw new AppError('NOT_FOUND');
       }
       const state = randomBytes(16).toString('base64url');
+      const nonce = randomBytes(16).toString('base64url');
       const codeVerifier = randomBytes(32).toString('base64url');
       const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
 
@@ -684,6 +714,7 @@ export function createAuthService(deps: AuthServiceDeps) {
         response_type: 'code',
         scope: 'openid email profile',
         state,
+        nonce,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
         prompt: 'select_account',
@@ -692,6 +723,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       return {
         url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
         state,
+        nonce,
         codeVerifier,
       };
     },
@@ -701,6 +733,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       codeVerifier: string,
       redirectUri: string,
       meta: SessionMeta,
+      expectedNonce?: string,
     ): Promise<AuthSessionResult> {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
         throw new AppError('NOT_FOUND');
@@ -721,9 +754,36 @@ export function createAuthService(deps: AuthServiceDeps) {
       if (!tokenRes.ok) {
         throw new AppError('UNAUTHENTICATED', 'Google authentication failed');
       }
-      const tokenData = (await tokenRes.json()) as { access_token?: string };
+      const tokenData = (await tokenRes.json()) as { access_token?: string; id_token?: string };
       if (!tokenData.access_token) {
         throw new AppError('UNAUTHENTICATED', 'Google authentication failed');
+      }
+
+      if (tokenData.id_token) {
+        try {
+          const [, payloadB64] = tokenData.id_token.split('.');
+          if (!payloadB64) throw new Error('Malformed id_token');
+          const idClaims = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+            iss?: string;
+            aud?: string;
+            nonce?: string;
+            email_verified?: boolean;
+          };
+          const validIssuer =
+            idClaims.iss === 'https://accounts.google.com' ||
+            idClaims.iss === 'accounts.google.com';
+          if (
+            !validIssuer ||
+            idClaims.aud !== env.GOOGLE_CLIENT_ID ||
+            (expectedNonce && idClaims.nonce !== expectedNonce) ||
+            idClaims.email_verified === false
+          ) {
+            throw new AppError('UNAUTHENTICATED', 'Invalid Google ID token claims');
+          }
+        } catch (err) {
+          if (err instanceof AppError) throw err;
+          throw new AppError('UNAUTHENTICATED', 'Google authentication failed');
+        }
       }
 
       const userRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -756,20 +816,38 @@ export function createAuthService(deps: AuthServiceDeps) {
       } else {
         const existingByEmail = await prisma.user.findUnique({ where: { email: emailLower } });
         if (existingByEmail) {
-          await prisma.authIdentity.create({
-            data: {
-              userId: existingByEmail.id,
-              provider: 'google',
-              providerUserId: profile.sub,
-              email: emailLower,
-            },
+          const current = now();
+          user = await prisma.$transaction(async (tx) => {
+            await tx.authIdentity.create({
+              data: {
+                userId: existingByEmail.id,
+                provider: 'google',
+                providerUserId: profile.sub!,
+                email: emailLower,
+              },
+            });
+            if (existingByEmail.emailVerified) {
+              return existingByEmail;
+            }
+            // Clear any pre-registered unverified passwordHash to prevent OAuth pre-hijacking.
+            await tx.refreshToken.updateMany({
+              where: { userId: existingByEmail.id, revokedAt: null },
+              data: { revokedAt: current },
+            });
+            await tx.otpCode.updateMany({
+              where: { userId: existingByEmail.id, usedAt: null },
+              data: { usedAt: current },
+            });
+            return tx.user.update({
+              where: { id: existingByEmail.id },
+              data: {
+                emailVerified: true,
+                ...(existingByEmail.passwordHash !== null
+                  ? { passwordHash: null, tokensValidAfter: current }
+                  : {}),
+              },
+            });
           });
-          user = existingByEmail.emailVerified
-            ? existingByEmail
-            : await prisma.user.update({
-                where: { id: existingByEmail.id },
-                data: { emailVerified: true },
-              });
         } else {
           user = await prisma.user.create({
             data: {
@@ -826,14 +904,11 @@ export function createAuthService(deps: AuthServiceDeps) {
     ): Promise<AuthSessionResult> {
       const current = now();
       const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-      if (!user) {
-        throw new AppError('VALIDATION_ERROR', 'Invalid verification code.');
+      if (!user || user.emailVerified) {
+        throw new AppError('VALIDATION_ERROR', 'Invalid or expired verification code.');
       }
       if (user.status === 'suspended') {
         throw new AppError('ACCOUNT_SUSPENDED');
-      }
-      if (user.emailVerified) {
-        return issueSession(user, false, meta);
       }
 
       const otp = await prisma.otpCode.findFirst({
@@ -841,14 +916,11 @@ export function createAuthService(deps: AuthServiceDeps) {
         orderBy: { createdAt: 'desc' },
       });
       if (!otp) {
-        throw new AppError('VALIDATION_ERROR', 'No active verification code. Request a new code.');
+        throw new AppError('VALIDATION_ERROR', 'Invalid or expired verification code.');
       }
       if (otp.expiresAt <= current) {
         await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
-        throw new AppError(
-          'VALIDATION_ERROR',
-          'Verification code has expired. Request a new code.',
-        );
+        throw new AppError('VALIDATION_ERROR', 'Invalid or expired verification code.');
       }
       if (otp.attempts >= 5) {
         await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: current } });
