@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build context is the repository root:  docker build -f client/Dockerfile --target prod .
 
-FROM node:20-alpine AS base
+FROM node:20.18.1-alpine AS base
 ENV HUSKY=0
 WORKDIR /app
 
@@ -31,10 +31,10 @@ ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
-FROM nginx:1.27-alpine AS prod
+FROM nginxinc/nginx-unprivileged:1.27.3-alpine AS prod
 ENV API_UPSTREAM=https://learnspace-api-production.up.railway.app
 ENV NGINX_ENVSUBST_FILTER=API_UPSTREAM
 COPY client/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/client/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 8080
 

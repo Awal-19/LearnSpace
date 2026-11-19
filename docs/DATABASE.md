@@ -219,3 +219,18 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
   - Added SM-2 fields (`topic`, `imageUrl`, `imageStorageKey`, `easeFactor`, `intervalDays`, `repetitions`, `lapses`, `dueAt`, `lastReviewedAt`) on `cards` and `review_logs` (`ReviewRating`: `again|hard|good|easy`) for spaced repetition & analytics.
   - Added `grading_scales` (configurable grade boundaries, degree classifications, retake policies `latest|highest`) and `grade_records` (`semester`, `semesterOrder`, `creditHours`, `score`, `gradeLabel`, `gradePoint`, `isRetake`, `retakeGroupKey`, `excludeFromGpa`).
   - Account deletion (`users` cascade) cleans up uploaded blobs across avatars, `message_attachments`, `documents`, and `cards.imageStorageKey`, and scrubs PII (`email`, `ip`, `userAgent`) from `login_history`.
+
+## 5. Production Hardening, Least-Privilege Role & Backup/Restore Plan
+
+- **Network & SSL:** Railway Postgres runs on private networking (`*.railway.internal`) with public proxy access disabled or restricted; `normalizeDatabaseUrl()` in `server/src/config/env.ts` automatically appends `sslmode=require` on external Railway proxy hosts (`*.rlwy.net` / `*.railway.app`).
+- **Least-Privilege Application Role:** Run the API with a dedicated non-superuser role (`learnspace_app`) that has `SELECT, INSERT, UPDATE, DELETE` on `public` tables and `USAGE, SELECT` on sequences, while running `prisma migrate deploy` using the owner/migration role:
+  ```sql
+  CREATE ROLE learnspace_app LOGIN PASSWORD '<strong-random-password>' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+  GRANT USAGE ON SCHEMA public TO learnspace_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO learnspace_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO learnspace_app;
+  ```
+- **Backup & Restore Plan:**
+  - Enable daily automated snapshots in Railway PostgreSQL (**Database → Backups → Daily**) with 7–30 day retention.
+  - Before major schema migrations, take an on-demand snapshot or encrypted `pg_dump --format=custom --no-owner` backup.
+  - **Restore verification drill (monthly):** restore the latest snapshot into a staging Postgres service, run `npx prisma migrate status`, verify row counts (`users`, `notes`, `documents`, `audit_logs`), and confirm `/api/health/ready` returns `200`.

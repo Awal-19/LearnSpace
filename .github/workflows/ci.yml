@@ -42,7 +42,33 @@ jobs:
 
       - name: Ensure no server secrets in client bundle
         run: |
-          if grep -rn "GEMINI_API_KEY\|JWT_SECRET\|CLOUDINARY_URL" client/dist; then
+          if grep -rnE "GEMINI_API_KEY|NVIDIA_API_KEY|JWT_SECRET|CLOUDINARY_URL|EMAILJS_PRIVATE_KEY|GOOGLE_CLIENT_SECRET|TURNSTILE_SECRET_KEY|HCAPTCHA_SECRET_KEY|DATABASE_URL" client/dist; then
             echo "ERROR: Server secret name leaked into client/dist"
             exit 1
           fi
+
+      - name: Production dependency audit (fail on critical)
+        run: npm audit --omit=dev --audit-level=critical
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
