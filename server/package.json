@@ -64,7 +64,7 @@
     "@types/nodemailer": "^6.4.16",
     "@types/pdf-parse": "^1.1.5",
     "@types/pdfkit": "^0.17.7",
-    "@types/supertest": "^6.0.2",
+    "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^2.1.4",
     "pino-pretty": "^11.3.0",
     "supertest": "^7.0.0",
