@@ -38,7 +38,7 @@
     "*.{json,md,css,html,yml,yaml}": "prettier --write"
   },
   "devDependencies": {
-    "@eslint/js": "^9.13.0",
+    "@eslint/js": "^10.0.1",
     "@netlify/edge-functions": "^4.0.4",
     "concurrently": "^9.0.1",
     "eslint": "^9.13.0",
