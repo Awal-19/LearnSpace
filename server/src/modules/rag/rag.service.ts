@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { PDFParse } from 'pdf-parse';
 import { AppError } from '../../lib/errors';
+import { assertSafePdfPages, wrapUntrustedContext } from '../../lib/fileSafety';
 
 export interface PublicStudyDocument {
   id: string;
@@ -133,7 +134,7 @@ export function formatRagContext(chunks: RetrievedChunk[]): string {
     .map((c) => `[Source: ${c.filename} | Section ${c.chunkIndex + 1}]\n${c.content}`)
     .join('\n\n---\n\n');
 
-  return `<lecture_notes>\n${body}\n</lecture_notes>`;
+  return wrapUntrustedContext('lecture_notes', body);
 }
 
 export interface RagServiceDeps {
@@ -176,7 +177,9 @@ export function createRagService({ prisma, logger }: RagServiceDeps): RagService
         const parsed = await parser.getText();
         extractedText = parsed.text;
         pageCount = parsed.total || 1;
+        assertSafePdfPages(pageCount);
       } catch (err) {
+        if (err instanceof AppError) throw err;
         logger.warn({ err, filename }, 'PDF text extraction failed');
         throw new AppError('VALIDATION_ERROR', 'Could not read text from this PDF file');
       } finally {

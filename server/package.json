@@ -22,7 +22,8 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "admin:seed": "tsx prisma/seedAdmin.ts",
-    "email:test": "tsx scripts/sendTestEmail.ts"
+    "email:test": "tsx scripts/sendTestEmail.ts",
+    "storage:test": "tsx scripts/testStorage.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

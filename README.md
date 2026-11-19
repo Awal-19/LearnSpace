@@ -42,6 +42,7 @@ npm run dev
 ## Quality & Deployment
 
 - **Checks:** `npm run lint && npm run typecheck && npm test && npm run build`
+- **Storage:** Uses `CLOUDINARY_URL` (`cloudinary://API_KEY:API_SECRET@CLOUD_NAME`) when set, with automatic PostgreSQL `StoredBlob` fallback when unset. Test live storage round-trip with `npm run storage:test -w server`.
 - **Admin Console:** Available at `/admin` for `admin` and `super_admin` accounts. See [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) and seed the first admin with `ADMIN_EMAIL=... npm run admin:seed -w server`.
 - **Backend (Render):** [render.yaml](render.yaml) (`server/Dockerfile`, `npx prisma migrate deploy`, `/api/v1/health/ready`)
 - **Frontend (Vercel):** [client/vercel.json](client/vercel.json) (SPA rewrites + security headers)

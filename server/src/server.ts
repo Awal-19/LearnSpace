@@ -168,6 +168,17 @@ function main(): void {
   const prisma = createPrismaClient(env.DATABASE_URL);
   const email = createEmailService(env, logger);
   const storage = createStorageService(env, logger, prisma);
+  if (env.CLOUDINARY_URL) {
+    logger.info('Storage initialized with Cloudinary');
+  } else if (storage.isConfigured()) {
+    logger.info(
+      'CLOUDINARY_URL is not set; using PostgreSQL StoredBlob fallback for documents and attachments',
+    );
+  } else {
+    logger.error(
+      'Document storage is NOT configured: set CLOUDINARY_URL (cloudinary://API_KEY:API_SECRET@CLOUD_NAME) or enable database fallback',
+    );
+  }
   const llm = env.NVIDIA_API_KEY
     ? createNvidiaProvider(env, logger)
     : createGeminiProvider(env, logger);
@@ -239,6 +250,7 @@ function main(): void {
         }
         await prisma.$queryRaw`SELECT 1`;
       },
+      checkStorage: () => storage.isConfigured(),
       auth,
       users,
       courses,

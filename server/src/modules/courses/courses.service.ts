@@ -362,6 +362,15 @@ export function createCoursesService({
     },
 
     async createCourse(userId, input) {
+      if (typeof prisma.course.count === 'function') {
+        const total = await prisma.course.count({ where: { userId } });
+        if (total >= 50) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Course limit (50) reached. Delete or archive an unused course first.',
+          );
+        }
+      }
       const existing = await prisma.course.findFirst({
         where: { userId, name: { equals: input.name, mode: 'insensitive' } },
       });

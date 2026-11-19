@@ -134,6 +134,30 @@ function FeedbackWidget() {
   const [message, setMessage] = useState('');
   const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [hiddenMobile, setHiddenMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const nextY = window.scrollY;
+      setHiddenMobile(nextY > lastY && nextY > 80);
+      lastY = nextY;
+    };
+    const vv = window.visualViewport;
+    const onViewport = () => {
+      if (!vv) return;
+      const keyboardOpen = window.innerHeight - vv.height > 120;
+      if (keyboardOpen) setHiddenMobile(true);
+      else if (window.scrollY <= 80) setHiddenMobile(false);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    vv?.addEventListener('resize', onViewport);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      vv?.removeEventListener('resize', onViewport);
+    };
+  }, []);
 
   const COOLDOWN_MS = 30_000;
   const COOLDOWN_KEY = 'learnspace_feedback_last_sent_at';
@@ -202,13 +226,17 @@ function FeedbackWidget() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Send feedback"
-        className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-2 rounded-full border border-white/85 bg-white/85 px-3.5 py-2 text-xs font-medium text-fg shadow-md backdrop-blur-md transition hover:border-primary-300 hover:bg-white dark:border-line dark:bg-surface dark:hover:bg-surface2 lg:bottom-5 lg:right-6"
+        className={`fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-30 inline-flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-white/85 bg-white/85 text-xs font-medium text-fg shadow-md backdrop-blur-md transition-all hover:border-primary-300 hover:bg-white dark:border-line dark:bg-surface dark:hover:bg-surface2 lg:bottom-5 lg:right-6 lg:h-auto lg:w-auto lg:px-3.5 lg:py-2 ${
+          hiddenMobile
+            ? 'pointer-events-none translate-y-4 opacity-0 lg:pointer-events-auto lg:translate-y-0 lg:opacity-100'
+            : 'opacity-100'
+        }`}
       >
         <MessageSquarePlus
           className="h-4 w-4 text-primary-600 dark:text-primary-400"
           aria-hidden="true"
         />
-        <span>Feedback</span>
+        <span className="hidden lg:inline">Feedback</span>
       </button>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Send Feedback or Report">

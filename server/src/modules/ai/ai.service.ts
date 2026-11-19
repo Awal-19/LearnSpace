@@ -23,6 +23,8 @@ import {
   TUTOR_SYSTEM_PROMPT,
 } from './ai.prompts';
 import { isMathProblem, verifyMathAnswer } from './mathVerify';
+import { acquireAiConcurrency, enforceAiQuota } from './aiQuota';
+import { wrapUntrustedContext } from '../../lib/fileSafety';
 import type {
   CreateConversationInput,
   GetConversationQuery,
@@ -277,15 +279,8 @@ export function createAiService({
       }
 
       const conv = await requireOwnedConversation(userId, conversationId);
-      const { dayDate, resetsAt } = utcDayBounds();
-
-      const usageRow = await prisma.aiUsageDaily.findUnique({
-        where: { userId_day: { userId, day: dayDate } },
-      });
-      const usedToday = (usageRow?.inputTokens ?? 0) + (usageRow?.outputTokens ?? 0);
-      if (dailyTokenLimit !== null && dailyTokenLimit > 0 && usedToday >= dailyTokenLimit) {
-        throw new AppError('AI_BUDGET_EXCEEDED', 'Daily AI token limit reached', { resetsAt });
-      }
+      await enforceAiQuota(prisma, userId, dailyTokenLimit);
+      const { dayDate } = utcDayBounds();
 
       const historyRows = await prisma.message.findMany({
         where: { conversationId: conv.id, status: { not: 'error' } },
@@ -376,8 +371,12 @@ export function createAiService({
       const docSections = linkedAttachments
         .filter((a) => a.kind === 'document')
         .map((a) => {
-          const truncNote = a.truncated ? ' (truncated due to length)' : '';
-          return `<attached_document name="${a.originalName}"${truncNote}>\n${a.extractedText || '[No extractable text found in this document]'}\n</attached_document>`;
+          const truncNote = a.truncated ? 'true' : 'false';
+          return wrapUntrustedContext(
+            'attached_document',
+            a.extractedText || '[No extractable text found in this document]',
+            { name: a.originalName, truncated: truncNote },
+          );
         });
       const ragContext = formatRagContext(retrievedChunks);
       const textParts = [ragContext, ...docSections, basePromptText].filter(Boolean);
@@ -410,6 +409,7 @@ export function createAiService({
       const startedAt = Date.now();
 
       const mathMode = isMathProblem(input.content);
+      const releaseSlot = acquireAiConcurrency(userId);
 
       try {
         for await (const chunk of llm.stream(llmMessages, {
@@ -554,6 +554,8 @@ export function createAiService({
         });
 
         sink.onError(code, message);
+      } finally {
+        releaseSlot();
       }
     },
   };

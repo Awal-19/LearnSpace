@@ -2,6 +2,7 @@ import type { Note, PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { AppError } from '../../lib/errors';
 import type { LLMProvider } from '../../lib/llm/provider';
+import { acquireAiConcurrency, enforceAiQuota } from '../ai/aiQuota';
 import type { CreateNoteInput, ListNotesQuery, UpdateNoteInput } from './notes.schemas';
 
 export interface PublicNote {
@@ -173,15 +174,23 @@ export function createNotesService({ prisma, llm, logger }: NotesServiceDeps): N
         );
       }
 
-      const { text } = await llm.generateText(
-        `Summarize these student study notes into clear, concise bullet points highlighting key concepts and definitions.\n\nTitle: ${note.title}\n\nNotes:\n${note.body}`,
-        {
-          systemPrompt:
-            'You are a concise academic study assistant. Return clean Markdown bullet points.',
-          temperature: 0.3,
-          maxOutputTokens: 600,
-        },
-      );
+      await enforceAiQuota(prisma, userId, null);
+      const releaseSlot = acquireAiConcurrency(userId);
+      let text = '';
+      try {
+        const res = await llm.generateText(
+          `Summarize these student study notes into clear, concise bullet points highlighting key concepts and definitions.\n\nTitle: ${note.title}\n\nNotes:\n${note.body}`,
+          {
+            systemPrompt:
+              'You are a concise academic study assistant. Return clean Markdown bullet points.',
+            temperature: 0.3,
+            maxOutputTokens: 600,
+          },
+        );
+        text = res.text;
+      } finally {
+        releaseSlot();
+      }
 
       const summary = text.trim();
       await prisma.note.update({

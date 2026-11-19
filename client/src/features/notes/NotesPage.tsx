@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, FilePlus2, FolderPlus, Layers, Search, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
@@ -11,13 +11,14 @@ import {
   ErrorState,
   Input,
   Skeleton,
+  Spinner,
   Textarea,
   useToast,
 } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 import { MarkdownContent } from '../chat/MarkdownContent';
 import { CourseBadge } from '../courses/CourseBadge';
-import { listCourses, type CourseSummary } from '../courses/coursesApi';
+import { createCourse, listCourses, type CourseSummary } from '../courses/coursesApi';
 import { generateDeck } from '../study/studyApi';
 
 interface Note {
@@ -44,6 +45,9 @@ export function NotesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeNoteId, setActiveNoteId] = useState<string | null>(routeNoteId ?? null);
   const [newCourseName, setNewCourseName] = useState('');
+  const [creatingCourse, setCreatingCourse] = useState(false);
+  const [courseError, setCourseError] = useState<string | null>(null);
+  const newCourseInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -106,20 +110,80 @@ export function NotesPage() {
     setAiSummary(activeNote.aiSummary);
   }, [activeNote]);
 
-  const handleCreateCourse = async () => {
+  const handleCreateCourse = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (creatingCourse) return;
     const trimmed = newCourseName.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setCourseError('Enter a course name.');
+      return;
+    }
+    if (trimmed.length > 60) {
+      setCourseError('Course name must be 60 characters or fewer.');
+      return;
+    }
+    const existingList = coursesQuery.data ?? [];
+    if (existingList.some((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      setCourseError('A course with this name already exists.');
+      return;
+    }
+    if (existingList.length >= 50) {
+      setCourseError('Course limit (50) reached.');
+      return;
+    }
+
+    setCourseError(null);
+    setCreatingCourse(true);
+
+    const prevCourses = qc.getQueryData<CourseSummary[]>(['courses']);
+    const prevFilter = courseFilter;
+    const tempId = `temp-${Date.now()}`;
+    const optimisticCourse: CourseSummary = {
+      id: tempId,
+      name: trimmed,
+      code: null,
+      lecturer: null,
+      creditHours: null,
+      semester: null,
+      level: null,
+      color: '#2563EB',
+      notes: null,
+      archivedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      noteCount: 0,
+      documentCount: 0,
+      taskCount: 0,
+      deckCount: 0,
+      quizCount: 0,
+      studySeconds: 0,
+    };
+
+    qc.setQueryData<CourseSummary[]>(['courses'], (old = []) => [...old, optimisticCourse]);
+    setNewCourseName('');
+    setCourseFilter(tempId);
+
     try {
-      await request<CourseSummary>('/courses', { method: 'POST', body: { name: trimmed } });
-      setNewCourseName('');
+      const created = await createCourse({ name: trimmed });
+      qc.setQueryData<CourseSummary[]>(['courses'], (old = []) =>
+        old.map((c) => (c.id === tempId ? created : c)),
+      );
+      setCourseFilter(created.id);
       await qc.invalidateQueries({ queryKey: ['courses'] });
-      toast.show({ kind: 'success', title: 'Course added' });
+      toast.show({ kind: 'success', dedupeKey: 'course-added', title: 'Course added' });
     } catch (err) {
-      toast.show({
-        kind: 'error',
-        title: 'Could not create course',
-        description: err instanceof ApiError ? err.message : 'Please try again.',
-      });
+      qc.setQueryData(['courses'], prevCourses);
+      setCourseFilter(prevFilter);
+      setNewCourseName(trimmed);
+      const reason = err instanceof ApiError && err.status < 500 ? err.message : null;
+      setCourseError(
+        reason ? `Couldn't add course: ${reason}` : "Couldn't add course, please try again.",
+      );
+    } finally {
+      setCreatingCourse(false);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => newCourseInputRef.current?.focus());
+      }
     }
   };
 
@@ -339,24 +403,42 @@ export function NotesPage() {
             ))}
           </div>
 
-          <div className="flex gap-1.5 pt-2 border-t border-line">
-            <input
-              type="text"
-              value={newCourseName}
-              onChange={(e) => setNewCourseName(e.target.value)}
-              placeholder="Add course..."
-              aria-label="New course name"
-              className="min-w-0 flex-1 rounded-md border border-line bg-bg px-2.5 py-1 text-sm focus:outline-none"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              aria-label="Create course"
-              onClick={() => void handleCreateCourse()}
-            >
-              <FolderPlus className="h-4 w-4" />
-            </Button>
+          <div className="pt-2 border-t border-line/80 space-y-1.5">
+            <form onSubmit={(e) => void handleCreateCourse(e)} className="flex items-center gap-2">
+              <input
+                ref={newCourseInputRef}
+                type="text"
+                enterKeyHint="done"
+                maxLength={60}
+                value={newCourseName}
+                onChange={(e) => {
+                  setNewCourseName(e.target.value);
+                  if (courseError) setCourseError(null);
+                }}
+                placeholder="Add course..."
+                aria-label="New course name"
+                className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-surface2/50 px-3 py-2 text-base text-fg placeholder:text-muted transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none sm:text-sm"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                disabled={!newCourseName.trim() || creatingCourse}
+                aria-label="Add course"
+                className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 rounded-xl p-0"
+              >
+                {creatingCourse ? (
+                  <Spinner className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <FolderPlus className="h-4 w-4" aria-hidden="true" />
+                )}
+              </Button>
+            </form>
+            {courseError ? (
+              <p role="alert" className="px-1 text-xs font-medium text-danger">
+                {courseError}
+              </p>
+            ) : null}
           </div>
         </Card>
 
@@ -465,7 +547,7 @@ export function NotesPage() {
                   id="note-course"
                   value={courseId}
                   onChange={(e) => setCourseId(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-line bg-bg px-3 text-sm text-fg focus:border-primary-500 focus:outline-none"
+                  className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-base text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none sm:text-sm"
                 >
                   <option value="">Uncategorised</option>
                   {(coursesQuery.data ?? []).map((c) => (

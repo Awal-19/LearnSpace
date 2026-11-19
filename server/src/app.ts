@@ -9,7 +9,7 @@ import { createLogger } from './lib/logger';
 import { AppError } from './lib/errors';
 import { createErrorHandler, notFound } from './middleware/errorHandler';
 import { requireAuth } from './middleware/auth';
-import { createRateLimiter } from './middleware/rateLimit';
+import { createRateLimiter, setRateLimitPrisma } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { healthRouter, type HealthDeps } from './modules/health/health.routes';
 import type { PrismaClient } from '@prisma/client';
@@ -77,6 +77,10 @@ export const API_PREFIX = '/api/v1';
  */
 export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger(env)): Express {
   const app = express();
+
+  if (env.NODE_ENV !== 'test' && deps.dashboardPrisma) {
+    setRateLimitPrisma(deps.dashboardPrisma);
+  }
 
   app.disable('x-powered-by');
   app.set('trust proxy', env.TRUST_PROXY);

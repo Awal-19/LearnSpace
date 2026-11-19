@@ -1,6 +1,7 @@
 import { Router, type CookieOptions, type Request as ExpressRequest } from 'express';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
+import { verifyCaptchaToken } from '../../lib/captcha';
 import { csrfGuard, requireAuth } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
@@ -84,6 +85,7 @@ export function authRouter(
     authLimiter,
     validate({ body: signupSchema }),
     asyncHandler(async (req, res) => {
+      await verifyCaptchaToken(env, req.body.captchaToken, req.ip);
       const result = await service.signup(req.body, sessionMeta(req));
       res.status(201).json(result);
     }),
@@ -114,6 +116,7 @@ export function authRouter(
     otpEmailLimiter,
     validate({ body: resendOtpSchema }),
     asyncHandler(async (req, res) => {
+      await verifyCaptchaToken(env, req.body.captchaToken, req.ip);
       const result = await service.resendOtp(req.body.email);
       res.json(result);
     }),

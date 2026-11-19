@@ -4,9 +4,9 @@ import AdmZip from 'adm-zip';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import type { Logger } from 'pino';
-import sharp from 'sharp';
 import { createWorker } from 'tesseract.js';
 import { AppError } from '../../lib/errors';
+import { assertSafePdfPages, assertSafeZipBounds, sharpSafe } from '../../lib/fileSafety';
 import type { StorageService } from '../../lib/storage';
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -164,6 +164,7 @@ export function sanitizeFilename(name: string): string {
 
 function extractPptxText(buffer: Buffer): string {
   const zip = new AdmZip(buffer);
+  assertSafeZipBounds(zip);
   const slideEntries = zip
     .getEntries()
     .filter((e) => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName))
@@ -219,6 +220,7 @@ async function extractDocumentText(
     const parser = new PDFParse({ data: buffer });
     try {
       const parsed = await parser.getText();
+      assertSafePdfPages(parsed.total ?? 1);
       raw = parsed.text ?? '';
     } finally {
       await parser.destroy().catch(() => undefined);
@@ -327,7 +329,7 @@ export function createAttachmentsService({
       if (detected.kind === 'image') {
         // Auto-orient via EXIF and strip all EXIF/GPS metadata by converting to clean WebP/JPEG.
         try {
-          finalBuffer = await sharp(buffer)
+          finalBuffer = await sharpSafe(buffer)
             .rotate()
             .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 85 })

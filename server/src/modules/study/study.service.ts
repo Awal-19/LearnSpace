@@ -1,11 +1,12 @@
 import type { Card, Deck, PrismaClient, ReviewRating, UsageFeature } from '@prisma/client';
 import type { Logger } from 'pino';
-import sharp from 'sharp';
 import type { z } from 'zod';
 import { AppError } from '../../lib/errors';
+import { sharpSafe } from '../../lib/fileSafety';
 import type { LLMProvider } from '../../lib/llm/provider';
 import { detectImageMime, type StorageService } from '../../lib/storage';
 import { recordUsageEvent } from '../admin/admin.logging';
+import { acquireAiConcurrency, enforceAiQuota } from '../ai/aiQuota';
 import { localDateTimeParts } from '../timetable/timetable.service';
 import {
   aiDeckOutputSchema,
@@ -602,6 +603,8 @@ Return JSON with shape: { "title": "short deck title", "cards": [{ "front": "que
 
 ${source.sourceText}`;
 
+      await enforceAiQuota(prisma, userId, null);
+      const releaseSlot = acquireAiConcurrency(userId);
       const startedMs = Date.now();
       let generated;
       try {
@@ -620,6 +623,8 @@ ${source.sourceText}`;
           errorCode,
         );
         throw err;
+      } finally {
+        releaseSlot();
       }
 
       const deck = await prisma.deck.create({
@@ -919,7 +924,7 @@ ${source.sourceText}`;
 
       let processed: Buffer;
       try {
-        processed = await sharp(buffer)
+        processed = await sharpSafe(buffer)
           .rotate()
           .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 82 })
@@ -1042,6 +1047,8 @@ Return JSON with shape: { "title": "short quiz title", "questions": [{ "prompt":
 
 ${source.sourceText}`;
 
+      await enforceAiQuota(prisma, userId, null);
+      const releaseSlot = acquireAiConcurrency(userId);
       const startedMs = Date.now();
       let generated;
       try {
@@ -1060,6 +1067,8 @@ ${source.sourceText}`;
           errorCode,
         );
         throw err;
+      } finally {
+        releaseSlot();
       }
 
       const quiz = await prisma.quiz.create({

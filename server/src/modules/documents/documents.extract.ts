@@ -2,8 +2,8 @@ import AdmZip from 'adm-zip';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import type { Logger } from 'pino';
-import sharp from 'sharp';
 import { createWorker } from 'tesseract.js';
+import { assertSafePdfPages, assertSafeZipBounds, sharpSafe } from '../../lib/fileSafety';
 import type { LLMProvider } from '../../lib/llm/provider';
 import type { DetectedFile } from '../ai/attachments.service';
 import type { DocumentPage } from './documents.schemas';
@@ -72,6 +72,7 @@ function splitIntoSections(raw: string, labelPrefix: string): DocumentPage[] {
 
 function extractPptxPages(buffer: Buffer): DocumentPage[] {
   const zip = new AdmZip(buffer);
+  assertSafeZipBounds(zip);
   const entries = zip.getEntries();
   const slideEntries = entries
     .filter((e) => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName))
@@ -153,6 +154,7 @@ async function extractPdfPages(
 
   try {
     const parsed = await parser.getText();
+    assertSafePdfPages(parsed.total ?? 1);
     totalRawText = (parsed.text ?? '').replace(/\r\n/g, '\n').trim();
     const parsedPages = (parsed as unknown as { pages?: Array<{ num?: number; text?: string }> })
       .pages;
@@ -199,7 +201,7 @@ async function transcribeImageWithVision(
   logger: Logger,
 ): Promise<string> {
   try {
-    const jpeg = await sharp(buffer)
+    const jpeg = await sharpSafe(buffer)
       .rotate()
       .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 85 })
@@ -246,7 +248,7 @@ async function extractImagePage(
 ): Promise<DocumentPage[]> {
   let ocrText = '';
   try {
-    const pngBuffer = await sharp(buffer)
+    const pngBuffer = await sharpSafe(buffer)
       .rotate()
       .resize({ width: 1800, height: 1800, fit: 'inside', withoutEnlargement: true })
       .png()

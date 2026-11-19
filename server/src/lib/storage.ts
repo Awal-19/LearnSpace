@@ -141,7 +141,7 @@ export function createStorageService(
   };
 
   return {
-    isConfigured: () => configured || allowDevLocal,
+    isConfigured: () => configured || allowDevLocal || Boolean(prisma),
 
     async uploadAvatar(buffer, userId) {
       if (configured) {
@@ -244,6 +244,18 @@ export function createStorageService(
         });
       }
 
+      if (prisma) {
+        const storageKey = `db:${userId}/${randomName}`;
+        await prisma.storedBlob.create({
+          data: {
+            key: storageKey,
+            userId,
+            data: buffer,
+          },
+        });
+        return { storageKey, storageUrl: storageKey };
+      }
+
       if (allowDevLocal) {
         const userDir = path.join(DEV_DIR, userId);
         await fs.mkdir(userDir, { recursive: true });
@@ -259,11 +271,27 @@ export function createStorageService(
     },
 
     getSignedAttachmentUrl(storageKey, kind) {
-      if (!configured || storageKey.startsWith('local:')) return null;
+      if (!configured || storageKey.startsWith('local:') || storageKey.startsWith('db:')) {
+        return null;
+      }
       return cloudinarySignedUrl(storageKey, kind);
     },
 
     async readAttachmentBytes(storageKey, storageUrl, kind) {
+      if (storageKey.startsWith('db:')) {
+        if (!prisma) {
+          throw new AppError('STORAGE_UNAVAILABLE', 'Attachment storage is not configured');
+        }
+        const row = await prisma.storedBlob.findUnique({
+          where: { key: storageKey },
+          select: { data: true },
+        });
+        if (!row) {
+          throw new AppError('NOT_FOUND', 'Attachment not found');
+        }
+        return Buffer.from(row.data);
+      }
+
       if (storageKey.startsWith('local:')) {
         const rel = storageKey.slice('local:'.length);
         const fullPath = path.resolve(DEV_DIR, rel);
@@ -287,6 +315,14 @@ export function createStorageService(
 
     async deleteAttachment(storageKey, kind) {
       if (!storageKey) return;
+      if (storageKey.startsWith('db:')) {
+        if (prisma) {
+          await prisma.storedBlob.deleteMany({ where: { key: storageKey } }).catch((err) => {
+            logger.warn({ err, storageKey }, 'Failed to delete attachment from database');
+          });
+        }
+        return;
+      }
       if (storageKey.startsWith('local:')) {
         const rel = storageKey.slice('local:'.length);
         const fullPath = path.resolve(DEV_DIR, rel);

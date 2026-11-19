@@ -4,6 +4,8 @@ import { asyncHandler } from '../../middleware/validate';
 export interface HealthDeps {
   /** Resolves if the database answers; rejects otherwise. */
   checkDb: () => Promise<void>;
+  /** Returns true when document/attachment storage is configured. */
+  checkStorage?: () => boolean;
 }
 
 const READY_TIMEOUT_MS = 2000;
@@ -30,6 +32,11 @@ export function healthRouter(deps: HealthDeps): Router {
     asyncHandler(async (req, res) => {
       try {
         await withTimeout(deps.checkDb(), READY_TIMEOUT_MS);
+        if (deps.checkStorage && !deps.checkStorage()) {
+          req.log?.error('Readiness check failed: document storage is not configured');
+          res.status(503).json({ status: 'unavailable' });
+          return;
+        }
         res.json({ status: 'ok' });
       } catch (err) {
         req.log?.error({ err }, 'Readiness check failed');

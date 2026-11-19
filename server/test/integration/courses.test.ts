@@ -104,6 +104,13 @@ function makeFakeCoursesPrisma() {
         }
         return null;
       },
+      count: async ({ where }: { where: { userId: string } }) => {
+        let total = 0;
+        for (const c of courses.values()) {
+          if (c.userId === where.userId) total += 1;
+        }
+        return total;
+      },
       create: async ({ data }: { data: Partial<CourseRow> & { userId: string; name: string } }) => {
         const now = new Date();
         const row: CourseRow = {
@@ -672,5 +679,41 @@ describe('Courses & Cross-Feature Linking integration', () => {
     expect(db.notes.has(purgedNote.body.id)).toBe(false);
     expect(db.documents.has(docId)).toBe(false);
     expect(storageDeleteMock).toHaveBeenCalledWith('docs/test-blob.pdf', 'document');
+  });
+
+  it('enforces 1-60 char course names, case-insensitive uniqueness, and 50-course per-user limit', async () => {
+    const emptyRes = await request(app)
+      .post('/api/v1/courses')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ name: '   ' });
+    expect(emptyRes.status).toBe(400);
+
+    const tooLongRes = await request(app)
+      .post('/api/v1/courses')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ name: 'A'.repeat(61) });
+    expect(tooLongRes.status).toBe(400);
+
+    const okRes = await request(app)
+      .post('/api/v1/courses')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ name: '  Linear Algebra  ' });
+    expect(okRes.status).toBe(201);
+    expect(okRes.body.name).toBe('Linear Algebra');
+
+    const dupRes = await request(app)
+      .post('/api/v1/courses')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ name: 'linear algebra' });
+    expect(dupRes.status).toBe(409);
+
+    for (let i = 1; i < 50; i += 1) {
+      await db.prisma.course.create({ data: { userId: userAId, name: `Course ${i}` } });
+    }
+    const capRes = await request(app)
+      .post('/api/v1/courses')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ name: 'Course 51' });
+    expect(capRes.status).toBe(400);
   });
 });

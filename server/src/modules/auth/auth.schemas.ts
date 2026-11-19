@@ -35,6 +35,7 @@ export const signupSchema = z
       .refine((value) => value === true, {
         message: TERMS_CONSENT_REQUIRED_MESSAGE,
       }),
+    captchaToken: z.string().trim().max(4096).optional(),
   })
   .strict();
 
@@ -94,5 +95,6 @@ export const verifyOtpSchema = z
 export const resendOtpSchema = z
   .object({
     email: emailSchema,
+    captchaToken: z.string().trim().max(4096).optional(),
   })
   .strict();

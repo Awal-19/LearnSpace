@@ -18,7 +18,11 @@ export const listCoursesQuerySchema = z.object({
 
 export const createCourseSchema = z
   .object({
-    name: z.string().trim().min(1, 'Course name is required').max(80),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Course name is required')
+      .max(60, 'Course name must be 60 characters or fewer'),
     code: optionalTrimmed(24),
     lecturer: optionalTrimmed(120),
     creditHours: z.preprocess(
@@ -39,7 +43,12 @@ export const createCourseSchema = z
 
 export const updateCourseSchema = z
   .object({
-    name: z.string().trim().min(1, 'Course name is required').max(80).optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Course name is required')
+      .max(60, 'Course name must be 60 characters or fewer')
+      .optional(),
     code: optionalTrimmed(24),
     lecturer: optionalTrimmed(120),
     creditHours: z.preprocess(

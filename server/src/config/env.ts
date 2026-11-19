@@ -88,6 +88,9 @@ const schema = z.object({
   ),
   ADMIN_EMAIL: optionalString,
   ADMIN_CONSOLE_PASSWORD: optionalString,
+  TURNSTILE_SECRET_KEY: optionalString,
+  HCAPTCHA_SECRET_KEY: optionalString,
+  MALWARE_SCANNER_URL: optionalString,
 });
 
 export type Env = Omit<z.infer<typeof schema>, 'TRUST_PROXY'> & {

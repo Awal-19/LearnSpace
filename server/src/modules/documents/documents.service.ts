@@ -11,10 +11,11 @@ import type {
   PrismaClient,
 } from '@prisma/client';
 import type { Logger } from 'pino';
-import sharp from 'sharp';
 import { AppError } from '../../lib/errors';
+import { sharpSafe } from '../../lib/fileSafety';
 import type { LLMContentPart, LLMProvider } from '../../lib/llm/provider';
 import type { StorageService } from '../../lib/storage';
+import { acquireAiConcurrency, enforceAiQuota } from '../ai/aiQuota';
 import {
   detectAttachmentType,
   MAX_DOC_BYTES,
@@ -242,9 +243,12 @@ export function createDocumentsService(deps: {
   return {
     async upload({ userId, type, title, courseId, filename, declaredMime, buffer }) {
       if (!storage.isConfigured()) {
+        logger.error(
+          'Document upload rejected: neither CLOUDINARY_URL nor fallback storage is configured',
+        );
         throw new AppError(
           'STORAGE_UNAVAILABLE',
-          'Document storage is not configured on the server',
+          'Uploads are temporarily unavailable, please try again later.',
         );
       }
 
@@ -302,12 +306,16 @@ export function createDocumentsService(deps: {
 
       if (detected.kind === 'image') {
         try {
-          const transformed = await sharp(buffer).rotate().jpeg({ quality: 88 }).toBuffer();
+          const transformed = await sharpSafe(buffer).rotate().jpeg({ quality: 88 }).toBuffer();
           storedBuffer = transformed;
           storedMime = 'image/jpeg';
           storedExt = 'jpg';
-        } catch {
-          // Keep original buffer if sharp cannot decode (e.g. unsupported HEIC build)
+        } catch (err) {
+          logger.warn({ err, filename }, 'Sharp image normalization failed');
+          throw new AppError(
+            'UNSUPPORTED_MEDIA_TYPE',
+            'Could not decode or normalize this image file',
+          );
         }
       }
 
@@ -661,6 +669,8 @@ export function createDocumentsService(deps: {
         }
       }
 
+      await enforceAiQuota(prisma, userId, null);
+      const releaseSlot = acquireAiConcurrency(userId);
       let rawAnswer = '';
       let inputTokens = 0;
       let outputTokens = 0;
@@ -715,6 +725,8 @@ export function createDocumentsService(deps: {
           data: { status: 'error' },
         });
         throw err;
+      } finally {
+        releaseSlot();
       }
     },
 

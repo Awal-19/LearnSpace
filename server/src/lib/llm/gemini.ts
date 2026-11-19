@@ -90,7 +90,9 @@ export function createGeminiProvider(
               maxOutputTokens: opts.maxOutputTokens ?? 2048,
             },
           }),
-          signal: opts.signal,
+          signal: opts.signal
+            ? AbortSignal.any([opts.signal, AbortSignal.timeout(180_000)])
+            : AbortSignal.timeout(180_000),
         });
       } catch (err) {
         if (opts.signal?.aborted) return;
@@ -189,7 +191,9 @@ export function createGeminiProvider(
               ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
             },
           }),
-          signal: opts.signal,
+          signal: opts.signal
+            ? AbortSignal.any([opts.signal, AbortSignal.timeout(180_000)])
+            : AbortSignal.timeout(180_000),
         });
       } catch (err) {
         logger.warn({ err }, 'Gemini generateContent request failed');
