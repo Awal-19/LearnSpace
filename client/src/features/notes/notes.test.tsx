@@ -46,6 +46,7 @@ function renderNotesPage() {
     },
     setSession: vi.fn(),
     clearSession: vi.fn(),
+    markEmailVerified: vi.fn(),
     updateUser: vi.fn(),
     logout: vi.fn(),
   };
