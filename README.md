@@ -1,6 +1,6 @@
 # LearnSpace
 
-A simple, fast, calm learning platform for university students — featuring real authentication, Courses organization, Timetable & class reminders, Exams & AI Revision Plans, a multimodal AI Study Assistant (text, images, camera capture, PDF/DOCX/PPTX/TXT/CSV), Study from Documents (Answer Past Questions & Generate Questions from Slides), course notes with AI summaries, a study planner with reminders, a Pomodoro focus timer, SM-2 spaced-repetition flashcards & quizzes, a GPA & Grades calculator, and progress analytics with personal JSON data export.
+A simple, fast, calm learning platform for university students — featuring real authentication, Courses organization, Timetable & class reminders, Exams & AI Revision Plans, a multimodal AI Study Assistant (**AWAL**: KaTeX/mhchem LaTeX maths rendering with `mathjs` answer verification, pinned mobile-friendly composer, text, images, camera capture, PDF/DOCX/PPTX/TXT/CSV), Study from Documents (Answer Past Questions & Generate Questions from Slides), course notes with AI summaries, a study planner with reminders, a Pomodoro focus timer, SM-2 spaced-repetition flashcards & quizzes, a GPA & Grades calculator, and progress analytics with personal JSON data export.
 
 ## Documentation
 

@@ -20,11 +20,20 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 - Open any course to view its linked notes, study documents, planner tasks, timetable classes, upcoming exams, flashcard decks, quizzes, AI tutor chats, and focus sessions.
 - Deleting a course lets you either **Unassign items** (preserve work without a course) or **Delete linked content**.
 
-## 4. AI Study Assistant (`/chat`)
+## 4. AI Study Assistant (`/chat` — AWAL)
 
 - Start a new chat or search, rename, filter by course, and delete past conversations.
+- **Maths & Science Formatting:** AWAL solves problems step by step with KaTeX-rendered equations (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, chemistry `\ce{...}`, matrices, integrals, and tables), a **Check your answer** verification step, and a **Copy LaTeX** button on display equations.
+- **Pinned Composer & Scrolling:** The input bar stays pinned at the bottom (keyboard-aware on mobile) with auto-grow up to 5 lines. Scrolling up pauses auto-scroll and reveals a **Scroll to bottom** button. On desktop, `Enter` sends (`Shift+Enter` adds a newline); on mobile, `Enter` adds a newline and the Send button submits.
 - Attach up to 5 images (camera capture or upload) or documents (`PDF`, `DOCX`, `PPTX`, `TXT`, `CSV`).
-- Use **Quick actions** (`Explain simply`, `Give an example`, `Quiz me`, `Summarize`) or **Stop** streaming at any time (partial replies are saved automatically).
+- Use **Quick actions** (`Explain simply`, `Give an example`, `Quiz me`, `Summarize`) when the chat is empty or the input is focused, **Continue** if a response stops early, or **Stop** streaming at any time.
+
+### Assistant Mobile & Desktop Manual QA Checklist
+
+- [ ] **iPhone Safari** (portrait & landscape, light & dark): keyboard open/closed keeps composer visible above keyboard; no horizontal page zoom; display equations scroll horizontally inside cards.
+- [ ] **Android Chrome** (portrait & landscape, light & dark): `interactive-widget=resizes-content` keeps composer & latest message visible when keyboard opens; `Enter` inserts newline.
+- [ ] **Desktop Chrome** (light & dark): `Enter` sends, `Shift+Enter` adds newline, focus stays in input; scrolling up pauses auto-scroll and shows floating **Scroll to bottom** button with unread dot.
+- [ ] **Slow connection**: incomplete streaming math buffers cleanly without flashing raw broken delimiters; **Stop** and **Continue** work smoothly.
 
 ## 5. Study from Documents (`/documents`)
 

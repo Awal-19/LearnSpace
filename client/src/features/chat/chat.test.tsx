@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ import { ChatPage } from './ChatPage';
 import { Composer } from './Composer';
 import { ConversationList } from './ConversationList';
 import { MarkdownContent } from './MarkdownContent';
+import { bufferStreamingMath, normalizeMathDelimiters } from './mathUtils';
 import { MessageList } from './MessageList';
 import { registerAttachmentPreview } from './previewCache';
 import { parseSseEvents } from './useChatStream';
@@ -612,5 +613,154 @@ describe('ChatPage', () => {
 
     expect(await screen.findByText('Recovered reply!')).toBeInTheDocument();
     expect(screen.getAllByText('Define verb')).toHaveLength(1);
+  });
+
+  it('normalizes \\(...\\) and \\[...\\] math delimiters, buffers incomplete streaming math, and survives invalid LaTeX', () => {
+    const raw =
+      'Inline \\( x^2 = \\frac{8}{2} = 4 \\) and display:\n\\[ x = \\pm 2 \\]\nCode stays untouched: `\\(x\\)`';
+    const normalized = normalizeMathDelimiters(raw);
+    expect(normalized).toContain('$x^2 = \\frac{8}{2} = 4$');
+    expect(normalized).toContain('$$\nx = \\pm 2\n$$');
+    expect(normalized).toContain('`\\(x\\)`');
+
+    // Incomplete streaming display math is buffered with ellipsis until closed
+    expect(bufferStreamingMath('Step 1:\n$$x = \\frac{-b', true)).toBe('Step 1:\n…');
+    expect(bufferStreamingMath('Step 1:\n$$x = \\frac{-b}{2a}$$', true)).toContain(
+      '$$x = \\frac{-b}{2a}$$',
+    );
+
+    // Invalid LaTeX does not crash (throwOnError: false)
+    const { container } = render(
+      <MarkdownContent
+        content={String.raw`Broken: $\unknowncommand{123}$ and valid \( x^2 = \frac{8}{2} = 4 \)`}
+      />,
+    );
+    expect(container.querySelector('.katex')).toBeTruthy();
+  });
+
+  it('renders all 10 maths/science problem types with Copy LaTeX support on display equations', () => {
+    const tenProblemsMarkdown = [
+      String.raw`1. **2x^2 = 8:** $$x^2 = \frac{8}{2} = 4 \implies x = \pm 2$$`,
+      String.raw`2. **Quadratic formula:** $$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$`,
+      String.raw`3. **System:** $$\begin{cases} 2x + y = 5 \\ x - y = 1 \end{cases}$$`,
+      String.raw`4. **Definite integral:** $$\int_0^2 x^2 \, dx = \left[\frac{x^3}{3}\right]_0^2 = \frac{8}{3}$$`,
+      String.raw`5. **Chain rule:** $$\frac{d}{dx}\sin(3x^2) = 6x\cos(3x^2)$$`,
+      String.raw`6. **Limit:** $$\lim_{x \to 0} \frac{\sin x}{x} = 1$$`,
+      String.raw`7. **Matrix:** $$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix} \begin{bmatrix} 2 \\ 1 \end{bmatrix} = \begin{bmatrix} 4 \\ 10 \end{bmatrix}$$`,
+      String.raw`8. **Trig identity:** $$\sin^2\theta + \cos^2\theta = 1$$`,
+      String.raw`9. **Probability:** $$P(X = k) = \binom{n}{k} p^k (1-p)^{n-k}$$`,
+      String.raw`10. **Physics & Chemistry:** $$F = m a = 5\text{ kg} \cdot 9.8\text{ m/s}^2 = 49\text{ N}, \quad \ce{2H2 + O2 -> 2H2O}$$`,
+    ].join('\n\n');
+
+    const { container } = render(<MarkdownContent content={tenProblemsMarkdown} />);
+    expect(container.querySelectorAll('.katex-display').length).toBeGreaterThanOrEqual(10);
+    expect(screen.getAllByRole('button', { name: 'Copy LaTeX' }).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('pauses auto-scroll when the user scrolls up and reveals Scroll to bottom with unread dot', async () => {
+    const user = userEvent.setup();
+    const { container, rerender } = render(
+      <MessageList
+        messages={[
+          {
+            id: 'u1',
+            role: 'user',
+            content: 'Solve 2x^2 = 8',
+            status: 'complete',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: 'Step 1',
+            status: 'partial',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]}
+        isStreaming={true}
+        onQuickAction={vi.fn()}
+        onRetryLast={vi.fn()}
+      />,
+    );
+
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLElement;
+    expect(scroller).toBeTruthy();
+    Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(scroller, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(scroller, 'scrollTop', {
+      value: 100,
+      writable: true,
+      configurable: true,
+    });
+    scroller.scrollTo = vi.fn();
+
+    fireEvent.scroll(scroller);
+
+    const scrollBtn = await screen.findByRole('button', { name: 'Scroll to bottom' });
+    expect(scrollBtn).toBeInTheDocument();
+
+    // New streamed chunk arrives while scrolled up -> unread dot appears
+    rerender(
+      <MessageList
+        messages={[
+          {
+            id: 'u1',
+            role: 'user',
+            content: 'Solve 2x^2 = 8',
+            status: 'complete',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: 'Step 1\n\n$$x^2 = 4$$',
+            status: 'partial',
+            action: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]}
+        isStreaming={true}
+        onQuickAction={vi.fn()}
+        onRetryLast={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('New content available')).toBeInTheDocument();
+
+    await user.click(scrollBtn);
+    expect(scroller.scrollTo).toHaveBeenCalled();
+  });
+
+  it('keeps quick actions visible when empty or focused and hides disclaimer while typing', async () => {
+    const user = userEvent.setup();
+    render(
+      <Composer
+        isStreaming={false}
+        isEmptyConversation={false}
+        attachments={[]}
+        onFilesSelected={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    // Hidden initially on non-empty unfocused chat
+    expect(screen.queryByRole('group', { name: 'Quick actions' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('AWAL can make mistakes. Verify important details.'),
+    ).toBeInTheDocument();
+
+    const input = screen.getByLabelText('Message to AWAL');
+    await user.click(input);
+    expect(screen.getByRole('group', { name: 'Quick actions' })).toBeInTheDocument();
+
+    await user.type(input, 'Hello');
+    expect(
+      screen.queryByText('AWAL can make mistakes. Verify important details.'),
+    ).not.toBeInTheDocument();
   });
 });

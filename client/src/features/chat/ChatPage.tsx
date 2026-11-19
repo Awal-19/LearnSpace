@@ -1109,6 +1109,7 @@ function ChatPageView({
                 retryFromEmptyError: isEmptyErr,
               });
             }}
+            onContinueLast={() => void handleSend('Continue from where you stopped.', null)}
             onSelectStarterPrompt={(prompt) => void handleSend(prompt, null)}
           />
         )}
@@ -1116,6 +1117,7 @@ function ChatPageView({
         <Composer
           disabled={!user?.emailVerified}
           isStreaming={isStreaming || isSubmitting}
+          isEmptyConversation={messages.length === 0}
           attachments={draftAttachments}
           prefillText={prefillText}
           onPrefillConsumed={() => setPrefillText(undefined)}

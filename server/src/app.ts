@@ -103,13 +103,23 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   // CORS restrictions, rate limiters, body parsers, and auth middleware so infra probes always pass.
   app.use('/api', healthRouter(deps));
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      frameguard: { action: 'deny' },
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      hsts: { maxAge: 31_536_000, includeSubDomains: true },
+    }),
+  );
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    next();
+  });
   app.use(
     cors({
       origin: env.CORS_ORIGINS,
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-step-up-password'],
       exposedHeaders: ['X-Request-Id', 'Retry-After'],
       maxAge: 600,
     }),

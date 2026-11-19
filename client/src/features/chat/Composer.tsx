@@ -94,6 +94,7 @@ export interface DraftAttachment {
 interface ComposerProps {
   disabled?: boolean;
   isStreaming: boolean;
+  isEmptyConversation?: boolean;
   attachments: DraftAttachment[];
   prefillText?: string;
   onPrefillConsumed?: () => void;
@@ -195,6 +196,7 @@ function isTouchDevice(): boolean {
 export function Composer({
   disabled,
   isStreaming,
+  isEmptyConversation = false,
   attachments,
   prefillText,
   onPrefillConsumed,
@@ -209,6 +211,8 @@ export function Composer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   useEffect(() => {
     if (!prefillText) return;
@@ -229,8 +233,25 @@ export function Composer({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
+    // Auto-grow up to ~5 lines (120px) and then scroll internally
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const updateInset = () => {
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      setKeyboardInset(inset > 80 ? inset : 0);
+    };
+    updateInset();
+    vv.addEventListener('resize', updateInset);
+    vv.addEventListener('scroll', updateInset);
+    return () => {
+      vv.removeEventListener('resize', updateInset);
+      vv.removeEventListener('scroll', updateInset);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -312,6 +333,9 @@ export function Composer({
     onSend(text.trim(), action);
     setText('');
     setAction(null);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -320,7 +344,9 @@ export function Composer({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // On desktop, Enter sends and Shift+Enter adds a newline.
+    // On touch/mobile devices, Enter adds a newline and the Send button submits.
+    if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice()) {
       e.preventDefault();
       submit();
     }
@@ -350,41 +376,55 @@ export function Composer({
     }
   };
 
+  const showQuickActions = isFocused || isEmptyConversation || action !== null;
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="shrink-0 bg-gradient-to-t from-surface via-surface/95 to-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4"
+      onFocus={() => setIsFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setIsFocused(false);
+        }
+      }}
+      style={{
+        paddingBottom:
+          keyboardInset > 0 ? `${keyboardInset}px` : 'max(0.5rem, env(safe-area-inset-bottom))',
+      }}
+      className="shrink-0 bg-gradient-to-t from-surface via-surface/95 to-transparent px-3 pt-1.5 sm:px-6 sm:pb-3"
     >
-      <div className="mx-auto w-full max-w-3xl space-y-2.5">
-        <div
-          className="flex flex-wrap justify-center gap-1.5"
-          role="group"
-          aria-label="Quick actions"
-        >
-          {ACTION_OPTIONS.map((opt) => {
-            const selected = action === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                disabled={disabled || isStreaming}
-                aria-pressed={selected}
-                onClick={() => setAction(selected ? null : opt.id)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                  selected
-                    ? 'border-primary-600 bg-primary-600 text-white shadow-sm'
-                    : 'border-line/80 bg-surface text-muted shadow-sm hover:border-primary-300 hover:text-primary-600 dark:bg-surface2 dark:hover:text-primary-300'
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="mx-auto w-full max-w-3xl space-y-1.5">
+        {showQuickActions ? (
+          <div
+            className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:justify-center"
+            role="group"
+            aria-label="Quick actions"
+          >
+            {ACTION_OPTIONS.map((opt) => {
+              const selected = action === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={disabled || isStreaming}
+                  aria-pressed={selected}
+                  onClick={() => setAction(selected ? null : opt.id)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                    selected
+                      ? 'border-primary-600 bg-primary-600 text-white shadow-sm'
+                      : 'border-line/80 bg-surface text-muted shadow-sm hover:border-primary-300 hover:text-primary-600 dark:bg-surface2 dark:hover:text-primary-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
-        <div className="rounded-[24px] border border-line/90 bg-surface p-2.5 shadow-[0_8px_30px_-10px_rgba(15,23,42,0.09)] transition-all focus-within:border-primary-400 focus-within:ring-4 focus-within:ring-primary-500/10 dark:bg-surface2/80 sm:p-3">
+        <div className="rounded-[22px] border border-line/90 bg-surface p-2 shadow-[0_8px_30px_-10px_rgba(15,23,42,0.09)] transition-all focus-within:border-primary-400 focus-within:ring-4 focus-within:ring-primary-500/10 dark:bg-surface2/80 sm:p-2.5">
           {attachments.length > 0 ? (
-            <div className="mb-2.5 space-y-2 px-1">
+            <div className="mb-2 max-h-28 space-y-1.5 overflow-y-auto px-1">
               <div className="flex flex-wrap gap-2" aria-label="Selected attachments">
                 {attachments.map((att) => (
                   <DraftAttachmentChip
@@ -397,7 +437,10 @@ export function Composer({
               </div>
 
               {hasReadyAttachment && !isStreaming ? (
-                <div className="flex flex-wrap gap-1.5" aria-label="Attachment quick actions">
+                <div
+                  className="flex flex-nowrap gap-1.5 overflow-x-auto pb-0.5"
+                  aria-label="Attachment quick actions"
+                >
                   {ATTACHMENT_QUICK_PROMPTS.map((prompt) => (
                     <button
                       key={prompt}
@@ -408,7 +451,7 @@ export function Composer({
                         setText('');
                         setAction(null);
                       }}
-                      className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
+                      className="shrink-0 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
                     >
                       {prompt}
                     </button>
@@ -428,7 +471,7 @@ export function Composer({
             disabled={disabled || isStreaming}
             placeholder="Ask AWAL anything, paste an image, or drop files..."
             aria-label="Message to AWAL"
-            className="min-h-[44px] max-h-44 w-full resize-none border-0 bg-transparent px-2.5 py-1.5 text-[15px] leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60"
+            className="min-h-[38px] max-h-[120px] w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-1 text-[15px] leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60"
           />
 
           <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
@@ -582,9 +625,11 @@ export function Composer({
           </div>
         </div>
 
-        <p className="text-center text-[11px] text-muted/80">
-          AWAL can make mistakes. Verify important details with your course materials.
-        </p>
+        {text.trim().length === 0 ? (
+          <p className="hidden text-center text-[11px] text-muted/80 sm:block">
+            AWAL can make mistakes. Verify important details.
+          </p>
+        ) : null}
       </div>
 
       <CameraCaptureModal

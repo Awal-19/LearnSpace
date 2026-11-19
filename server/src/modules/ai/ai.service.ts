@@ -22,6 +22,7 @@ import {
   trimHistory,
   TUTOR_SYSTEM_PROMPT,
 } from './ai.prompts';
+import { isMathProblem, verifyMathAnswer } from './mathVerify';
 import type {
   CreateConversationInput,
   GetConversationQuery,
@@ -408,9 +409,12 @@ export function createAiService({
       let usage: TokenUsage | null = null;
       const startedAt = Date.now();
 
+      const mathMode = isMathProblem(input.content);
+
       try {
         for await (const chunk of llm.stream(llmMessages, {
           systemPrompt: TUTOR_SYSTEM_PROMPT,
+          maxOutputTokens: mathMode ? 4096 : 2048,
           signal,
         })) {
           if (signal.aborted) break;
@@ -432,6 +436,29 @@ export function createAiService({
             data: { updatedAt: new Date() },
           });
           return;
+        }
+
+        if (mathMode && fullText.length > 0) {
+          const check = await verifyMathAnswer(input.content, fullText);
+          if (check.checked && !check.verified && check.detail) {
+            try {
+              const recheck = await llm.generateText(
+                `Your previous solution to "${input.content}" failed an automated substitution check (${check.detail}). Re-check the algebra briefly and provide the corrected **Answer:** and **Check your answer** step in LaTeX ($...$ / $$...$$).`,
+                {
+                  systemPrompt: TUTOR_SYSTEM_PROMPT,
+                  maxOutputTokens: 1024,
+                  signal,
+                },
+              );
+              if (recheck.text.trim()) {
+                const correction = `\n\n---\n**Check your answer (re-verified):**\n\n${recheck.text.trim()}`;
+                fullText += correction;
+                sink.onDelta(correction);
+              }
+            } catch (recheckErr) {
+              logger.warn({ err: recheckErr }, 'Math answer re-check failed');
+            }
+          }
         }
 
         const finalUsage: TokenUsage = usage ?? {

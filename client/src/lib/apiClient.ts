@@ -77,14 +77,41 @@ interface ErrorEnvelope {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  return executeRequest<T>(path, options, false);
+  const response = await executeRawRequest(path, options, false);
+  if (response.status === 204) return undefined as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null as T;
+  }
 }
 
-async function executeRequest<T>(
+export async function requestRaw(path: string, options: RequestOptions = {}): Promise<Response> {
+  return executeRawRequest(path, options, false);
+}
+
+export async function downloadFile(
+  path: string,
+  filename: string,
+  options: RequestOptions = {},
+): Promise<void> {
+  const res = await requestRaw(path, options);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function executeRawRequest(
   path: string,
   options: RequestOptions,
   isRetry: boolean,
-): Promise<T> {
+): Promise<Response> {
   const { method = 'GET', body, signal, headers = {}, auth = true, cookie = false } = options;
 
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -108,16 +135,13 @@ async function executeRequest<T>(
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
   }
 
-  if (response.status === 204) return undefined as T;
-
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    /* empty or non-JSON body */
-  }
-
   if (!response.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      /* empty or non-JSON body */
+    }
     const envelope = (payload ?? {}) as ErrorEnvelope;
     const code = envelope.error?.code ?? 'UNKNOWN';
 
@@ -125,7 +149,7 @@ async function executeRequest<T>(
     if (response.status === 401 && code === 'TOKEN_EXPIRED' && auth && !isRetry && refreshHandler) {
       const refreshed = await refreshHandler();
       if (refreshed) {
-        return executeRequest<T>(path, options, true);
+        return executeRawRequest(path, options, true);
       }
     }
 
@@ -148,5 +172,5 @@ async function executeRequest<T>(
     );
   }
 
-  return payload as T;
+  return response;
 }

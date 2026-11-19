@@ -1,4 +1,4 @@
-import { ADMIN_API_BASE_URL, ApiError, getAccessToken, request } from '../../lib/apiClient';
+import { ADMIN_API_BASE_URL, downloadFile, request } from '../../lib/apiClient';
 
 export type AdminRange = '7d' | '30d' | '90d' | 'custom';
 
@@ -182,28 +182,12 @@ export async function bulkAdminUsers(params: {
     return;
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${ADMIN_API_BASE_URL}/users/bulk`, {
+  await downloadFile('/users/bulk', 'learnspace-users.csv', {
+    baseUrl: ADMIN_API_BASE_URL,
     method: 'POST',
-    headers,
-    credentials: 'include',
-    body: JSON.stringify(params),
+    body: params,
+    cookie: true,
   });
-  if (!res.ok) {
-    throw new ApiError(res.status, 'EXPORT_ERROR', `Export failed (${res.status})`);
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'learnspace-users.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export interface AdminAiUsageResponse {
@@ -461,23 +445,10 @@ export function fetchAdminAuditLogs(params: { q?: string; action?: string; page?
 }
 
 export async function exportAuditLogsCsv() {
-  const headers: Record<string, string> = {};
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${ADMIN_API_BASE_URL}/audit-logs?format=csv`, {
-    headers,
-    credentials: 'include',
+  await downloadFile('/audit-logs?format=csv', 'learnspace-audit-logs.csv', {
+    baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
-  if (!res.ok) throw new ApiError(res.status, 'EXPORT_ERROR', 'Export failed');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'learnspace-audit-logs.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export function fetchAdminLoginHistory(suspiciousOnly = false) {
@@ -574,23 +545,10 @@ export function createAdminExport(body: {
 }
 
 export async function downloadAdminExport(jobId: string, fileName: string) {
-  const headers: Record<string, string> = {};
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${ADMIN_API_BASE_URL}/exports/${jobId}/download`, {
-    headers,
-    credentials: 'include',
+  await downloadFile(`/exports/${jobId}/download`, fileName, {
+    baseUrl: ADMIN_API_BASE_URL,
+    cookie: true,
   });
-  if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_ERROR', 'Download failed');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export function fetchActiveAnnouncements() {

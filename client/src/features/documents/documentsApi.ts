@@ -1,4 +1,11 @@
-import { API_BASE_URL, ApiError, getAccessToken, request } from '../../lib/apiClient';
+import {
+  API_BASE_URL,
+  ApiError,
+  downloadFile,
+  getAccessToken,
+  request,
+  requestRaw,
+} from '../../lib/apiClient';
 
 export type DocumentType = 'past_question' | 'slides' | 'notes';
 export type DocumentStatus = 'uploaded' | 'extracting' | 'ready' | 'failed';
@@ -167,6 +174,7 @@ export function uploadDocument(params: {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_BASE_URL}/documents`);
     xhr.withCredentials = true;
+    xhr.setRequestHeader('X-Requested-With', 'learnspace');
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
@@ -239,38 +247,19 @@ export async function streamQuestionAnswer(params: {
   onDelta: (text: string) => void;
   onDone: (question: ExtractedQuestion) => void;
 }): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(
-    `${API_BASE_URL}/documents/${params.documentId}/questions/${params.questionId}/answer`,
+  const res = await requestRaw(
+    `/documents/${params.documentId}/questions/${params.questionId}/answer`,
     {
       method: 'POST',
-      headers,
-      credentials: 'include',
+      cookie: true,
       signal: params.signal,
-      body: JSON.stringify({
+      body: {
         mode: params.mode,
         useCourseNotes: params.useCourseNotes,
         refinement: params.refinement,
-      }),
+      },
     },
   );
-
-  if (!res.ok) {
-    let errBody: { error?: { code?: string; message?: string } } | null = null;
-    try {
-      errBody = (await res.json()) as { error?: { code?: string; message?: string } };
-    } catch {
-      errBody = null;
-    }
-    throw new ApiError(
-      res.status,
-      errBody?.error?.code ?? 'ANSWER_ERROR',
-      errBody?.error?.message ?? `Request failed (${res.status})`,
-    );
-  }
 
   const reader = res.body?.getReader();
   if (!reader) throw new Error('Streaming response unavailable');
@@ -320,30 +309,11 @@ export async function exportDocumentAnswers(
   format: 'pdf' | 'docx',
   filenameFallback: string,
 ): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE_URL}/documents/${documentId}/export`, {
+  await downloadFile(`/documents/${documentId}/export`, `${filenameFallback}.${format}`, {
     method: 'POST',
-    headers,
-    credentials: 'include',
-    body: JSON.stringify({ format }),
+    cookie: true,
+    body: { format },
   });
-
-  if (!res.ok) {
-    throw new ApiError(res.status, 'EXPORT_ERROR', `Export failed (${res.status})`);
-  }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${filenameFallback}.${format}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export function saveDocumentAnswersToNotes(
@@ -418,28 +388,9 @@ export async function exportQuestionSet(
   format: 'pdf' | 'docx',
   filenameFallback: string,
 ): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE_URL}/question-sets/${setId}/export`, {
+  await downloadFile(`/question-sets/${setId}/export`, `${filenameFallback}.${format}`, {
     method: 'POST',
-    headers,
-    credentials: 'include',
-    body: JSON.stringify({ format }),
+    cookie: true,
+    body: { format },
   });
-
-  if (!res.ok) {
-    throw new ApiError(res.status, 'EXPORT_ERROR', `Export failed (${res.status})`);
-  }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${filenameFallback}.${format}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }

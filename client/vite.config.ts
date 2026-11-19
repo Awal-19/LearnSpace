@@ -15,7 +15,7 @@ export default defineConfig({
     proxy: { '/api': { target: proxyTarget, changeOrigin: false } },
     watch: process.env.CHOKIDAR_USEPOLLING ? { usePolling: true } : undefined,
   },
-  build: { sourcemap: true, target: 'es2022' },
+  build: { sourcemap: false, target: 'es2022' },
   test: {
     globals: true,
     environment: 'jsdom',

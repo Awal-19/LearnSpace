@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../app/AuthContext';
 import { useTheme } from '../../app/ThemeProvider';
 import { Button, Card, Checkbox, ErrorState, Input, Skeleton, useToast } from '../../design';
-import { API_BASE_URL, ApiError, getAccessToken, request } from '../../lib/apiClient';
+import { ApiError, downloadFile, request } from '../../lib/apiClient';
 
 interface UserSettings {
   theme: 'system' | 'light' | 'dark';
@@ -283,21 +283,11 @@ export function SettingsPage() {
             onClick={async () => {
               setExporting(true);
               try {
-                const token = getAccessToken();
-                const res = await fetch(`${API_BASE_URL}/users/me/export`, {
-                  credentials: 'include',
-                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                });
-                if (!res.ok) throw new Error('Export failed');
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `learnspace-export-${new Date().toISOString().slice(0, 10)}.json`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(url);
+                await downloadFile(
+                  '/users/me/export',
+                  `learnspace-export-${new Date().toISOString().slice(0, 10)}.json`,
+                  { cookie: true },
+                );
                 toast.show({ kind: 'success', title: 'Data export downloaded' });
               } catch {
                 toast.show({
