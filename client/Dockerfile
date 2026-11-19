@@ -31,7 +31,7 @@ ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27.3-alpine AS prod
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine AS prod
 ENV API_UPSTREAM=https://learnspace-api-production.up.railway.app
 ENV NGINX_ENVSUBST_FILTER=API_UPSTREAM
 COPY client/nginx.conf /etc/nginx/templates/default.conf.template
