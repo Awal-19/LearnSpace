@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, RotateCcw, Save, ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../app/AuthContext';
-import { Badge, Button, Card, Input, Skeleton, useToast } from '../../design';
+import { Badge, Button, GlassCard, Input, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import {
   fetchPlatformSettings,
@@ -41,13 +41,13 @@ export function AdminPlatformSettingsPage() {
 
   if (!isSuper) {
     return (
-      <Card className="p-6 text-center">
+      <GlassCard className="p-6 text-center">
         <ShieldAlert className="mx-auto h-8 w-8 text-danger" aria-hidden="true" />
         <h1 className="mt-3 text-lg font-semibold">Super Admin Access Required</h1>
         <p className="mt-1 text-sm text-muted">
           Only a super_admin can modify platform security, AI caps, and feature policies.
         </p>
-      </Card>
+      </GlassCard>
     );
   }
 
@@ -155,7 +155,7 @@ export function AdminPlatformSettingsPage() {
         </div>
 
         <form onSubmit={handleSave} className="space-y-6">
-          <Card className="p-5 space-y-4">
+          <GlassCard className="p-5 space-y-4">
             <h2 className="text-sm font-semibold">Feature Toggles &amp; Maintenance</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
               {(
@@ -194,9 +194,9 @@ export function AdminPlatformSettingsPage() {
                 placeholder="admin1@ug.edu.gh, admin2@ug.edu.gh"
               />
             </div>
-          </Card>
+          </GlassCard>
 
-          <Card className="p-5 space-y-4">
+          <GlassCard className="p-5 space-y-4">
             <h2 className="text-sm font-semibold">Security Policy</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
@@ -248,9 +248,9 @@ export function AdminPlatformSettingsPage() {
                 Require OTP for admin login
               </label>
             </div>
-          </Card>
+          </GlassCard>
 
-          <Card className="p-5 space-y-4">
+          <GlassCard className="p-5 space-y-4">
             <h2 className="text-sm font-semibold">AI Model &amp; Global Limits</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
@@ -307,10 +307,10 @@ export function AdminPlatformSettingsPage() {
                 Save Platform Settings
               </Button>
             </div>
-          </Card>
+          </GlassCard>
         </form>
 
-        <Card className="p-5 space-y-3">
+        <GlassCard className="p-5 space-y-3">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-muted" aria-hidden="true" />
             <h2 className="text-sm font-semibold">Settings Version History</h2>
@@ -343,7 +343,7 @@ export function AdminPlatformSettingsPage() {
               ))}
             </div>
           )}
-        </Card>
+        </GlassCard>
 
         <StepUpModal
           open={stepUpOpen}

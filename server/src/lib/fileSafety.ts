@@ -57,7 +57,9 @@ export function wrapUntrustedContext(
   attrs: Record<string, string> = {},
 ): string {
   const nonce = randomBytes(6).toString('hex');
-  const escapedBody = body.replace(new RegExp(`</?${tag}\\b`, 'gi'), (m) => `<\\/${m.slice(1)}`);
+  const escapedBody = body.replace(new RegExp(`</?${tag}\\b`, 'gi'), (m) =>
+    m.startsWith('</') ? `<\\/${m.slice(2)}` : `<\\${m.slice(1)}`,
+  );
   const attrParts = Object.entries(attrs).map(([k, v]) => `${k}="${v.replace(/["\r\n<>]/g, '_')}"`);
   attrParts.push(`boundary="${nonce}"`);
   return `<${tag} ${attrParts.join(' ')}>\n${escapedBody}\n</${tag}>`;

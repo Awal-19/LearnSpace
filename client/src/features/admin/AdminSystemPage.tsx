@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Activity } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, Skeleton } from '../../design';
+import { Badge, Button, GlassCard, Skeleton } from '../../design';
 import { fetchAdminErrorLogs, fetchAdminLoginHistory, fetchAdminSystemHealth } from './adminApi';
 
 export function AdminSystemPage() {
@@ -39,7 +39,7 @@ export function AdminSystemPage() {
       {healthQuery.isLoading ? (
         <Skeleton className="h-28 rounded-2xl" />
       ) : healthQuery.data ? (
-        <Card className="p-5 sm:p-6">
+        <GlassCard className="p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-base font-semibold">Service Health</h2>
             <span className="rounded-full bg-surface2 px-3 py-1 text-xs font-medium text-muted">
@@ -71,11 +71,11 @@ export function AdminSystemPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </GlassCard>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5">
+        <GlassCard className="p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-base font-semibold">Login History</h2>
             <Button
@@ -105,9 +105,9 @@ export function AdminSystemPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassCard>
 
-        <Card className="p-5">
+        <GlassCard className="p-5">
           <h2 className="font-display text-base font-semibold">Recent Server Errors</h2>
           {errorsQuery.isLoading ? (
             <Skeleton className="mt-3 h-40" />
@@ -128,7 +128,7 @@ export function AdminSystemPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassCard>
       </div>
     </div>
   );

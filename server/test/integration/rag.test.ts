@@ -137,7 +137,7 @@ describe('RAG helpers & endpoints', () => {
         score: 2,
       },
     ]);
-    expect(formatted).toContain('<lecture_notes>');
+    expect(formatted).toMatch(/<lecture_notes\b/);
     expect(formatted).toContain('cs101.pdf');
   });
 

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Mail, MessageSquareWarning } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import { Badge, Button, EmptyState, GlassCard, Select, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { fetchAdminFeedback, replyAdminFeedback, updateAdminFeedback } from './adminApi';
 
@@ -60,16 +60,18 @@ export function AdminFeedbackPage() {
             </p>
           </div>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-line bg-surface px-3.5 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:outline-none"
-        >
-          <option value="">All statuses</option>
-          <option value="new">New</option>
-          <option value="in_progress">In progress</option>
-          <option value="resolved">Resolved</option>
-        </select>
+        <div className="w-full sm:w-44">
+          <Select
+            aria-label="Filter feedback by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="in_progress">In progress</option>
+            <option value="resolved">Resolved</option>
+          </Select>
+        </div>
       </div>
 
       {query.isLoading ? (
@@ -83,7 +85,7 @@ export function AdminFeedbackPage() {
       ) : (
         <div className="space-y-3">
           {query.data?.items.map((f) => (
-            <Card key={f.id} className="p-5 transition-shadow hover:shadow-md">
+            <GlassCard key={f.id} className="p-5 hover:shadow-lg">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -132,7 +134,7 @@ export function AdminFeedbackPage() {
                   </Button>
                 </div>
               </div>
-            </Card>
+            </GlassCard>
           ))}
         </div>
       )}

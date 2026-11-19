@@ -2,7 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Cpu, DollarSign, Save, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import {
+  Button,
+  ChartCard,
+  EmptyState,
+  GlassCard,
+  Skeleton,
+  StatCard,
+  useToast,
+} from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { fetchAdminAiUsage, updateAdminAiLimits, type AdminRange } from './adminApi';
 
@@ -55,9 +63,9 @@ export function AdminAiUsagePage() {
   if (query.isLoading) return <Skeleton className="h-72" />;
   if (query.isError || !query.data) {
     return (
-      <Card className="p-6 text-center">
+      <GlassCard className="p-6 text-center">
         <p className="text-sm text-danger">Failed to load AI usage metrics.</p>
-      </Card>
+      </GlassCard>
     );
   }
 
@@ -115,71 +123,41 @@ export function AdminAiUsagePage() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-medium text-muted">Total requests</span>
-              <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">
-                {summary.totalRequests}
-              </p>
-            </div>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600/10 text-primary-600 dark:text-primary-400">
-              <Zap className="h-5 w-5" />
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted">Error rate: {summary.errorRatePct}%</p>
-        </Card>
-        <Card className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-medium text-muted">Tokens In / Out</span>
-              <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">
-                {summary.tokensIn.toLocaleString()} / {summary.tokensOut.toLocaleString()}
-              </p>
-            </div>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400">
-              <Cpu className="h-5 w-5" />
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted">Avg response: {summary.avgDurationMs} ms</p>
-        </Card>
-        <Card className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-medium text-muted">Est. Cost Today</span>
-              <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">
-                ${summary.costTodayUsd}
-              </p>
-            </div>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <DollarSign className="h-5 w-5" />
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted">Alert threshold: ${dailyCostAlertUsd}</p>
-        </Card>
-        <Card className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-medium text-muted">Est. Cost This Month</span>
-              <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">
-                ${summary.costMonthUsd}
-              </p>
-            </div>
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <DollarSign className="h-5 w-5" />
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted">Range cost: ${summary.costRangeUsd}</p>
-        </Card>
+        <StatCard
+          label="Total requests"
+          value={summary.totalRequests}
+          sub={`Error rate: ${summary.errorRatePct}%`}
+          icon={Zap}
+        />
+        <StatCard
+          label="Tokens In / Out"
+          value={`${summary.tokensIn.toLocaleString()} / ${summary.tokensOut.toLocaleString()}`}
+          sub={`Avg response: ${summary.avgDurationMs} ms`}
+          icon={Cpu}
+          accent="bg-sky-500/15 text-sky-600 dark:text-sky-400"
+        />
+        <StatCard
+          label="Est. Cost Today"
+          value={`$${summary.costTodayUsd}`}
+          sub={`Alert threshold: $${dailyCostAlertUsd}`}
+          icon={DollarSign}
+          accent="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+        />
+        <StatCard
+          label="Est. Cost This Month"
+          value={`$${summary.costMonthUsd}`}
+          sub={`Range cost: $${summary.costRangeUsd}`}
+          icon={DollarSign}
+          accent="bg-amber-500/15 text-amber-600 dark:text-amber-400"
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5 sm:p-6">
-          <h2 className="font-display text-base font-semibold">Usage by Feature</h2>
+        <ChartCard title="Usage by Feature">
           {byFeature.length === 0 ? (
             <EmptyState title="No feature usage yet" description="AI events will appear here." />
           ) : (
-            <div className="mt-4 h-64 w-full">
+            <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={byFeature}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -191,17 +169,16 @@ export function AdminAiUsagePage() {
               </ResponsiveContainer>
             </div>
           )}
-        </Card>
+        </ChartCard>
 
-        <Card className="p-5 sm:p-6">
-          <h2 className="font-display text-base font-semibold">Daily Requests</h2>
+        <ChartCard title="Daily Requests">
           {daily.length === 0 ? (
             <EmptyState
               title="No daily data yet"
               description="Requests over time will appear here."
             />
           ) : (
-            <div className="mt-4 h-64 w-full">
+            <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={daily}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -213,11 +190,11 @@ export function AdminAiUsagePage() {
               </ResponsiveContainer>
             </div>
           )}
-        </Card>
+        </ChartCard>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="min-w-0 p-5 sm:p-6">
+        <GlassCard className="min-w-0 p-5 sm:p-6">
           <h2 className="font-display text-base font-semibold">Top Users by Usage</h2>
           {topUsers.length === 0 ? (
             <p className="mt-3 text-sm text-muted">No usage recorded yet.</p>
@@ -248,9 +225,9 @@ export function AdminAiUsagePage() {
               </table>
             </div>
           )}
-        </Card>
+        </GlassCard>
 
-        <Card className="p-5 sm:p-6">
+        <GlassCard className="p-5 sm:p-6">
           <h2 className="font-display text-base font-semibold">
             Global Limits &amp; Alert Threshold
           </h2>
@@ -302,7 +279,7 @@ export function AdminAiUsagePage() {
               Save limits
             </Button>
           </form>
-        </Card>
+        </GlassCard>
       </div>
     </div>
   );

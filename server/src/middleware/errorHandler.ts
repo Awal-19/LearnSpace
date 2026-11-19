@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
 import { AppError, ERROR_STATUS, type ErrorCode } from '../lib/errors';
+import { reportToSentry } from '../lib/securityMonitor';
 import { recordErrorLog } from '../modules/admin/admin.logging';
 
 interface Envelope {
@@ -24,7 +25,7 @@ export const notFound: RequestHandler = (req, _res, next) => {
  * One place that turns every failure into the documented envelope.
  * Unknown errors become INTERNAL; their message/stack are logged, never returned.
  */
-export function createErrorHandler(prisma?: PrismaClient): ErrorRequestHandler {
+export function createErrorHandler(prisma?: PrismaClient, sentryDsn?: string): ErrorRequestHandler {
   return (err, req, res, next) => {
     if (res.headersSent) {
       next(err);
@@ -55,8 +56,26 @@ export function createErrorHandler(prisma?: PrismaClient): ErrorRequestHandler {
     }
 
     const status = ERROR_STATUS[code];
+    if (code === 'FORBIDDEN') {
+      req.log?.warn(
+        {
+          securityEvent: 'permission_denied',
+          requestId: req.requestId,
+          userId: req.user?.id ?? null,
+          route: req.originalUrl || req.path,
+          method: req.method,
+        },
+        'Permission denied',
+      );
+    }
     if (status >= 500) {
       req.log?.error({ err, requestId: req.requestId }, 'Unhandled error');
+      void reportToSentry(sentryDsn, err, {
+        requestId: req.requestId,
+        route: req.originalUrl || req.path,
+        method: req.method,
+        userId: req.user?.id ?? null,
+      });
       if (prisma) {
         const errMsg = err instanceof Error ? err.message : 'Internal server error';
         void recordErrorLog(prisma, {

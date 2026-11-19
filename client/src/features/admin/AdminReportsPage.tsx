@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import { Badge, Button, EmptyState, GlassCard, Select, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import {
   createAdminExport,
@@ -59,19 +59,19 @@ export function AdminReportsPage() {
         </div>
       </div>
 
-      <Card className="p-5 sm:p-6">
+      <GlassCard className="p-5 sm:p-6">
         <div className="grid gap-3.5 sm:grid-cols-4">
-          <select
+          <Select
+            aria-label="Export report type"
             value={kind}
             onChange={(e) => setKind(e.target.value as AdminExportJob['kind'])}
-            className="rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="users">Users (CSV)</option>
             <option value="usage">Usage Events (CSV)</option>
             <option value="ai_costs">AI Costs (CSV)</option>
             <option value="feedback">Feedback Reports (CSV)</option>
             <option value="overview_pdf">Overview Report (PDF)</option>
-          </select>
+          </Select>
           <input
             type="date"
             value={from}
@@ -89,7 +89,7 @@ export function AdminReportsPage() {
             Generate export
           </Button>
         </div>
-      </Card>
+      </GlassCard>
 
       {query.isLoading ? (
         <Skeleton className="h-40 rounded-2xl" />
@@ -100,7 +100,7 @@ export function AdminReportsPage() {
           description="Generated CSV and PDF reports will appear here."
         />
       ) : (
-        <Card className="divide-y divide-line/80 overflow-hidden !p-0">
+        <GlassCard className="divide-y divide-line/80 overflow-hidden !p-0">
           {query.data?.jobs.map((job) => (
             <div
               key={job.id}
@@ -127,7 +127,7 @@ export function AdminReportsPage() {
               ) : null}
             </div>
           ))}
-        </Card>
+        </GlassCard>
       )}
     </div>
   );

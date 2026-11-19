@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Download, Search, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import { Badge, Button, DataTable, EmptyState, Skeleton, useToast } from '../../design';
 import { exportAuditLogsCsv, fetchAdminAuditLogs } from './adminApi';
 
 export function AdminAuditLogPage() {
@@ -63,41 +63,39 @@ export function AdminAuditLogPage() {
           description="Admin actions will be logged here automatically."
         />
       ) : (
-        <Card className="overflow-hidden !p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Actor</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Target</th>
-                  <th className="px-4 py-3">Reason</th>
-                  <th className="px-4 py-3">IP</th>
+        <DataTable>
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
+              <tr>
+                <th className="px-4 py-3">When</th>
+                <th className="px-4 py-3">Actor</th>
+                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-3">Target</th>
+                <th className="px-4 py-3">Reason</th>
+                <th className="px-4 py-3">IP</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/80">
+              {query.data?.items.map((log) => (
+                <tr key={log.id} className="transition-colors hover:bg-surface2/40">
+                  <td className="px-4 py-3 text-xs text-muted tabular-nums">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-medium text-fg">{log.actor.email}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone="neutral">{log.action}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted">
+                    {log.targetType}
+                    {log.targetId ? `:${log.targetId.slice(0, 8)}` : ''}
+                  </td>
+                  <td className="px-4 py-3 text-xs">{log.reason ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs text-muted tabular-nums">{log.ip ?? '—'}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-line/80">
-                {query.data?.items.map((log) => (
-                  <tr key={log.id} className="transition-colors hover:bg-surface2/40">
-                    <td className="px-4 py-3 text-xs text-muted tabular-nums">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-medium text-fg">{log.actor.email}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone="neutral">{log.action}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted">
-                      {log.targetType}
-                      {log.targetId ? `:${log.targetId.slice(0, 8)}` : ''}
-                    </td>
-                    <td className="px-4 py-3 text-xs">{log.reason ?? '—'}</td>
-                    <td className="px-4 py-3 text-xs text-muted tabular-nums">{log.ip ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+              ))}
+            </tbody>
+          </table>
+        </DataTable>
       )}
     </div>
   );

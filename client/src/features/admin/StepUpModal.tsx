@@ -2,7 +2,7 @@ import { KeyRound, Lock, ShieldCheck } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../app/AuthContext';
-import { Button, Card, Input, Modal, PasswordInput, Spinner, useToast } from '../../design';
+import { Button, GlassCard, Input, Modal, PasswordInput, Spinner, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { fetchStepUpStatus, requestStepUpOtp, verifyStepUp } from './adminApi';
 
@@ -185,7 +185,7 @@ export function SuperAdminGate({ children }: { children: ReactNode }) {
 
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Card className="w-full max-w-md p-6">
+        <GlassCard className="w-full max-w-md p-6">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-500/10 text-primary-600">
             <Lock className="h-6 w-6" aria-hidden="true" />
           </div>
@@ -208,7 +208,7 @@ export function SuperAdminGate({ children }: { children: ReactNode }) {
               Unlock Super Admin
             </Button>
           </form>
-        </Card>
+        </GlassCard>
       </div>
     );
   }

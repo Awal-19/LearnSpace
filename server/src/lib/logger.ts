@@ -5,6 +5,8 @@ import type { Env } from '../config/env';
 export const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers["x-step-up-password"]',
+  'req.headers["x-goog-api-key"]',
   'res.headers["set-cookie"]',
   '*.password',
   '*.currentPassword',
@@ -12,6 +14,13 @@ export const REDACT_PATHS = [
   '*.token',
   '*.accessToken',
   '*.refreshToken',
+  '*.idToken',
+  '*.captchaToken',
+  '*.otp',
+  '*.code',
+  '*.apiKey',
+  '*.secret',
+  '*.privateKey',
 ];
 
 export function createLogger(env: Pick<Env, 'NODE_ENV' | 'LOG_LEVEL'>): Logger {

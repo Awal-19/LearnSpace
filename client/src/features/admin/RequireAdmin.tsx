@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet } from 'react-router-dom';
 import { useAuth, type AuthUser } from '../../app/AuthContext';
-import { Button, Card, Input, PasswordInput, Spinner } from '../../design';
+import { Button, GlassCard, Input, PasswordInput, Spinner } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 import { fetchAdminConsoleStatus, unlockAdminConsole } from './adminApi';
 
@@ -99,8 +99,8 @@ export function RequireAdmin() {
     };
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
-        <Card className="w-full max-w-md p-6">
+      <div className="flex min-h-screen items-center justify-center bg-app bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.12),transparent_60%)] p-6">
+        <GlassCard className="w-full max-w-md p-6">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-500/10 text-primary-600">
             <ShieldCheck className="h-6 w-6" aria-hidden="true" />
           </div>
@@ -149,15 +149,15 @@ export function RequireAdmin() {
               </Button>
             </form>
           )}
-        </Card>
+        </GlassCard>
       </div>
     );
   }
 
   if (!isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
-        <Card className="max-w-md p-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-app bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.12),transparent_60%)] p-6">
+        <GlassCard className="max-w-md p-6 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-danger/10 text-danger">
             <ShieldAlert className="h-6 w-6" aria-hidden="true" />
           </div>
@@ -176,7 +176,7 @@ export function RequireAdmin() {
               Sign in as Admin
             </Button>
           </div>
-        </Card>
+        </GlassCard>
       </div>
     );
   }
@@ -207,8 +207,8 @@ export function RequireAdmin() {
     };
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
-        <Card className="w-full max-w-md p-6">
+      <div className="flex min-h-screen items-center justify-center bg-app bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.12),transparent_60%)] p-6">
+        <GlassCard className="w-full max-w-md p-6">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent">
             <Lock className="h-6 w-6" aria-hidden="true" />
           </div>
@@ -240,7 +240,7 @@ export function RequireAdmin() {
               </Button>
             </div>
           </form>
-        </Card>
+        </GlassCard>
       </div>
     );
   }

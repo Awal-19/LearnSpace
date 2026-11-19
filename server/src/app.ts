@@ -338,7 +338,7 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   }
 
   app.use(notFound);
-  app.use(createErrorHandler(deps.dashboardPrisma));
+  app.use(createErrorHandler(deps.dashboardPrisma, env.SENTRY_DSN));
 
   return app;
 }

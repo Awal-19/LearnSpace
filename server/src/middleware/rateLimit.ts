@@ -113,7 +113,17 @@ export function createRateLimiter(options: LimiterOptions) {
     store: new PostgresRateLimitStore(prefix),
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    handler: (_req, res, next) => {
+    handler: (req, res, next) => {
+      req.log?.warn(
+        {
+          securityEvent: 'rate_limit_hit',
+          requestId: req.requestId,
+          userId: req.user?.id ?? null,
+          ip: req.ip,
+          route: req.originalUrl || req.path,
+        },
+        'Rate limit exceeded',
+      );
       if (!res.getHeader('Retry-After')) {
         res.setHeader('Retry-After', String(windowSeconds));
       }

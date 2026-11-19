@@ -3,7 +3,7 @@ import { ArrowLeft, KeyRound, LogOut, Mail, Shield, Trash2, UserCheck, UserX } f
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
-import { Avatar, Badge, Button, Card, Skeleton, useToast, VerifiedBadge } from '../../design';
+import { Avatar, Badge, Button, GlassCard, Skeleton, useToast, VerifiedBadge } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { StepUpModal } from './StepUpModal';
 import {
@@ -35,7 +35,7 @@ export function AdminUserDetailPage() {
   if (query.isLoading) return <Skeleton className="h-64" />;
   if (query.isError || !query.data) {
     return (
-      <Card className="p-6 text-center">
+      <GlassCard className="p-6 text-center">
         <p className="text-sm text-danger">User not found.</p>
         <Link
           to="/admin/users"
@@ -43,7 +43,7 @@ export function AdminUserDetailPage() {
         >
           Back to users
         </Link>
-      </Card>
+      </GlassCard>
     );
   }
 
@@ -145,7 +145,7 @@ export function AdminUserDetailPage() {
         Back to users
       </Link>
 
-      <Card className="border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-5 dark:border-primary-500/20 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-6">
+      <GlassCard className="border-primary-200/80 bg-gradient-to-br from-primary-50/90 via-[rgb(var(--glass-bg))] to-sky-50/70 p-5 dark:border-primary-500/20 dark:from-primary-600/15 dark:via-[rgb(var(--glass-bg))] dark:to-sky-500/10 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <Avatar name={user.name} src={user.avatarUrl} size="lg" />
@@ -250,7 +250,7 @@ export function AdminUserDetailPage() {
             ))}
           </div>
         ) : null}
-      </Card>
+      </GlassCard>
 
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
@@ -261,18 +261,18 @@ export function AdminUserDetailPage() {
           { label: 'Study hours', value: stats.studyHours },
           { label: 'Streak (days)', value: stats.streak },
         ].map((s) => (
-          <Card
+          <GlassCard
             key={s.label}
-            className="p-4 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md"
+            className="p-4 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-lg"
           >
             <p className="text-xs font-medium text-muted">{s.label}</p>
             <p className="mt-1.5 font-display text-2xl font-bold text-fg tabular-nums">{s.value}</p>
-          </Card>
+          </GlassCard>
         ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5">
+        <GlassCard className="p-5">
           <h2 className="font-display text-base font-semibold">Recent Activity Timeline</h2>
           {recentActivity.length === 0 ? (
             <p className="mt-3 text-sm text-muted">No activity events recorded yet.</p>
@@ -288,9 +288,9 @@ export function AdminUserDetailPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassCard>
 
-        <Card className="p-5">
+        <GlassCard className="p-5">
           <h2 className="font-display text-base font-semibold">Login History</h2>
           {recentLogins.length === 0 ? (
             <p className="mt-3 text-sm text-muted">No login events recorded yet.</p>
@@ -313,7 +313,7 @@ export function AdminUserDetailPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassCard>
       </div>
 
       <StepUpModal

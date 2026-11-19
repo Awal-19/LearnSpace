@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Save, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, Card, Skeleton, useToast } from '../../design';
+import { Button, GlassCard, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { fetchAdminSettings, updateAdminSettings, type AdminAppSettings } from './adminApi';
 
@@ -58,7 +58,7 @@ export function AdminSettingsPage() {
         </div>
       </div>
 
-      <Card className="p-5 sm:p-6">
+      <GlassCard className="p-5 sm:p-6">
         <form onSubmit={handleSave} className="space-y-5 text-sm">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1.5">
@@ -144,7 +144,7 @@ export function AdminSettingsPage() {
             Save settings
           </Button>
         </form>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

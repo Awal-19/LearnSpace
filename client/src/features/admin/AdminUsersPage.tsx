@@ -6,8 +6,9 @@ import {
   Avatar,
   Badge,
   Button,
-  Card,
   EmptyState,
+  GlassCard,
+  Select,
   Skeleton,
   useToast,
   VerifiedBadge,
@@ -135,7 +136,7 @@ export function AdminUsersPage() {
         ) : null}
       </div>
 
-      <Card className="p-4 sm:p-5">
+      <GlassCard className="p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
@@ -150,60 +151,60 @@ export function AdminUsersPage() {
             />
           </div>
 
-          <select
+          <Select
+            aria-label="Filter by role"
             value={role}
             onChange={(e) => {
               setRole(e.target.value);
               setPage(1);
             }}
-            className="rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="">All roles</option>
             <option value="student">Student</option>
             <option value="admin">Admin</option>
             <option value="super_admin">Super Admin</option>
-          </select>
+          </Select>
 
-          <select
+          <Select
+            aria-label="Filter by status"
             value={status}
             onChange={(e) => {
               setStatus(e.target.value);
               setPage(1);
             }}
-            className="rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
-          </select>
+          </Select>
 
-          <select
+          <Select
+            aria-label="Filter by verification"
             value={verified}
             onChange={(e) => {
               setVerified(e.target.value);
               setPage(1);
             }}
-            className="rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="">All verification</option>
             <option value="true">Verified</option>
             <option value="false">Unverified</option>
-          </select>
+          </Select>
 
-          <select
+          <Select
+            aria-label="Filter by sign-in method"
             value={authMethod}
             onChange={(e) => {
               setAuthMethod(e.target.value);
               setPage(1);
             }}
-            className="rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
           >
             <option value="">All sign-in methods</option>
             <option value="email">Email</option>
             <option value="google">Google</option>
-          </select>
+          </Select>
         </div>
-      </Card>
+      </GlassCard>
 
       {query.isLoading ? (
         <Skeleton className="h-64 rounded-2xl" />
@@ -213,7 +214,7 @@ export function AdminUsersPage() {
           description="Try clearing or adjusting your search filters."
         />
       ) : (
-        <Card className="overflow-hidden !p-0">
+        <GlassCard className="overflow-hidden !p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
@@ -335,7 +336,7 @@ export function AdminUsersPage() {
               </Button>
             </div>
           </div>
-        </Card>
+        </GlassCard>
       )}
     </div>
   );

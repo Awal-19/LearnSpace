@@ -91,6 +91,7 @@ const schema = z.object({
   TURNSTILE_SECRET_KEY: optionalString,
   HCAPTCHA_SECRET_KEY: optionalString,
   MALWARE_SCANNER_URL: optionalString,
+  SENTRY_DSN: optionalString,
 });
 
 export type Env = Omit<z.infer<typeof schema>, 'TRUST_PROXY'> & {

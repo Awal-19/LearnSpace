@@ -27,7 +27,17 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Avatar, Badge, Button, Card, EmptyState, Skeleton, VerifiedBadge } from '../../design';
+import {
+  Avatar,
+  Badge,
+  Button,
+  ChartCard,
+  EmptyState,
+  GlassCard,
+  Skeleton,
+  StatCard,
+  VerifiedBadge,
+} from '../../design';
 import { fetchAdminOverview, type AdminRange } from './adminApi';
 
 export function AdminOverviewPage() {
@@ -61,12 +71,12 @@ export function AdminOverviewPage() {
 
   if (query.isError || !query.data) {
     return (
-      <Card className="p-6 text-center">
+      <GlassCard className="p-6 text-center">
         <p className="text-sm text-danger">Could not load admin overview.</p>
         <Button size="sm" className="mt-3" onClick={() => void query.refetch()}>
           Retry
         </Button>
-      </Card>
+      </GlassCard>
     );
   }
 
@@ -144,7 +154,7 @@ export function AdminOverviewPage() {
 
   return (
     <div className="space-y-6">
-      <Card className="relative overflow-hidden border-primary-200/80 bg-gradient-to-br from-primary-50 via-surface to-sky-50/70 p-5 dark:border-primary-500/20 dark:from-primary-600/10 dark:via-surface dark:to-sky-500/10 sm:p-6">
+      <GlassCard className="relative overflow-hidden border-primary-200/80 bg-gradient-to-br from-primary-50/90 via-surface/85 to-sky-50/75 dark:border-primary-500/20 dark:from-primary-600/15 dark:via-surface/80 dark:to-sky-500/10">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-500/25 bg-primary-500/10 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:text-primary-300">
@@ -202,45 +212,23 @@ export function AdminOverviewPage() {
             ) : null}
           </div>
         </div>
-      </Card>
+      </GlassCard>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((c) => {
-          const Icon = c.icon;
-          return (
-            <Card
-              key={c.label}
-              className="p-5 transition-all duration-base ease-soft hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="text-xs font-medium text-muted">{c.label}</span>
-                  <p className="mt-1.5 font-display text-2xl font-bold tracking-tight text-fg tabular-nums">
-                    {c.value}
-                  </p>
-                </div>
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.accent}`}
-                >
-                  <Icon className="h-5 w-5" aria-hidden="true" />
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-muted">{c.sub}</p>
-            </Card>
-          );
-        })}
+        {cards.map((c) => (
+          <StatCard
+            key={c.label}
+            label={c.label}
+            value={c.value}
+            sub={c.sub}
+            icon={c.icon}
+            accent={c.accent}
+          />
+        ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="min-w-0 p-5 sm:p-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
-              <TrendingUp className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <h2 className="font-display text-base font-semibold text-fg">
-              Sign-ups &amp; Daily Active Users
-            </h2>
-          </div>
+        <ChartCard title="Sign-ups & Daily Active Users" icon={TrendingUp}>
           {!hasSeriesData ? (
             <EmptyState
               icon={Users}
@@ -277,17 +265,13 @@ export function AdminOverviewPage() {
               </ResponsiveContainer>
             </div>
           )}
-        </Card>
+        </ChartCard>
 
-        <Card className="min-w-0 p-5 sm:p-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400">
-              <MessageSquare className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <h2 className="font-display text-base font-semibold text-fg">
-              AI Messages &amp; Uploads per Day
-            </h2>
-          </div>
+        <ChartCard
+          title="AI Messages & Uploads per Day"
+          icon={MessageSquare}
+          iconClassName="bg-sky-500/15 text-sky-600 dark:text-sky-400"
+        >
           {!hasSeriesData ? (
             <EmptyState
               icon={MessageSquare}
@@ -313,11 +297,11 @@ export function AdminOverviewPage() {
               </ResponsiveContainer>
             </div>
           )}
-        </Card>
+        </ChartCard>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="min-w-0 p-5 sm:p-6">
+        <GlassCard>
           <div className="flex items-center justify-between">
             <h2 className="font-display text-base font-semibold text-fg">Recent Sign-ups</h2>
             <Link
@@ -354,9 +338,9 @@ export function AdminOverviewPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassCard>
 
-        <Card className="min-w-0 p-5 sm:p-6">
+        <GlassCard>
           <h2 className="font-display text-base font-semibold text-fg">
             Active Features &amp; Top Courses
           </h2>
@@ -398,9 +382,9 @@ export function AdminOverviewPage() {
               </div>
             ) : null}
           </div>
-        </Card>
+        </GlassCard>
 
-        <Card className="min-w-0 p-5 sm:p-6">
+        <GlassCard>
           <div className="flex items-center gap-2">
             <ShieldCheck
               className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
@@ -445,7 +429,7 @@ export function AdminOverviewPage() {
               </ul>
             )}
           </div>
-        </Card>
+        </GlassCard>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Megaphone, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import { Badge, Button, EmptyState, GlassCard, Select, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import {
   createAdminAnnouncement,
@@ -69,7 +69,7 @@ export function AdminAnnouncementsPage() {
         </div>
       </div>
 
-      <Card className="p-5 sm:p-6">
+      <GlassCard className="p-5 sm:p-6">
         <h2 className="font-display text-base font-semibold">New Announcement</h2>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4 text-sm">
           <div className="grid gap-3.5 sm:grid-cols-2">
@@ -83,18 +83,15 @@ export function AdminAnnouncementsPage() {
                 className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
               />
             </label>
-            <label className="space-y-1.5">
-              <span className="font-medium">Audience</span>
-              <select
-                value={audience}
-                onChange={(e) => setAudience(e.target.value as 'all' | 'programme' | 'level')}
-                className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
-              >
-                <option value="all">All students</option>
-                <option value="programme">Specific programme</option>
-                <option value="level">Specific level</option>
-              </select>
-            </label>
+            <Select
+              label="Audience"
+              value={audience}
+              onChange={(e) => setAudience(e.target.value as 'all' | 'programme' | 'level')}
+            >
+              <option value="all">All students</option>
+              <option value="programme">Specific programme</option>
+              <option value="level">Specific level</option>
+            </Select>
           </div>
 
           {audience !== 'all' ? (
@@ -147,7 +144,7 @@ export function AdminAnnouncementsPage() {
             Publish announcement
           </Button>
         </form>
-      </Card>
+      </GlassCard>
 
       {query.isLoading ? (
         <Skeleton className="h-40" />
@@ -160,7 +157,7 @@ export function AdminAnnouncementsPage() {
       ) : (
         <div className="space-y-3">
           {query.data?.items.map((a) => (
-            <Card key={a.id} className="p-4">
+            <GlassCard key={a.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -198,7 +195,7 @@ export function AdminAnnouncementsPage() {
                   </Button>
                 </div>
               </div>
-            </Card>
+            </GlassCard>
           ))}
         </div>
       )}

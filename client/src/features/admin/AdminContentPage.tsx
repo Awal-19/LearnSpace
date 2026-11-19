@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Eye, FileSearch, Flag, HardDrive, MessageSquare, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
+import { Badge, Button, DataTable, EmptyState, GlassCard, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { formatBytes } from '../chat/imagePrep';
 import {
@@ -190,47 +190,45 @@ export function AdminContentPage() {
           ) : (convQuery.data?.items.length ?? 0) === 0 ? (
             <EmptyState title="No conversations" description="No chat sessions match." />
           ) : (
-            <Card className="overflow-hidden !p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
-                    <tr>
-                      <th className="px-4 py-3">Title (Metadata)</th>
-                      <th className="px-4 py-3">User</th>
-                      <th className="px-4 py-3">Messages</th>
-                      <th className="px-4 py-3">Updated</th>
-                      <th className="px-4 py-3 text-right">Moderation</th>
+            <DataTable>
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
+                  <tr>
+                    <th className="px-4 py-3">Title (Metadata)</th>
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Messages</th>
+                    <th className="px-4 py-3">Updated</th>
+                    <th className="px-4 py-3 text-right">Moderation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line/80">
+                  {convQuery.data?.items.map((c) => (
+                    <tr key={c.id} className="transition-colors hover:bg-surface2/40">
+                      <td className="px-4 py-3 font-medium text-fg">{c.title}</td>
+                      <td className="px-4 py-3 text-xs text-muted">{c.user.email}</td>
+                      <td className="px-4 py-3 tabular-nums">{c._count.messages}</td>
+                      <td className="px-4 py-3 text-xs text-muted tabular-nums">
+                        {new Date(c.updatedAt).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void handleInspectConversation(c.id)}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" />
+                          Inspect
+                        </Button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line/80">
-                    {convQuery.data?.items.map((c) => (
-                      <tr key={c.id} className="transition-colors hover:bg-surface2/40">
-                        <td className="px-4 py-3 font-medium text-fg">{c.title}</td>
-                        <td className="px-4 py-3 text-xs text-muted">{c.user.email}</td>
-                        <td className="px-4 py-3 tabular-nums">{c._count.messages}</td>
-                        <td className="px-4 py-3 text-xs text-muted tabular-nums">
-                          {new Date(c.updatedAt).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => void handleInspectConversation(c.id)}
-                          >
-                            <Eye className="mr-1 h-3.5 w-3.5" />
-                            Inspect
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                  ))}
+                </tbody>
+              </table>
+            </DataTable>
           )}
 
           {inspectedConv ? (
-            <Card className="p-5">
+            <GlassCard className="p-5">
               <div className="flex items-center justify-between border-b border-line pb-3">
                 <h2 className="font-display text-base font-semibold">
                   Audited Inspection: {inspectedConv.title}
@@ -247,7 +245,7 @@ export function AdminContentPage() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </GlassCard>
           ) : null}
         </div>
       ) : null}
@@ -260,7 +258,7 @@ export function AdminContentPage() {
         ) : (
           <div className="space-y-3">
             {flagQuery.data?.items.map((f) => (
-              <Card key={f.id} className="p-4">
+              <GlassCard key={f.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -298,7 +296,7 @@ export function AdminContentPage() {
                     </div>
                   ) : null}
                 </div>
-              </Card>
+              </GlassCard>
             ))}
           </div>
         )
@@ -309,73 +307,71 @@ export function AdminContentPage() {
           <Skeleton className="h-48" />
         ) : (
           <div className="space-y-4">
-            <Card className="p-4">
+            <GlassCard className="p-4">
               <p className="text-xs text-muted">Total tracked storage</p>
               <p className="mt-1 font-display text-xl font-semibold">
                 {formatBytes(uploadsQuery.data?.totalStorageBytes ?? 0)} (
                 {uploadsQuery.data?.total ?? 0} files)
               </p>
-            </Card>
+            </GlassCard>
 
             {(uploadsQuery.data?.items.length ?? 0) === 0 ? (
               <EmptyState title="No uploads yet" description="Uploaded files will appear here." />
             ) : (
-              <Card className="overflow-hidden !p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
-                      <tr>
-                        <th className="px-4 py-3">File</th>
-                        <th className="px-4 py-3">Source</th>
-                        <th className="px-4 py-3">Owner</th>
-                        <th className="px-4 py-3">Size</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
+              <DataTable>
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-line bg-surface2/70 text-xs uppercase tracking-wider text-muted">
+                    <tr>
+                      <th className="px-4 py-3">File</th>
+                      <th className="px-4 py-3">Source</th>
+                      <th className="px-4 py-3">Owner</th>
+                      <th className="px-4 py-3">Size</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line/80">
+                    {uploadsQuery.data?.items.map((u) => (
+                      <tr
+                        key={`${u.source}-${u.id}`}
+                        className="transition-colors hover:bg-surface2/40"
+                      >
+                        <td className="px-4 py-3 font-medium text-fg">{u.name}</td>
+                        <td className="px-4 py-3 capitalize text-muted">{u.source}</td>
+                        <td className="px-4 py-3 text-xs text-muted">{u.owner.email}</td>
+                        <td className="px-4 py-3 text-xs tabular-nums">
+                          {formatBytes(u.sizeBytes)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge tone="neutral">{u.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => void handleInspectUpload(u.source, u.id)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => void handleDeleteUpload(u.source, u.id, u.name)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line/80">
-                      {uploadsQuery.data?.items.map((u) => (
-                        <tr
-                          key={`${u.source}-${u.id}`}
-                          className="transition-colors hover:bg-surface2/40"
-                        >
-                          <td className="px-4 py-3 font-medium text-fg">{u.name}</td>
-                          <td className="px-4 py-3 capitalize text-muted">{u.source}</td>
-                          <td className="px-4 py-3 text-xs text-muted">{u.owner.email}</td>
-                          <td className="px-4 py-3 text-xs tabular-nums">
-                            {formatBytes(u.sizeBytes)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge tone="neutral">{u.status}</Badge>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => void handleInspectUpload(u.source, u.id)}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => void handleDeleteUpload(u.source, u.id, u.name)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+                    ))}
+                  </tbody>
+                </table>
+              </DataTable>
             )}
 
             {inspectedUpload ? (
-              <Card className="p-5">
+              <GlassCard className="p-5">
                 <div className="flex items-center justify-between border-b border-line pb-2">
                   <h2 className="font-display text-base font-semibold">{inspectedUpload.name}</h2>
                   <Button size="sm" variant="ghost" onClick={() => setInspectedUpload(null)}>
@@ -413,7 +409,7 @@ export function AdminContentPage() {
                 <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-surface2 p-3 text-xs">
                   {inspectedUpload.extractedText || '(No extracted text)'}
                 </pre>
-              </Card>
+              </GlassCard>
             ) : null}
           </div>
         )
