@@ -15,6 +15,7 @@ import { healthRouter, type HealthDeps } from './modules/health/health.routes';
 import type { PrismaClient } from '@prisma/client';
 import { aiRouter } from './modules/ai/ai.routes';
 import type { AiService } from './modules/ai/ai.service';
+import type { TranscribeService } from './modules/ai/transcribe.service';
 import { adminRouter, studentEngagementRouter } from './modules/admin/admin.routes';
 import type { AdminService } from './modules/admin/admin.service';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
@@ -52,7 +53,11 @@ export interface AppDeps extends HealthDeps {
   courses?: CoursesService;
   timetable?: TimetableService;
   exams?: { service: ExamsService; isEmailVerified: (userId: string) => Promise<boolean> };
-  ai?: { service: AiService; isEmailVerified: (userId: string) => Promise<boolean> };
+  ai?: {
+    service: AiService;
+    transcribe?: TranscribeService;
+    isEmailVerified: (userId: string) => Promise<boolean>;
+  };
   notes?: { service: NotesService; isEmailVerified: (userId: string) => Promise<boolean> };
   planner?: PlannerService;
   focus?: FocusService;
@@ -115,7 +120,7 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     }),
   );
   app.use((_req, res, next) => {
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
     next();
   });
   app.use(
@@ -263,7 +268,12 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   if (deps.ai) {
     app.use(
       API_PREFIX,
-      aiRouter({ ai: deps.ai.service, env, isEmailVerified: deps.ai.isEmailVerified }),
+      aiRouter({
+        ai: deps.ai.service,
+        transcribe: deps.ai.transcribe,
+        env,
+        isEmailVerified: deps.ai.isEmailVerified,
+      }),
     );
   }
   if (deps.notes) {

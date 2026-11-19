@@ -82,6 +82,17 @@ const schema = z.object({
   NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
   NVIDIA_MODEL: z.string().trim().min(1).default('z-ai/glm-5.3-flash'),
   NVIDIA_VISION_MODEL: z.string().trim().min(1).default('nvidia/nemotron-3.5-super-vl-120b-a12b'),
+  STT_PROVIDER: z.enum(['nvidia_riva', 'openai_http', 'gemini']).default('nvidia_riva'),
+  NVIDIA_ASR_GRPC_URL: z.string().trim().min(1).default('grpc.nvcf.nvidia.com:443'),
+  NVIDIA_ASR_FUNCTION_ID: z.string().trim().min(1).default('d3fe9151-442b-4204-a70d-5fcc597fd610'),
+  STT_HTTP_URL: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().url('STT_HTTP_URL must be a valid URL').optional(),
+  ),
+  STT_HTTP_API_KEY: optionalString,
+  STT_HTTP_MODEL: z.string().trim().min(1).default('whisper-1'),
+  AI_DAILY_TRANSCRIPTION_LIMIT: z.coerce.number().int().positive().default(60),
+  AI_TRANSCRIPTION_COST_ALERT_USD: z.coerce.number().positive().default(5),
   AI_DAILY_TOKEN_LIMIT: z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.coerce.number().int().positive().optional(),

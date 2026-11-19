@@ -19,6 +19,8 @@ import { ApiError, request } from '../../lib/apiClient';
 import { MarkdownContent } from '../chat/MarkdownContent';
 import { CourseBadge } from '../courses/CourseBadge';
 import { createCourse, listCourses, type CourseSummary } from '../courses/coursesApi';
+import { DictationMicButton, DictationStatusBar } from '../dictation/DictationControls';
+import { useDictation } from '../dictation/useDictation';
 import { generateDeck } from '../study/studyApi';
 
 interface Note {
@@ -333,16 +335,19 @@ export function NotesPage() {
             New note
           </Button>
 
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search notes..."
-              aria-label="Search notes"
-              className="w-full rounded-xl border border-line bg-surface2/50 py-2 pl-9 pr-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none"
-            />
+          <div className="relative flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search notes..."
+                aria-label="Search notes"
+                className="w-full rounded-xl border border-line bg-surface2/50 py-2 pl-9 pr-3 text-base text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none sm:text-sm"
+              />
+            </div>
+            <SearchMicButton value={search} onChange={setSearch} />
           </div>
 
           <div className="space-y-1 pt-3 border-t border-line/80">
@@ -559,12 +564,10 @@ export function NotesPage() {
               </div>
             </div>
 
-            <Textarea
-              label="Notes"
-              rows={14}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your lecture notes, formulas, or key ideas..."
+            <NoteDictationTextarea
+              body={body}
+              onChange={setBody}
+              vocabularyHints={(coursesQuery.data ?? []).map((c) => c.name)}
             />
 
             {aiSummary ? (
@@ -579,6 +582,46 @@ export function NotesPage() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function SearchMicButton({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const dictation = useDictation({ value, onChange });
+  return <DictationMicButton dictation={dictation} compact />;
+}
+
+function NoteDictationTextarea({
+  body,
+  onChange,
+  vocabularyHints,
+}: {
+  body: string;
+  onChange: (next: string) => void;
+  vocabularyHints: string[];
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dictation = useDictation({
+    value: body,
+    onChange,
+    inputRef: textareaRef,
+    vocabularyHints,
+  });
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-2">
+        <DictationMicButton dictation={dictation} compact />
+      </div>
+      <DictationStatusBar dictation={dictation} showSettingsToggle={false} />
+      <Textarea
+        ref={textareaRef}
+        label="Notes"
+        rows={14}
+        value={body}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Write your lecture notes, formulas, or key ideas..."
+      />
     </div>
   );
 }

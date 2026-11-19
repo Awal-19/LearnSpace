@@ -3,8 +3,6 @@ import {
   Camera,
   FileText,
   Image as ImageIcon,
-  Mic,
-  MicOff,
   Paperclip,
   RotateCcw,
   Square,
@@ -19,49 +17,13 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { listCourses } from '../courses/coursesApi';
+import { DictationMicButton, DictationStatusBar } from '../dictation/DictationControls';
+import { useDictation } from '../dictation/useDictation';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import type { AiAction, MessageAttachment } from './chatApi';
 import { formatBytes } from './imagePrep';
-
-interface SpeechRecognitionAlternativeLike {
-  transcript: string;
-}
-
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  length: number;
-  [index: number]: SpeechRecognitionAlternativeLike;
-}
-
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: SpeechRecognitionResultLike;
-  };
-}
-
-interface SpeechRecognitionLike {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
-
-function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 const ACTION_OPTIONS: Array<{ id: AiAction; label: string }> = [
   { id: 'explain_simple', label: 'Explain simply' },
@@ -210,7 +172,6 @@ export function Composer({
   const [action, setAction] = useState<AiAction | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [listening, setListening] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
 
@@ -225,9 +186,27 @@ export function Composer({
   const mobileCamRef = useRef<HTMLInputElement>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
-  const speechSupported = getSpeechRecognitionCtor() !== null;
+  const coursesQuery = useQuery({
+    queryKey: ['courses', 'active'],
+    queryFn: () => listCourses({ archived: 'active' }),
+    staleTime: 5 * 60_000,
+  });
+  const vocabularyHints = (coursesQuery.data ?? []).map((c) => c.name);
+
+  const dictation = useDictation({
+    value: text,
+    onChange: setText,
+    inputRef: textareaRef,
+    vocabularyHints,
+    onAutoSend: (finalText) => {
+      if (!disabled && !isStreaming && finalText.trim()) {
+        onSend(finalText.trim(), action);
+        setText('');
+        setAction(null);
+      }
+    },
+  });
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -253,31 +232,6 @@ export function Composer({
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (menuContainerRef.current && !menuContainerRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [menuOpen]);
-
   const hasUploading = attachments.some(
     (a) => a.status === 'uploading' || a.status === 'preparing',
   );
@@ -288,47 +242,10 @@ export function Composer({
     !hasUploading &&
     (Boolean(text.trim()) || Boolean(action) || hasReadyAttachment);
 
-  const toggleVoiceInput = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      setListening(false);
-      return;
-    }
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
-    const recognition = new Ctor();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-    recognition.onresult = (event) => {
-      let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        if (event.results[i]?.isFinal) {
-          transcript += event.results[i]?.[0]?.transcript ?? '';
-        }
-      }
-      if (transcript.trim()) {
-        setText((prev) => (prev ? `${prev.trimEnd()} ${transcript.trim()}` : transcript.trim()));
-      }
-    };
-    recognition.onerror = () => {
-      setListening(false);
-    };
-    recognition.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
-  };
-
   const submit = () => {
     if (!canSend) return;
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
+    if (dictation.status === 'listening' || dictation.status === 'requesting') {
+      dictation.stop();
     }
     onSend(text.trim(), action);
     setText('');
@@ -461,6 +378,8 @@ export function Composer({
             </div>
           ) : null}
 
+          <DictationStatusBar dictation={dictation} />
+
           <textarea
             ref={textareaRef}
             rows={1}
@@ -471,7 +390,7 @@ export function Composer({
             disabled={disabled || isStreaming}
             placeholder="Ask AWAL anything, paste an image, or drop files..."
             aria-label="Message to AWAL"
-            className="min-h-[38px] max-h-[120px] w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-1 text-[15px] leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60"
+            className="min-h-[38px] max-h-[120px] w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-1 text-base leading-relaxed text-fg placeholder:text-muted focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-60 sm:text-[15px]"
           />
 
           <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
@@ -577,26 +496,7 @@ export function Composer({
             </div>
 
             <div className="flex items-center gap-1.5">
-              {speechSupported ? (
-                <button
-                  type="button"
-                  disabled={disabled || isStreaming}
-                  onClick={toggleVoiceInput}
-                  aria-label={listening ? 'Stop voice input' : 'Voice input'}
-                  title={listening ? 'Stop listening' : 'Dictate message'}
-                  className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
-                    listening
-                      ? 'bg-danger/15 text-danger animate-pulse'
-                      : 'text-muted hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-white/[0.08] dark:hover:text-primary-400'
-                  }`}
-                >
-                  {listening ? (
-                    <MicOff className="h-[18px] w-[18px]" aria-hidden="true" />
-                  ) : (
-                    <Mic className="h-[18px] w-[18px]" aria-hidden="true" />
-                  )}
-                </button>
-              ) : null}
+              <DictationMicButton dictation={dictation} disabled={disabled || isStreaming} />
 
               {isStreaming ? (
                 <button

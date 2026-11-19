@@ -26,6 +26,8 @@
     "storage:test": "tsx scripts/testStorage.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.7",
+    "@grpc/proto-loader": "^0.8.1",
     "@prisma/client": "5.22.0",
     "adm-zip": "^0.6.1",
     "argon2": "^0.41.1",

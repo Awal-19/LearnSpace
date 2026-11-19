@@ -376,3 +376,12 @@ All `/api/admin/*` routes require `requireAuth` + `requireAdmin` (verified `admi
 - **Announcements & Feedback:** `GET /announcements`, `POST /announcements`, `PATCH /announcements/:id`, `DELETE /announcements/:id`, `GET /feedback`, `PATCH /feedback/:id`, `POST /feedback/:id/reply`
 - **Audit, System & Settings:** `GET /audit-logs?format=json|csv`, `GET /login-history`, `GET /error-logs`, `GET /health`, `GET /settings`, `PATCH /settings`
 - **Reports & Exports:** `GET /exports`, `POST /exports` (`users`, `usage`, `ai_costs`, `feedback`, `overview_pdf`), `GET /exports/:id/download`
+
+## 13. Voice Dictation
+
+### POST `/ai/transcribe` 🔒✉️
+
+Multipart `form-data` (`audio` file ≤ 10 MB, max 120 seconds, plus optional `language`, `durationSeconds`, and comma-separated academic `hints`). Verifies audio magic bytes (`webm`, `mp4`, `ogg`, `wav`, `mp3`), converts to 16-bit mono 16 kHz WAV via `ffmpeg`, and transcribes using the configured `STT_PROVIDER` (default: NVIDIA `parakeet-tdt-0.6b-v2` via `grpc.nvcf.nvidia.com:443`). Audio is never stored and transcripts are never logged.
+
+Res `200`: `{ "text": "...", "language": "en-GH", "duration": 4 }`.  
+Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `429 RATE_LIMITED`, `503 AI_UNAVAILABLE`.

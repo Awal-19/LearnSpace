@@ -1,4 +1,5 @@
-import { Router, type Response } from 'express';
+import { Router, type RequestHandler, type Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { AppError } from '../../lib/errors';
@@ -13,6 +14,26 @@ import {
   sendMessageSchema,
 } from './ai.schemas';
 import { AI_REQUESTS_PER_MINUTE, type AiService } from './ai.service';
+import { MAX_AUDIO_BYTES, type TranscribeService } from './transcribe.service';
+
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
+});
+
+const handleAudioMulter: RequestHandler = (req, res, next) => {
+  audioUpload.single('audio')(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      next(new AppError('PAYLOAD_TOO_LARGE', 'Audio recording must be 10 MB or smaller.'));
+      return;
+    }
+    next(new AppError('VALIDATION_ERROR', 'Invalid audio upload.'));
+  });
+};
 
 const uuidParamSchema = z.string().uuid();
 
@@ -29,11 +50,12 @@ function writeSse(res: Response, event: string, data: unknown): void {
 
 export interface AiRouterDeps {
   ai: AiService;
+  transcribe?: TranscribeService;
   env: Env;
   isEmailVerified: (userId: string) => Promise<boolean>;
 }
 
-export function aiRouter({ ai, env, isEmailVerified }: AiRouterDeps): Router {
+export function aiRouter({ ai, transcribe, env, isEmailVerified }: AiRouterDeps): Router {
   const router = Router();
   const auth = requireAuth(env.JWT_SECRET);
   const verified = requireVerifiedEmail(isEmailVerified);
@@ -43,6 +65,13 @@ export function aiRouter({ ai, env, isEmailVerified }: AiRouterDeps): Router {
     limit: AI_REQUESTS_PER_MINUTE,
     keyGenerator: (req) => req.user?.id ?? req.ip ?? 'unknown',
     skip: () => env.NODE_ENV === 'test',
+  });
+
+  const transcribeLimiter = createRateLimiter({
+    windowMs: 60_000,
+    limit: 15,
+    keyGenerator: (req) => req.user?.id ?? req.ip ?? 'unknown',
+    skip: () => env.NODE_ENV === 'test' && process.env.ENABLE_TEST_RATE_LIMIT !== '1',
   });
 
   router.get(
@@ -164,6 +193,41 @@ export function aiRouter({ ai, env, isEmailVerified }: AiRouterDeps): Router {
       if (headersSent && !res.writableEnded) {
         res.end();
       }
+    }),
+  );
+
+  router.post(
+    '/ai/transcribe',
+    auth,
+    verified,
+    transcribeLimiter,
+    handleAudioMulter,
+    asyncHandler(async (req, res) => {
+      if (!transcribe) {
+        throw new AppError(
+          'AI_UNAVAILABLE',
+          'Voice transcription is not configured on this server.',
+        );
+      }
+      if (!req.file) {
+        throw new AppError('VALIDATION_ERROR', 'Audio file is required.');
+      }
+      const rawDuration = Number(req.body?.durationSeconds);
+      const language = typeof req.body?.language === 'string' ? req.body.language : undefined;
+      const hintsRaw = typeof req.body?.hints === 'string' ? req.body.hints : '';
+      const hints = hintsRaw
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
+      const result = await transcribe.transcribe({
+        userId: req.user!.id,
+        buffer: req.file.buffer,
+        reportedDuration: Number.isFinite(rawDuration) ? rawDuration : undefined,
+        language,
+        hints,
+      });
+      res.json(result);
     }),
   );
 

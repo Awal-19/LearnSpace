@@ -16,6 +16,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../app/AuthContext';
 import { Avatar, Button, Modal } from '../../design';
+import { ReadAloudButton } from '../dictation/DictationControls';
 import {
   fetchAttachmentBlob,
   type AiAction,
@@ -340,6 +341,7 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
         {msg.content && !(generating && isLast) ? (
           <div className="flex flex-wrap items-center gap-1 pt-0.5">
             <CopyMessageButton text={msg.content} />
+            <ReadAloudButton text={msg.content} />
             {isLast ? (
               <Button
                 type="button"

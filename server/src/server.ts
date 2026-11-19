@@ -19,6 +19,7 @@ import { hashPassword } from './lib/password';
 import { createPrismaClient } from './lib/prisma';
 import { createStorageService } from './lib/storage';
 import { createAiService } from './modules/ai/ai.service';
+import { createTranscribeService } from './modules/ai/transcribe.service';
 import { createAttachmentsService } from './modules/ai/attachments.service';
 import { createAdminService } from './modules/admin/admin.service';
 import { createDocumentJobQueue } from './modules/documents/documents.jobs';
@@ -215,6 +216,7 @@ function main(): void {
     storage,
     dailyTokenLimit: aiDailyTokenLimit,
   });
+  const transcribe = createTranscribeService({ prisma, env, logger });
   const notes = createNotesService({ prisma, llm, logger });
   const planner = createPlannerService({ prisma, email, logger, clientUrl: env.CLIENT_URL });
   const timetable = createTimetableService({ prisma, email, logger, clientUrl: env.CLIENT_URL });
@@ -256,7 +258,7 @@ function main(): void {
       courses,
       timetable,
       exams: { service: exams, isEmailVerified },
-      ai: { service: ai, isEmailVerified },
+      ai: { service: ai, transcribe, isEmailVerified },
       notes: { service: notes, isEmailVerified },
       planner,
       focus,

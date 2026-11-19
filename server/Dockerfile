@@ -3,7 +3,7 @@
 
 FROM node:20.18.1-bookworm-slim AS base
 RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 ENV HUSKY=0
 ENV npm_config_fetch_retries=5 \
@@ -47,6 +47,7 @@ RUN if [ -f package-lock.json ]; then npm ci -w server --include-workspace-root 
     else npm install -w server --include-workspace-root --omit=dev; fi \
   && npm cache clean --force
 COPY --from=build /app/server/dist ./server/dist
+COPY --from=build /app/server/src/modules/ai/riva_asr.proto ./server/dist/modules/ai/riva_asr.proto
 COPY --from=build /app/server/prisma ./server/prisma
 RUN npm run db:generate -w server \
   && mkdir -p /home/node/.npm \
