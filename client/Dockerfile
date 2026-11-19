@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build context is the repository root:  docker build -f client/Dockerfile --target prod .
 
-FROM node:20.18.1-alpine AS base
+FROM node:26.13.1-alpine AS base
 ENV HUSKY=0
 WORKDIR /app
 
