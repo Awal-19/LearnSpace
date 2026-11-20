@@ -83,6 +83,13 @@ export interface UsersService {
   getSettings(userId: string): Promise<PublicSettings>;
   updateSettings(userId: string, input: UpdateSettingsInput): Promise<PublicSettings>;
   exportMyData(userId: string): Promise<Record<string, unknown>>;
+  acknowledgeFirstVisit(userId: string): Promise<{
+    isFirstVisit: false;
+    firstLoginAt: Date;
+    lastLoginAt: Date;
+    onboardingCompleted: boolean;
+  }>;
+  completeOnboarding(userId: string): Promise<{ onboardingCompleted: true }>;
 }
 
 const RECENT_LOGIN_WINDOW_SEC = 10 * 60;
@@ -93,6 +100,40 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) throw new AppError('UNAUTHENTICATED');
       return toPublicUser(user);
+    },
+
+    async acknowledgeFirstVisit(userId) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new AppError('UNAUTHENTICATED');
+      if (!user.emailVerified) {
+        throw new AppError('EMAIL_NOT_VERIFIED');
+      }
+      const now = new Date();
+      const firstLoginAt = user.firstLoginAt ?? now;
+      const lastLoginAt = user.lastLoginAt ?? now;
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data: { firstLoginAt, lastLoginAt },
+      });
+      return {
+        isFirstVisit: false as const,
+        firstLoginAt: updated.firstLoginAt ?? firstLoginAt,
+        lastLoginAt: updated.lastLoginAt ?? lastLoginAt,
+        onboardingCompleted: Boolean(updated.onboardingCompleted),
+      };
+    },
+
+    async completeOnboarding(userId) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new AppError('UNAUTHENTICATED');
+      if (!user.emailVerified) {
+        throw new AppError('EMAIL_NOT_VERIFIED');
+      }
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { onboardingCompleted: true },
+      });
+      return { onboardingCompleted: true as const };
     },
 
     async updateMe(userId, input) {

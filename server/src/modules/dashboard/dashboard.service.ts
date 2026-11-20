@@ -48,6 +48,16 @@ export interface DashboardNextClass extends DashboardClassSlot {
 
 export interface DashboardData {
   greetingName: string;
+  isFirstVisit: boolean;
+  lastLoginAt: Date | null;
+  onboardingCompleted: boolean;
+  onboardingSteps: {
+    hasCourse: boolean;
+    hasNote: boolean;
+    hasDocument: boolean;
+    hasChat: boolean;
+    hasTask: boolean;
+  };
   timezone: string;
   todayTasks: Array<{
     id: string;
@@ -273,10 +283,42 @@ export async function getDashboard(
     topics: parseStringArrayJson(ex.topicsJson),
   }));
 
-  const greetingName = user.name.trim().split(/\s+/)[0] || user.name;
+  function sanitizeFirstName(rawName: string | null | undefined): string {
+    if (!rawName) return '';
+    // eslint-disable-next-line no-control-regex
+    const cleaned = rawName.replace(/[\u0000-\u001F\u007F<>]/g, '').trim();
+    if (!cleaned) return '';
+    return cleaned.split(/\s+/)[0] ?? '';
+  }
+
+  const greetingName = sanitizeFirstName(user.name);
+  const [courseCount, noteCount, docCount, convCount, anyTaskCount] = await Promise.all([
+    prisma.course?.count ? prisma.course.count({ where: { userId } }).catch(() => 0) : 0,
+    prisma.note?.count ? prisma.note.count({ where: { userId } }).catch(() => 0) : 0,
+    prisma.document?.count ? prisma.document.count({ where: { userId } }).catch(() => 0) : 0,
+    prisma.conversation?.count
+      ? prisma.conversation.count({ where: { userId } }).catch(() => 0)
+      : 0,
+    prisma.task?.count ? prisma.task.count({ where: { userId } }).catch(() => 0) : 0,
+  ]);
+  const userWithGreeting = user as typeof user & {
+    firstLoginAt?: Date | null;
+    lastLoginAt?: Date | null;
+    onboardingCompleted?: boolean;
+  };
 
   return {
     greetingName,
+    isFirstVisit: !userWithGreeting.firstLoginAt,
+    lastLoginAt: userWithGreeting.lastLoginAt ?? null,
+    onboardingCompleted: Boolean(userWithGreeting.onboardingCompleted),
+    onboardingSteps: {
+      hasCourse: courseCount > 0,
+      hasNote: noteCount > 0,
+      hasDocument: docCount > 0,
+      hasChat: convCount > 0,
+      hasTask: anyTaskCount > 0,
+    },
     timezone: tz,
     todayTasks,
     overdueCount,

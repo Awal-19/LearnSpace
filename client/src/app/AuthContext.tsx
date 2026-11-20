@@ -33,6 +33,9 @@ export interface AuthUser {
   termsAcceptedAt?: string | null;
   privacyPolicyVersion?: string | null;
   privacyPolicyAcceptedAt?: string | null;
+  isFirstVisit?: boolean;
+  lastLoginAt?: string | null;
+  onboardingCompleted?: boolean;
 }
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';

@@ -57,6 +57,9 @@ export interface PublicUser {
   termsAcceptedAt: Date | null;
   privacyPolicyVersion: string | null;
   privacyPolicyAcceptedAt: Date | null;
+  isFirstVisit: boolean;
+  lastLoginAt: Date | null;
+  onboardingCompleted: boolean;
   createdAt: Date;
 }
 
@@ -70,6 +73,9 @@ export function toPublicUser(user: User): PublicUser {
       | 'termsAcceptedAt'
       | 'privacyPolicyVersion'
       | 'privacyPolicyAcceptedAt'
+      | 'firstLoginAt'
+      | 'lastLoginAt'
+      | 'onboardingCompleted'
     >
   >;
   return {
@@ -93,6 +99,9 @@ export function toPublicUser(user: User): PublicUser {
     termsAcceptedAt: consent.termsAcceptedAt ?? null,
     privacyPolicyVersion: consent.privacyPolicyVersion ?? null,
     privacyPolicyAcceptedAt: consent.privacyPolicyAcceptedAt ?? null,
+    isFirstVisit: !consent.firstLoginAt,
+    lastLoginAt: consent.lastLoginAt ?? null,
+    onboardingCompleted: Boolean(consent.onboardingCompleted),
     createdAt: user.createdAt,
   };
 }
@@ -162,6 +171,15 @@ export function createAuthService(deps: AuthServiceDeps) {
         ip: meta.ip,
       },
     });
+
+    if (user.emailVerified) {
+      await prisma.user
+        .update({
+          where: { id: user.id },
+          data: { lastLoginAt: now() },
+        })
+        .catch(() => undefined);
+    }
 
     const accessTtl = isAdmin ? ADMIN_ACCESS_TOKEN_TTL_SECONDS : ACCESS_TOKEN_TTL_SECONDS;
     const { token: accessToken, expiresIn } = signAccessToken(user.id, env.JWT_SECRET, accessTtl);

@@ -16,11 +16,22 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
-import { Avatar, Badge, Button, Card, ErrorState, Skeleton, VerifiedBadge } from '../../design';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  ErrorState,
+  GlassCard,
+  Skeleton,
+  VerifiedBadge,
+} from '../../design';
 import { request } from '../../lib/apiClient';
+import { buildDashboardGreeting } from './greeting';
 import {
   formatCountdownMinutes,
   formatMinutes,
@@ -76,6 +87,16 @@ interface DashboardExamItem {
 
 interface DashboardResponse {
   greetingName: string;
+  isFirstVisit?: boolean;
+  lastLoginAt?: string | null;
+  onboardingCompleted?: boolean;
+  onboardingSteps?: {
+    hasCourse: boolean;
+    hasNote: boolean;
+    hasDocument: boolean;
+    hasChat: boolean;
+    hasTask: boolean;
+  };
   timezone?: string;
   todayTasks: DashboardTask[];
   overdueCount: number;
@@ -92,21 +113,35 @@ interface DashboardResponse {
   unreadNotifications: number;
 }
 
-function timeGreeting(hour: number): string {
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
 export function DashboardPage() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const path = useAppPath();
   const qc = useQueryClient();
+  const firstVisitAckedRef = useRef(false);
+  const [onboardingHidden, setOnboardingHidden] = useState(false);
 
   const dashQuery = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => request<DashboardResponse>('/dashboard'),
   });
+
+  useEffect(() => {
+    const data = dashQuery.data;
+    if (!data || !data.isFirstVisit || firstVisitAckedRef.current) return;
+    firstVisitAckedRef.current = true;
+    void request<{ isFirstVisit: false; firstLoginAt: string; lastLoginAt: string }>(
+      '/users/me/first-visit',
+      {
+        method: 'POST',
+      },
+    )
+      .then(() => {
+        if (user) {
+          updateUser({ ...user, isFirstVisit: false });
+        }
+      })
+      .catch(() => undefined);
+  }, [dashQuery.data, updateUser, user]);
 
   if (dashQuery.isLoading) {
     return (
@@ -136,7 +171,12 @@ export function DashboardPage() {
   }
 
   const data = dashQuery.data;
-  const greeting = `${timeGreeting(new Date().getHours())}, ${data.greetingName}`;
+  const greetingInfo = buildDashboardGreeting({
+    name: data.greetingName || user?.name,
+    isFirstVisit: data.isFirstVisit ?? user?.isFirstVisit,
+    lastLoginAt: data.lastLoginAt ?? user?.lastLoginAt ?? null,
+  });
+  const greeting = greetingInfo.heading;
   const doneToday = data.todayTasks.filter((t) => t.status === 'done').length;
   const totalToday = data.todayTasks.length;
   const todayTasksDone = data.todayTasksDoneCount ?? doneToday;
@@ -241,16 +281,20 @@ export function DashboardPage() {
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-200/80 bg-primary-100/70 px-3 py-1 text-xs font-medium text-primary-700 shadow-sm dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Your Learning Hub</span>
+                <span>
+                  {data.isFirstVisit ? 'Welcome to Your Workspace' : greetingInfo.timeGreeting}
+                </span>
               </div>
               <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold tracking-tight text-fg sm:text-3xl">
                 <span>{greeting}</span>
                 {user?.emailVerified ? <VerifiedBadge className="h-5 w-5" /> : null}
               </h1>
               <p className="max-w-xl text-sm text-muted">
-                {totalToday > 0
-                  ? `You have ${totalToday} task${totalToday === 1 ? '' : 's'} scheduled today${data.overdueCount > 0 ? ` and ${data.overdueCount} overdue` : ''}.`
-                  : 'You are all caught up for today. Pick a study tool below to keep your momentum going.'}
+                {data.isFirstVisit
+                  ? greetingInfo.intro
+                  : totalToday > 0
+                    ? `You have ${totalToday} task${totalToday === 1 ? '' : 's'} scheduled today${data.overdueCount > 0 ? ` and ${data.overdueCount} overdue` : ''}.`
+                    : greetingInfo.intro}
               </p>
             </div>
           </div>
@@ -277,6 +321,58 @@ export function DashboardPage() {
           </div>
         </div>
       </Card>
+
+      {!data.onboardingCompleted && !onboardingHidden ? (
+        <GlassCard className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-display text-base font-semibold text-fg">Getting started</h2>
+              <p className="text-xs text-muted">
+                Complete these quick steps to get the most out of LearnSpace.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setOnboardingHidden(true);
+                void request('/users/me/onboarding-complete', { method: 'POST' })
+                  .then(() => qc.invalidateQueries({ queryKey: ['dashboard'] }))
+                  .catch(() => undefined);
+              }}
+            >
+              Hide
+            </Button>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+            {(
+              [
+                ['Add a course', '/courses', Boolean(data.onboardingSteps?.hasCourse)],
+                ['Create your first note', '/notes', Boolean(data.onboardingSteps?.hasNote)],
+                ['Upload a document', '/documents', Boolean(data.onboardingSteps?.hasDocument)],
+                ['Ask AWAL a question', '/chat', Boolean(data.onboardingSteps?.hasChat)],
+                ['Plan a task', '/planner', Boolean(data.onboardingSteps?.hasTask)],
+              ] as const
+            ).map(([label, to, done]) => (
+              <Link
+                key={label}
+                to={path(to)}
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-xs font-medium transition-colors ${
+                  done
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-line/80 bg-surface2/50 text-fg hover:border-primary-300 hover:bg-primary-50/50 dark:hover:bg-white/[0.06]'
+                }`}
+              >
+                <CheckCircle2
+                  className={`h-4 w-4 shrink-0 ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted/50'}`}
+                  aria-hidden="true"
+                />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </div>
+        </GlassCard>
+      ) : null}
 
       {/* Daily Summary Card */}
       <Card className="p-5 sm:p-6 space-y-4">

@@ -76,6 +76,24 @@ export function usersRouter(users: UsersService, env: Env): Router {
     }),
   );
 
+  router.post(
+    '/users/me/first-visit',
+    auth,
+    asyncHandler(async (req, res) => {
+      const result = await users.acknowledgeFirstVisit(req.user!.id);
+      res.json(result);
+    }),
+  );
+
+  router.post(
+    '/users/me/onboarding-complete',
+    auth,
+    asyncHandler(async (req, res) => {
+      const result = await users.completeOnboarding(req.user!.id);
+      res.json(result);
+    }),
+  );
+
   router.get(
     '/users/:id/avatar',
     asyncHandler(async (req, res) => {

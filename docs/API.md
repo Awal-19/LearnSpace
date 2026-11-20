@@ -359,7 +359,10 @@ Pre-stream failures are normal JSON errors: `VALIDATION_ERROR`, `NOT_FOUND`, `EM
 
 ### GET `/dashboard` 🔒
 
-Returns `greetingName`, `timezone`, `todayTasks`, `overdueCount`, `upcoming`, `todayClasses`, `nextClass`, `upcomingExams`, `nextExam`, `dueFlashcardsCount`, `todayStudyHours`, `todayTasksDoneCount`, `stats` (`streakDays`, `hoursLast7Days`), `recentConversations`, and `unreadNotifications`.
+Returns `greetingName`, `isFirstVisit`, `lastLoginAt`, `onboardingCompleted`, `onboardingSteps`, `timezone`, `todayTasks`, `overdueCount`, `upcoming`, `todayClasses`, `nextClass`, `upcomingExams`, `nextExam`, `dueFlashcardsCount`, `todayStudyHours`, `todayTasksDoneCount`, `stats` (`streakDays`, `hoursLast7Days`), `recentConversations`, and `unreadNotifications`.
+
+- `POST /api/v1/users/me/first-visit` 🔒 — Marks `firstLoginAt` after a verified user loads the dashboard for the first time (`isFirstVisit` becomes `false` on subsequent sessions/devices).
+- `POST /api/v1/users/me/onboarding-complete` 🔒 — Sets `onboardingCompleted = true` when the user finishes or dismisses the Getting Started card.
 
 ### GET `/analytics?range=7d|30d|semester` 🔒
 

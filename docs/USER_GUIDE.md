@@ -81,3 +81,8 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 
 - Every new account must verify its email with the 6-digit code sent after signup before accessing the dashboard, notes, documents, planner, or AWAL AI chat.
 - If you entered the wrong email address, click **Change email** on the verification screen to update it and receive a new 6-digit code.
+
+## First-Time Welcome & Getting Started
+
+- On your first verified visit, the Dashboard greets you with **"Welcome to LearnSpace"** and a **Getting Started** checklist (`Add a course`, `Create your first note`, `Upload a document`, `Ask AWAL a question`, `Plan a task`) that completes automatically as you use the app, or can be dismissed with **Hide**.
+- On subsequent sessions, LearnSpace welcomes you back with time-of-day context (and a special **"Good to see you again"** greeting after 30+ days away).
