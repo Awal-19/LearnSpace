@@ -248,7 +248,7 @@ export function createAuthService(deps: AuthServiceDeps) {
     async signup(
       input: SignupInput,
       _meta: SessionMeta,
-    ): Promise<{ requiresVerification: true; email: string }> {
+    ): Promise<{ requiresVerification: true; email: string; verificationToken: string }> {
       if (prisma.appSettings?.findUnique) {
         const settings = await prisma.appSettings.findUnique({ where: { id: 'global' } });
         if (settings && !settings.featureSignups) {
@@ -286,7 +286,13 @@ export function createAuthService(deps: AuthServiceDeps) {
 
       await createAndSendVerificationOtp(user, false);
       await recordActivityEvent(prisma, { userId: user.id, action: 'signup' });
-      return { requiresVerification: true, email: user.email };
+      const { token: verificationToken } = signAccessToken(
+        user.id,
+        env.JWT_SECRET,
+        900,
+        'verify_only',
+      );
+      return { requiresVerification: true, email: user.email, verificationToken };
     },
 
     async login(input: LoginInput, meta: SessionMeta): Promise<LoginResult> {
@@ -375,10 +381,16 @@ export function createAuthService(deps: AuthServiceDeps) {
 
       if (!user.emailVerified) {
         await createAndSendVerificationOtp(user, true);
+        const { token: verificationToken } = signAccessToken(
+          user.id,
+          env.JWT_SECRET,
+          900,
+          'verify_only',
+        );
         throw new AppError(
           'EMAIL_NOT_VERIFIED',
           'Please verify your email with the 6-digit code sent to your inbox.',
-          { email: user.email },
+          { email: user.email, verificationToken },
         );
       }
 
@@ -536,6 +548,23 @@ export function createAuthService(deps: AuthServiceDeps) {
           data: { revokedAt: current },
         });
         throw new AppError('ACCOUNT_SUSPENDED');
+      }
+      if (!user.emailVerified) {
+        await prisma.refreshToken.updateMany({
+          where: { familyId: existing.familyId, revokedAt: null },
+          data: { revokedAt: current },
+        });
+        const { token: verificationToken } = signAccessToken(
+          user.id,
+          env.JWT_SECRET,
+          900,
+          'verify_only',
+        );
+        throw new AppError(
+          'EMAIL_NOT_VERIFIED',
+          'Please verify your email with the 6-digit code sent to your inbox.',
+          { email: user.email, verificationToken },
+        );
       }
 
       const isAdmin = user.role === 'admin' || user.role === 'super_admin';
@@ -800,8 +829,15 @@ export function createAuthService(deps: AuthServiceDeps) {
         picture?: string;
       };
 
-      if (!profile.sub || !profile.email || !profile.email_verified) {
-        throw new AppError('UNAUTHENTICATED', 'Google email must be verified');
+      if (!profile.sub || !profile.email) {
+        throw new AppError('UNAUTHENTICATED', 'Google email is required');
+      }
+      if (!profile.email_verified) {
+        throw new AppError(
+          'EMAIL_NOT_VERIFIED',
+          'Google has not verified this email address. Please verify your email first.',
+          { email: profile.email.toLowerCase() },
+        );
       }
 
       const emailLower = profile.email.toLowerCase();
@@ -980,6 +1016,60 @@ export function createAuthService(deps: AuthServiceDeps) {
         );
       }
       return generic;
+    },
+
+    async getWhoAmI(userId: string): Promise<{ email: string; emailVerified: boolean }> {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, emailVerified: true, status: true },
+      });
+      if (!user) throw new AppError('UNAUTHENTICATED');
+      if (user.status === 'suspended') throw new AppError('ACCOUNT_SUSPENDED');
+      return { email: user.email, emailVerified: user.emailVerified };
+    },
+
+    async changeEmail(
+      userId: string,
+      newEmailInput: string,
+    ): Promise<{ email: string; emailVerified: false; verificationToken: string }> {
+      const newEmail = newEmailInput.toLowerCase().trim();
+      const current = now();
+      const existing = await prisma.user.findUnique({ where: { id: userId } });
+      if (!existing) throw new AppError('UNAUTHENTICATED');
+      if (existing.status === 'suspended') throw new AppError('ACCOUNT_SUSPENDED');
+
+      if (existing.email !== newEmail) {
+        const taken = await prisma.user.findUnique({ where: { email: newEmail } });
+        if (taken) throw new AppError('EMAIL_TAKEN');
+      }
+
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: current },
+        });
+        await tx.otpCode.updateMany({
+          where: { userId, purpose: 'verify_email', usedAt: null },
+          data: { usedAt: current },
+        });
+        return tx.user.update({
+          where: { id: userId },
+          data: {
+            email: newEmail,
+            emailVerified: false,
+            tokensValidAfter: current,
+          },
+        });
+      });
+
+      await createAndSendVerificationOtp(updated, false);
+      const { token: verificationToken } = signAccessToken(
+        updated.id,
+        env.JWT_SECRET,
+        900,
+        'verify_only',
+      );
+      return { email: updated.email, emailVerified: false, verificationToken };
     },
 
     async cleanupExpiredOtpsAndUnverifiedUsers(): Promise<{

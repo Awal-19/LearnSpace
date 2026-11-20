@@ -11,17 +11,21 @@ export const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const ADMIN_2FA_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+export type TokenScope = 'full' | 'verify_only';
+
 export interface AccessTokenPayload {
   userId: string;
   iat?: number;
+  scope: TokenScope;
 }
 
 export function signAccessToken(
   userId: string,
   secret: string,
   expiresInSeconds = ACCESS_TOKEN_TTL_SECONDS,
+  scope: TokenScope = 'full',
 ): { token: string; expiresIn: number } {
-  const token = jwt.sign({}, secret, {
+  const token = jwt.sign(scope === 'verify_only' ? { scope } : {}, secret, {
     algorithm: 'HS256',
     subject: userId,
     expiresIn: expiresInSeconds,
@@ -36,7 +40,8 @@ export function verifyAccessToken(token: string, secret: string): AccessTokenPay
     if (typeof decoded === 'string' || !decoded.sub) {
       throw new AppError('UNAUTHENTICATED');
     }
-    return { userId: decoded.sub, iat: decoded.iat };
+    const scope: TokenScope = decoded.scope === 'verify_only' ? 'verify_only' : 'full';
+    return { userId: decoded.sub, iat: decoded.iat, scope };
   } catch (err) {
     if (err instanceof AppError) throw err;
     if (err instanceof jwt.TokenExpiredError) {

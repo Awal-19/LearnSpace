@@ -98,3 +98,9 @@ export const resendOtpSchema = z
     captchaToken: z.string().trim().max(4096).optional(),
   })
   .strict();
+
+export const changeEmailSchema = z
+  .object({
+    email: emailSchema,
+  })
+  .strict();

@@ -95,6 +95,16 @@ Req: `{ "token": "…" }` Res `200`: `{ "verified": true }`. Errors: `INVALID_TO
 
 Res `202`: `{ "sent": true }`. If already verified: `200 {"sent":false,"reason":"already_verified"}`. Rate limited.
 
+### GET `/auth/me` 🔒 _(allowed for unverified `verify_only` sessions)_
+
+Returns only `{ "email": "ama@uni.edu", "emailVerified": false }`. Used by the verification gate to check status without exposing profile or app data.
+
+### POST `/auth/change-email` 🔒 _(allowed for unverified `verify_only` sessions)_
+
+Req: `{ "email": "new@uni.edu" }`. Sets `emailVerified = false`, revokes all refresh tokens, invalidates prior OTPs, sends a fresh 6-digit OTP to the new address, and returns `{ "email": "new@uni.edu", "emailVerified": false, "verificationToken": "…" }`.
+
+> **Strict Email Verification Rule:** Unverified accounts may call **only** public routes plus `/auth/me`, `/auth/verify-otp`, `/auth/resend-otp`, `/auth/change-email`, and `/auth/logout`. All other `/api/v1/*` and `/api/admin/*` routes enforce `requireVerified` from the database on every request and return `403 EMAIL_NOT_VERIFIED`.
+
 ### POST `/auth/forgot-password` 🔓
 
 Req: `{ "email": "ama@uni.edu" }` Res `202`: `{ "message": "If that email exists, a reset link was sent." }` (identical either way, similar response time).

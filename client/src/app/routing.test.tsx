@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { ToastProvider } from '../design';
@@ -65,6 +65,25 @@ describe('route protection (T-AUTH-15)', () => {
   it('shows the 404 page for unknown routes', () => {
     renderAt('/definitely-not-here', { status: 'unauthenticated', user: null });
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+  });
+
+  it('redirects unverified users away from every protected route to /verify-email without rendering app content', () => {
+    for (const path of ['/', '/notes', '/chat', '/settings']) {
+      const router = renderAt(path, {
+        status: 'authenticated',
+        user: {
+          id: 'u1',
+          email: 'unverified@ug.edu.gh',
+          name: 'Unverified User',
+          emailVerified: false,
+          avatarUrl: null,
+        },
+      });
+      expect(router.state.location.pathname).toBe('/verify-email');
+      expect(screen.getByRole('heading', { name: 'Verify your email' })).toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+      cleanup();
+    }
   });
 
   it('RequireAuth is exported for reuse', () => {

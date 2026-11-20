@@ -8,6 +8,7 @@ import { asyncHandler, validate } from '../../middleware/validate';
 import { REFRESH_TTL_PERSISTENT_MS } from '../../lib/tokens';
 import {
   adminTwoFactorSchema,
+  changeEmailSchema,
   forgotPasswordSchema,
   loginSchema,
   resendOtpSchema,
@@ -79,6 +80,33 @@ export function authRouter(
   router.get('/auth/providers', (_req, res) => {
     res.json(service.getProviders());
   });
+
+  router.get(
+    '/auth/me',
+    auth,
+    asyncHandler(async (req, res) => {
+      const who = await service.getWhoAmI(req.user!.id);
+      res.json(who);
+    }),
+  );
+
+  router.post(
+    '/auth/change-email',
+    auth,
+    otpIpLimiter,
+    otpEmailLimiter,
+    validate({ body: changeEmailSchema }),
+    asyncHandler(async (req, res) => {
+      const result = await service.changeEmail(req.user!.id, req.body.email);
+      res.clearCookie(REFRESH_COOKIE_NAME, {
+        path: '/api/v1/auth',
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+      });
+      res.json(result);
+    }),
+  );
 
   router.post(
     '/auth/signup',
@@ -331,7 +359,18 @@ export function authRouter(
           refreshCookieOptions(isProd, result.persistent),
         );
         res.redirect(302, `${env.CLIENT_URL}/auth/callback`);
-      } catch {
+      } catch (err) {
+        if (err instanceof AppError && err.code === 'EMAIL_NOT_VERIFIED') {
+          const email =
+            typeof (err.details as { email?: unknown } | undefined)?.email === 'string'
+              ? (err.details as { email: string }).email
+              : '';
+          res.redirect(
+            302,
+            `${env.CLIENT_URL}/verify-email${email ? `?email=${encodeURIComponent(email)}` : ''}`,
+          );
+          return;
+        }
         res.redirect(302, failWith('google_failed'));
       }
     }),

@@ -29,9 +29,16 @@ export function VerifyEmailPage() {
   const queryEmail = params.get('email');
   const navigate = useNavigate();
   const toast = useToast();
-  const { status: authStatus, user, setSession, markEmailVerified, logout } = useAuth();
+  const {
+    status: authStatus,
+    user,
+    setSession,
+    setPendingVerification,
+    markEmailVerified,
+    logout,
+  } = useAuth();
 
-  const [pendingEmail] = useState<string>(() => {
+  const [pendingEmail, setPendingEmail] = useState<string>(() => {
     if (queryEmail) {
       setPendingVerifyEmail(queryEmail);
       return queryEmail.trim().toLowerCase();
@@ -42,6 +49,9 @@ export function VerifyEmailPage() {
     }
     return getPendingVerifyEmail();
   });
+  const [changeEmailOpen, setChangeEmailOpen] = useState(false);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [changingEmail, setChangingEmail] = useState(false);
 
   // Legacy link-token support if a user opens an old ?token= link
   const [legacyState, setLegacyState] = useState<'loading' | 'success' | 'error'>(
@@ -338,15 +348,79 @@ export function VerifyEmailPage() {
               Log out
             </button>
           ) : null}
-          <Link
-            to="/signup"
-            onClick={() => clearPendingVerifyEmail()}
-            className="hover:text-fg underline"
-          >
-            Change email
-          </Link>
+          {user ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNewEmailInput(pendingEmail);
+                setChangeEmailOpen((v) => !v);
+              }}
+              className="hover:text-fg underline"
+            >
+              Change email
+            </button>
+          ) : (
+            <Link
+              to="/signup"
+              onClick={() => clearPendingVerifyEmail()}
+              className="hover:text-fg underline"
+            >
+              Change email
+            </Link>
+          )}
         </div>
       </div>
+
+      {changeEmailOpen ? (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newEmailInput.trim() || changingEmail) return;
+            setChangingEmail(true);
+            setErrorMsg(null);
+            try {
+              const res = await request<{
+                email: string;
+                emailVerified: false;
+                verificationToken: string;
+              }>('/auth/change-email', {
+                method: 'POST',
+                body: { email: newEmailInput.trim() },
+              });
+              setPendingEmail(res.email);
+              setPendingVerification?.(res.email, res.verificationToken);
+              setDigits(['', '', '', '', '', '']);
+              setCooldown(60);
+              setChangeEmailOpen(false);
+              toast.show({
+                kind: 'success',
+                title: 'Verification code sent',
+                description: `Enter the new 6-digit code sent to ${maskEmail(res.email)}.`,
+              });
+            } catch (err) {
+              setErrorMsg(
+                err instanceof ApiError ? err.message : 'Could not update your email address.',
+              );
+            } finally {
+              setChangingEmail(false);
+            }
+          }}
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface2/50 p-3"
+        >
+          <input
+            type="email"
+            required
+            value={newEmailInput}
+            onChange={(e) => setNewEmailInput(e.target.value)}
+            placeholder="Enter new email address"
+            aria-label="New email address"
+            className="h-9 min-w-[180px] flex-1 rounded-lg border border-line bg-surface px-3 text-base text-fg focus:border-primary-500 focus:outline-none sm:text-sm"
+          />
+          <Button type="submit" size="sm" loading={changingEmail}>
+            Send code
+          </Button>
+        </form>
+      ) : null}
     </div>
   );
 }

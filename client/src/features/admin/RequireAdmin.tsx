@@ -1,7 +1,7 @@
 import { Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuth, type AuthUser } from '../../app/AuthContext';
 import { Button, GlassCard, Input, PasswordInput, Spinner } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
@@ -155,6 +155,9 @@ export function RequireAdmin() {
   }
 
   if (!isAdmin) {
+    if (user && !user.emailVerified) {
+      return <Navigate to="/verify-email" replace />;
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-app bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.12),transparent_60%)] p-6">
         <GlassCard className="max-w-md p-6 text-center">

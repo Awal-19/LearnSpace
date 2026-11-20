@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -7,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { setPendingVerifyEmail } from '../features/auth/pendingVerify';
 import { ApiError, request, setAccessToken, setRefreshHandler } from '../lib/apiClient';
 import type { AvatarConfig } from '../features/profile/avatarTypes';
 
@@ -39,6 +41,7 @@ export interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   setSession: (accessToken: string, user: AuthUser) => void;
+  setPendingVerification?: (email: string, verificationToken?: string) => void;
   updateUser: (user: AuthUser) => void;
   clearSession: () => void;
   logout: () => Promise<void>;
@@ -51,6 +54,7 @@ export const AuthContext = createContext<AuthContextValue>({
   status: 'loading',
   user: null,
   setSession: noop,
+  setPendingVerification: noop,
   updateUser: noop,
   clearSession: noop,
   logout: async () => undefined,
@@ -85,6 +89,7 @@ export function restoreSession(): Promise<RefreshResponse | null> {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<{ status: AuthStatus; user: AuthUser | null }>({
     status: 'loading',
     user: null,
@@ -94,6 +99,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(accessToken);
     setState({ status: 'authenticated', user });
   }, []);
+
+  const setPendingVerification = useCallback(
+    (email: string, verificationToken?: string) => {
+      setPendingVerifyEmail(email);
+      queryClient.clear();
+      if (verificationToken) {
+        setAccessToken(verificationToken);
+      } else {
+        setAccessToken(null);
+      }
+      setState({
+        status: 'authenticated',
+        user: { id: '', email, name: '', emailVerified: false, avatarUrl: null },
+      });
+    },
+    [queryClient],
+  );
 
   const updateUser = useCallback((user: AuthUser) => {
     setState((prev) => ({ ...prev, user }));
@@ -155,17 +177,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [clearSession, setSession]);
 
+  useEffect(() => {
+    const onEmailNotVerified = () => {
+      queryClient.clear();
+      setState((prev) => {
+        if (prev.user?.email) {
+          setPendingVerifyEmail(prev.user.email);
+        }
+        return prev.user
+          ? { ...prev, user: { ...prev.user, emailVerified: false } }
+          : { status: 'unauthenticated', user: null };
+      });
+      if (typeof window !== 'undefined' && !window.location.pathname.endsWith('/verify-email')) {
+        window.location.replace('/verify-email');
+      }
+    };
+    window.addEventListener('learnspace:email-not-verified', onEmailNotVerified);
+    return () => window.removeEventListener('learnspace:email-not-verified', onEmailNotVerified);
+  }, [queryClient]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: state.status,
       user: state.user,
       setSession,
+      setPendingVerification,
       updateUser,
       clearSession,
       logout,
       markEmailVerified,
     }),
-    [state, setSession, updateUser, clearSession, logout, markEmailVerified],
+    [
+      state,
+      setSession,
+      setPendingVerification,
+      updateUser,
+      clearSession,
+      logout,
+      markEmailVerified,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

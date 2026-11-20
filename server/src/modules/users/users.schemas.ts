@@ -12,14 +12,16 @@ function optionalProfileText(max: number) {
     });
 }
 
-export const updateProfileSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(100).optional(),
-  studentId: optionalProfileText(50),
-  programme: optionalProfileText(120),
-  level: optionalProfileText(30),
-  university: optionalProfileText(120),
-  bio: optionalProfileText(500),
-});
+export const updateProfileSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required').max(100).optional(),
+    studentId: optionalProfileText(50),
+    programme: optionalProfileText(120),
+    level: optionalProfileText(30),
+    university: optionalProfileText(120),
+    bio: optionalProfileText(500),
+  })
+  .strict();
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(200).optional(),

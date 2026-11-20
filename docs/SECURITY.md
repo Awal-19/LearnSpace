@@ -86,3 +86,9 @@ Rotate `JWT_SECRET` (invalidates all access tokens; refresh tokens survive) and 
 
 - **Browser Permissions:** `Permissions-Policy` permits `microphone=(self)` (same-origin only) across Nginx, Netlify, Vercel, and Express. MediaStream tracks (`track.stop()`) are stopped immediately when dictation ends or on `pagehide`/unmount so background recording cannot occur.
 - **Server Transcription (`POST /api/v1/ai/transcribe`):** Requires `requireAuth` + `requireVerifiedEmail`, enforces `10 MB` max upload size, magic-byte audio verification (`webm`, `mp4`, `ogg`, `wav`, `mpeg`), `120s` max duration, per-user rate limit (`15/min`) + daily quota (`AI_DAILY_TRANSCRIPTION_LIMIT`), and spending alerts (`AI_TRANSCRIPTION_COST_ALERT_USD`). Audio buffers/temp files are deleted in `finally` immediately after transcoding, and transcript text is never logged. `NVIDIA_API_KEY` remains strictly server-side.
+
+## 11. Strict Email Verification Gate
+
+- **Deny-by-default `requireVerified` middleware (`server/src/middleware/auth.ts`, `server/src/app.ts`):** Reads `emailVerified`, `status`, and `tokensValidAfter` directly from PostgreSQL on every request (never trusting token claims). Rejects `verify_only` tokens and unverified users with `403 EMAIL_NOT_VERIFIED` across all protected `/api/v1/*` and `/api/admin/*` routes.
+- **Unverified Allowlist:** Only public routes plus `GET /api/v1/auth/me` (minimal `{ email, emailVerified }`), `POST /api/v1/auth/verify-otp`, `POST /api/v1/auth/resend-otp`, `POST /api/v1/auth/change-email`, and `POST /api/v1/auth/logout` are permitted prior to verification.
+- **Refresh & Email Change:** `POST /api/v1/auth/refresh` refuses unverified accounts and revokes their refresh family; changing email sets `emailVerified = false`, revokes all sessions, and requires a new 6-digit OTP.

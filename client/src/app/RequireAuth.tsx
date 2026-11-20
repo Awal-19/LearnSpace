@@ -19,7 +19,7 @@ function FullPageLoading() {
   );
 }
 
-/** Client-side route guard. The server independently enforces auth on every endpoint. */
+/** Single client-side AuthGate wrapper. The server independently enforces auth & verification on every endpoint. */
 export function RequireAuth() {
   const { status, user } = useAuth();
   const location = useLocation();
@@ -29,9 +29,11 @@ export function RequireAuth() {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/login?next=${next}`} replace />;
   }
-  if (user && !user.emailVerified) {
-    setPendingVerifyEmail(user.email);
+  if (!user || !user.emailVerified) {
+    if (user?.email) setPendingVerifyEmail(user.email);
     return <Navigate to="/verify-email" replace />;
   }
   return <Outlet />;
 }
+
+export const AuthGate = RequireAuth;

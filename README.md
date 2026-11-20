@@ -48,3 +48,4 @@ npm run dev
 - **Frontend (Vercel):** [client/vercel.json](client/vercel.json) (SPA rewrites + security headers)
 - **CI:** [.github/workflows/ci.yml](.github/workflows/ci.yml)
 - **Voice Dictation:** Dual-engine dictation (Browser Web Speech API first, with `MediaRecorder` + `POST /api/v1/ai/transcribe` fallback using NVIDIA `parakeet-tdt-0.6b-v2` via `NVIDIA_API_KEY` + `ffmpeg` 16-bit mono WAV transcoding). Configure `STT_PROVIDER=nvidia_riva|openai_http|gemini` in `server/.env`.
+- **Strict Email Verification Gate:** Unverified accounts cannot access any app data or protected APIs (returning `403 EMAIL_NOT_VERIFIED`) until they complete the 6-digit OTP flow on `/verify-email`.

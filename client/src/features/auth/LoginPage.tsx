@@ -45,7 +45,7 @@ function googleErrorMessage(code: string | null): string | null {
 }
 
 export function LoginPage() {
-  const { status, setSession } = useAuth();
+  const { status, user, setSession, setPendingVerification } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(() =>
@@ -66,7 +66,9 @@ export function LoginPage() {
   });
 
   if (status === 'authenticated') {
-    return <Navigate to={safeNext(params.get('next'))} replace />;
+    return (
+      <Navigate to={user?.emailVerified ? safeNext(params.get('next')) : '/verify-email'} replace />
+    );
   }
 
   const onSubmit = async (values: LoginValues) => {
@@ -89,8 +91,10 @@ export function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'EMAIL_NOT_VERIFIED') {
-          const email = (err.details as { email?: string } | undefined)?.email ?? values.email;
+          const details = err.details as { email?: string; verificationToken?: string } | undefined;
+          const email = details?.email ?? values.email;
           setPendingVerifyEmail(email);
+          setPendingVerification?.(email, details?.verificationToken);
           navigate('/verify-email', { replace: true });
           return;
         }

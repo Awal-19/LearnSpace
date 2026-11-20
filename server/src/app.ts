@@ -6,9 +6,8 @@ import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import type { Env } from './config/env';
 import { createLogger } from './lib/logger';
-import { AppError } from './lib/errors';
 import { createErrorHandler, notFound } from './middleware/errorHandler';
-import { requireAuth } from './middleware/auth';
+import { requireAuth, requireVerified } from './middleware/auth';
 import { createRateLimiter, setRateLimitPrisma } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { healthRouter, type HealthDeps } from './modules/health/health.routes';
@@ -160,9 +159,6 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   app.use(cookieParser());
 
   app.use(API_PREFIX, healthRouter(deps));
-  if (deps.auth) {
-    app.use(API_PREFIX, authRouter(deps.auth, env));
-  }
 
   const verifyEmailCheck =
     deps.isEmailVerified ??
@@ -182,10 +178,35 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
         }
       : undefined);
 
+  const PUBLIC_OR_VERIFY_ALLOWED_AUTH_PATHS = new Set([
+    '/auth/providers',
+    '/auth/signup',
+    '/auth/login',
+    '/auth/verify-otp',
+    '/auth/resend-otp',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    '/auth/google',
+    '/auth/google/callback',
+    '/auth/verify-email',
+    '/auth/admin-2fa/verify',
+    '/auth/admin-invite/accept',
+    '/auth/me',
+    '/auth/change-email',
+  ]);
+
   if (verifyEmailCheck || deps.dashboardPrisma) {
     const authMiddleware = requireAuth(env.JWT_SECRET);
+    const verifiedMiddleware = requireVerified(deps.dashboardPrisma ?? verifyEmailCheck!);
+
     app.use(API_PREFIX, (req, res, next) => {
-      if (req.path.startsWith('/health') || req.path.startsWith('/auth')) {
+      if (
+        req.path.startsWith('/health') ||
+        PUBLIC_OR_VERIFY_ALLOWED_AUTH_PATHS.has(req.path) ||
+        (req.method === 'GET' && /^\/users\/[^/]+\/avatar$/.test(req.path))
+      ) {
         next();
         return;
       }
@@ -198,53 +219,13 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
           next(authErr);
           return;
         }
-        if (!req.user) {
-          next();
-          return;
-        }
-        void (async () => {
-          if (deps.dashboardPrisma) {
-            const row = await deps.dashboardPrisma.user.findUnique({
-              where: { id: req.user!.id },
-              select: {
-                status: true,
-                emailVerified: true,
-                tokensValidAfter: true,
-              },
-            });
-            if (!row) {
-              next(new AppError('UNAUTHENTICATED'));
-              return;
-            }
-            if (row.status === 'suspended') {
-              next(new AppError('ACCOUNT_SUSPENDED'));
-              return;
-            }
-            if (
-              row.tokensValidAfter &&
-              (!req.user!.iat || req.user!.iat * 1000 < row.tokensValidAfter.getTime())
-            ) {
-              next(new AppError('UNAUTHENTICATED'));
-              return;
-            }
-            if (!row.emailVerified) {
-              next(new AppError('EMAIL_NOT_VERIFIED'));
-              return;
-            }
-            next();
-            return;
-          }
-          if (verifyEmailCheck) {
-            const verified = await verifyEmailCheck(req.user!.id);
-            if (!verified) {
-              next(new AppError('EMAIL_NOT_VERIFIED'));
-              return;
-            }
-          }
-          next();
-        })().catch(next);
+        verifiedMiddleware(req, res, next);
       });
     });
+  }
+
+  if (deps.auth) {
+    app.use(API_PREFIX, authRouter(deps.auth, env));
   }
   if (deps.users) {
     app.use(API_PREFIX, usersRouter(deps.users, env));

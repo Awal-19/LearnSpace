@@ -19,7 +19,7 @@ export function requireAuth(jwtSecret: string): RequestHandler {
     }
     try {
       const payload = verifyAccessToken(token, jwtSecret);
-      req.user = { id: payload.userId, iat: payload.iat };
+      req.user = { id: payload.userId, iat: payload.iat, scope: payload.scope };
       next();
     } catch (err) {
       next(err);
@@ -39,21 +39,59 @@ export const csrfGuard: RequestHandler = (req, _res, next) => {
   next();
 };
 
-/** Requires the authenticated user to have verified their email address. */
-export function requireVerifiedEmail(
-  isEmailVerified: (userId: string) => Promise<boolean>,
+/**
+ * Single source-of-truth verification & account-status gate.
+ * Always reads emailVerified, status, and tokensValidAfter from the database
+ * (or fallback callback in isolated unit tests), never trusting token claims.
+ */
+export function requireVerified(
+  prismaOrCheck: PrismaClient | ((userId: string) => Promise<boolean>),
 ): RequestHandler {
   return asyncHandler(async (req, _res, next) => {
     if (!req.user) {
       throw new AppError('UNAUTHENTICATED');
     }
-    const verified = await isEmailVerified(req.user.id);
-    if (!verified) {
+    if (req.user.scope === 'verify_only') {
+      throw new AppError('EMAIL_NOT_VERIFIED');
+    }
+    if (typeof prismaOrCheck === 'function') {
+      const verified = await prismaOrCheck(req.user.id);
+      if (!verified) {
+        throw new AppError('EMAIL_NOT_VERIFIED');
+      }
+      next();
+      return;
+    }
+
+    const row = await prismaOrCheck.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        status: true,
+        emailVerified: true,
+        tokensValidAfter: true,
+      },
+    });
+    if (!row) {
+      throw new AppError('UNAUTHENTICATED');
+    }
+    if (row.status === 'suspended') {
+      throw new AppError('ACCOUNT_SUSPENDED');
+    }
+    if (
+      row.tokensValidAfter &&
+      (!req.user.iat || req.user.iat < Math.floor(row.tokensValidAfter.getTime() / 1000))
+    ) {
+      throw new AppError('UNAUTHENTICATED');
+    }
+    if (!row.emailVerified) {
       throw new AppError('EMAIL_NOT_VERIFIED');
     }
     next();
   });
 }
+
+/** Alias kept for route-level readability. */
+export const requireVerifiedEmail = requireVerified;
 
 function requireRole(
   prisma: PrismaClient,
@@ -62,6 +100,9 @@ function requireRole(
   return asyncHandler(async (req, _res, next) => {
     if (!req.user) {
       throw new AppError('UNAUTHENTICATED');
+    }
+    if (req.user.scope === 'verify_only') {
+      throw new AppError('EMAIL_NOT_VERIFIED');
     }
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },

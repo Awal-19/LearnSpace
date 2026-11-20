@@ -12,18 +12,19 @@ import { GoogleButton } from './GoogleButton';
 import { setPendingVerifyEmail } from './pendingVerify';
 import { signupSchema, type SignupValues } from './schemas';
 
-interface SignupResponse {
-  requiresVerification: true;
-  email: string;
-}
-
 interface ValidationIssue {
   path?: string;
   message?: string;
 }
 
+interface SignupResponse {
+  requiresVerification?: boolean;
+  email?: string;
+  verificationToken?: string;
+}
+
 export function SignupPage() {
-  const { status } = useAuth();
+  const { status, user, setPendingVerification } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const termsCheckboxId = useId();
@@ -43,7 +44,7 @@ export function SignupPage() {
   });
 
   if (status === 'authenticated') {
-    return <Navigate to="/" replace />;
+    return <Navigate to={user?.emailVerified ? '/' : '/verify-email'} replace />;
   }
 
   const passwordValue = watch('password', '');
@@ -62,7 +63,9 @@ export function SignupPage() {
         body: { ...values, timezone },
         auth: false,
       });
-      setPendingVerifyEmail(data.email || values.email);
+      const targetEmail = data.email || values.email;
+      setPendingVerifyEmail(targetEmail);
+      setPendingVerification?.(targetEmail, data.verificationToken);
       toast.show({
         kind: 'success',
         title: 'Verification code sent',

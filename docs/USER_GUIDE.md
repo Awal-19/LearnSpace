@@ -76,3 +76,8 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 - Customize your academic profile or design a custom avatar in Profile.
 - Configure theme (`system`, `light`, `dark`), IANA timezone, class/exam/task notification lead times, and Pomodoro durations in Settings.
 - Use **Data & Privacy → Export my data** to download a complete JSON archive (`learnspace-export-YYYY-MM-DD.json`), or permanently delete your account (which removes uploaded files and scrubs login history PII).
+
+## Email Verification Requirement
+
+- Every new account must verify its email with the 6-digit code sent after signup before accessing the dashboard, notes, documents, planner, or AWAL AI chat.
+- If you entered the wrong email address, click **Change email** on the verification screen to update it and receive a new 6-digit code.
