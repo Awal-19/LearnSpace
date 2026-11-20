@@ -222,12 +222,17 @@ export function StudyGroupPage() {
             size="sm"
             variant="secondary"
             onClick={() => {
-              void navigator.clipboard?.writeText(group.inviteCode);
-              toast.show({ kind: 'success', title: `Invite code copied: ${group.inviteCode}` });
+              const inviteUrl = `${window.location.origin}${path(`/community?join=${encodeURIComponent(group.inviteCode)}`)}`;
+              void navigator.clipboard?.writeText(inviteUrl);
+              toast.show({
+                kind: 'success',
+                title: 'Invite link copied!',
+                description: `Share this link or code (${group.inviteCode}) with classmates.`,
+              });
             }}
           >
             <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-            Code: {group.inviteCode}
+            Copy invite link ({group.inviteCode})
           </Button>
           <Button
             size="sm"

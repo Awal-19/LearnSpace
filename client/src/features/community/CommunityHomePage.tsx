@@ -9,8 +9,8 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
 import {
   Badge,
@@ -30,12 +30,36 @@ import { CommunityRulesModal } from './CommunityRulesModal';
 export function CommunityHomePage() {
   const path = useAppPath();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const qc = useQueryClient();
 
   const [rulesOpen, setRulesOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [joiningCode, setJoiningCode] = useState(false);
+
+  useEffect(() => {
+    const code = searchParams.get('join')?.trim();
+    if (!code) return;
+    setInviteCode(code);
+    setJoiningCode(true);
+    void joinGroupByInviteCode(code)
+      .then((res) => {
+        toast.show({ kind: 'success', title: `Joined ${res.name}` });
+        setSearchParams({});
+        void qc.invalidateQueries({ queryKey: ['community', 'home'] });
+        navigate(path(`/community/groups/${res.groupId}`), { replace: true });
+      })
+      .catch((err) => {
+        toast.show({
+          kind: 'error',
+          title: 'Could not join group',
+          description: err instanceof ApiError ? err.message : 'Invalid invite link.',
+        });
+        setSearchParams({});
+      })
+      .finally(() => setJoiningCode(false));
+  }, [searchParams, setSearchParams, navigate, path, qc, toast]);
 
   const homeQuery = useQuery({
     queryKey: ['community', 'home'],
