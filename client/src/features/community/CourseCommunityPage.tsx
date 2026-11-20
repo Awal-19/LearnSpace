@@ -105,6 +105,7 @@ export function CourseCommunityPage() {
   const [groupDesc, setGroupDesc] = useState('');
   const [groupVis, setGroupVis] = useState<'public_course' | 'invite_only'>('public_course');
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
 
   // Share resource modal
   const [shareOpen, setShareOpen] = useState(false);
@@ -613,12 +614,27 @@ export function CourseCommunityPage() {
                       </Link>
                     ) : (
                       <Button
+                        type="button"
                         size="sm"
                         variant="secondary"
                         className="w-full"
+                        loading={joiningGroupId === g.id}
                         onClick={async () => {
-                          await joinStudyGroup(g.id);
-                          navigate(path(`/community/groups/${g.id}`));
+                          setJoiningGroupId(g.id);
+                          try {
+                            await joinStudyGroup(g.id);
+                            await qc.invalidateQueries({ queryKey: ['community'] });
+                            navigate(path(`/community/groups/${g.id}`));
+                          } catch (err) {
+                            toast.show({
+                              kind: 'error',
+                              title: 'Could not join group',
+                              description:
+                                err instanceof ApiError ? err.message : 'Please try again.',
+                            });
+                          } finally {
+                            setJoiningGroupId(null);
+                          }
                         }}
                       >
                         Join group

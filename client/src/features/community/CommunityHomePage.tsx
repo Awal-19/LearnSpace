@@ -74,7 +74,15 @@ export function CommunityHomePage() {
 
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteCode.trim()) return;
+    if (!inviteCode.trim()) {
+      toast.show({
+        kind: 'info',
+        title: 'Enter an invite code',
+        description:
+          'Paste a group invite code, or click a Course Community below to join a public group.',
+      });
+      return;
+    }
     setJoiningCode(true);
     try {
       const res = await joinGroupByInviteCode(inviteCode.trim());
