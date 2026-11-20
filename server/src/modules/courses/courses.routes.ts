@@ -11,6 +11,12 @@ import {
   updateCourseSchema,
 } from './courses.schemas';
 import type { CoursesService } from './courses.service';
+import {
+  refreshRecommendationsSchema,
+  reportRecommendationSchema,
+  updateAssistantResourcesToggleSchema,
+} from './recommendations.schemas';
+import type { RecommendationsService } from './recommendations.service';
 
 const uuidSchema = z.string().uuid();
 function parseUuid(raw: string | undefined, label: string): string {
@@ -19,7 +25,11 @@ function parseUuid(raw: string | undefined, label: string): string {
   return parsed.data;
 }
 
-export function coursesRouter(courses: CoursesService, env: Env): Router {
+export function coursesRouter(
+  courses: CoursesService,
+  env: Env,
+  recommendations?: RecommendationsService,
+): Router {
   const router = Router();
   const auth = requireAuth(env.JWT_SECRET);
 
@@ -72,6 +82,90 @@ export function coursesRouter(courses: CoursesService, env: Env): Router {
       res.status(204).end();
     }),
   );
+
+  if (recommendations) {
+    router.get(
+      '/courses/:id/recommendations',
+      auth,
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        res.json(await recommendations.listForCourse(req.user!.id, id));
+      }),
+    );
+
+    router.post(
+      '/courses/:id/recommendations/refresh',
+      auth,
+      validateBody(refreshRecommendationsSchema),
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        res.status(202).json(await recommendations.triggerRefresh(req.user!.id, id, req.body));
+      }),
+    );
+
+    router.post(
+      '/courses/:id/recommendations/:recId/save',
+      auth,
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        const recId = parseUuid(req.params.recId, 'Recommendation');
+        res.status(201).json(await recommendations.saveRecommendation(req.user!.id, id, recId));
+      }),
+    );
+
+    router.delete(
+      '/courses/:id/resources/:resourceId',
+      auth,
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        const resourceId = parseUuid(req.params.resourceId, 'Resource');
+        await recommendations.removeResource(req.user!.id, id, resourceId);
+        res.status(204).end();
+      }),
+    );
+
+    router.patch(
+      '/courses/:id/resources/assistant-toggle',
+      auth,
+      validateBody(updateAssistantResourcesToggleSchema),
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        res.json(
+          await recommendations.toggleUseInAssistant(
+            req.user!.id,
+            id,
+            req.body.useResourcesInAssistant,
+          ),
+        );
+      }),
+    );
+
+    router.post(
+      '/courses/:id/recommendations/:recId/hide',
+      auth,
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        const recId = parseUuid(req.params.recId, 'Recommendation');
+        await recommendations.hideRecommendation(req.user!.id, id, recId);
+        res.status(204).end();
+      }),
+    );
+
+    router.post(
+      '/courses/:id/recommendations/:recId/report',
+      auth,
+      validateBody(reportRecommendationSchema),
+      asyncHandler(async (req, res) => {
+        const id = parseUuid(req.params.id, 'Course');
+        const recId = parseUuid(req.params.recId, 'Recommendation');
+        res
+          .status(201)
+          .json(
+            await recommendations.reportRecommendation(req.user!.id, id, recId, req.body.reason),
+          );
+      }),
+    );
+  }
 
   return router;
 }

@@ -18,6 +18,7 @@ import { createLogger } from './lib/logger';
 import { hashPassword } from './lib/password';
 import { createPrismaClient } from './lib/prisma';
 import { createStorageService } from './lib/storage';
+import { createWebSearchProvider } from './lib/webSearch';
 import { createAiService } from './modules/ai/ai.service';
 import { createTranscribeService } from './modules/ai/transcribe.service';
 import { createAttachmentsService } from './modules/ai/attachments.service';
@@ -26,6 +27,8 @@ import { createDocumentJobQueue } from './modules/documents/documents.jobs';
 import { createDocumentsService } from './modules/documents/documents.service';
 import { createAuthService } from './modules/auth/auth.service';
 import { createCoursesService } from './modules/courses/courses.service';
+import { createRecommendationJobQueue } from './modules/courses/recommendations.jobs';
+import { createRecommendationsService } from './modules/courses/recommendations.service';
 import { createExamsService } from './modules/exams/exams.service';
 import { createFocusService } from './modules/focus/focus.service';
 import { createGpaService } from './modules/gpa/gpa.service';
@@ -194,7 +197,19 @@ function main(): void {
   const aiDailyTokenLimit = env.AI_DAILY_TOKEN_LIMIT ?? null;
   const auth = createAuthService({ prisma, env, email, logger });
   const users = createUsersService({ prisma, storage, logger });
-  const courses = createCoursesService({ prisma, storage, logger });
+  const searchProvider = createWebSearchProvider(env);
+  const recommendationQueue = createRecommendationJobQueue({
+    prisma,
+    searchProvider,
+    llm,
+    logger,
+  });
+  const recommendations = createRecommendationsService({
+    prisma,
+    queue: recommendationQueue,
+    logger,
+  });
+  const courses = createCoursesService({ prisma, storage, recommendationQueue, logger });
   const rag = createRagService({ prisma, logger });
   const attachments = createAttachmentsService({ prisma, storage, logger });
   const documentJobs = createDocumentJobQueue({ prisma, storage, llm, logger });
@@ -256,6 +271,7 @@ function main(): void {
       auth,
       users,
       courses,
+      recommendations,
       timetable,
       exams: { service: exams, isEmailVerified },
       ai: { service: ai, transcribe, isEmailVerified },
@@ -293,6 +309,7 @@ function main(): void {
     }, 60_000);
     reminderTimer.unref();
     documentJobs.startWorker(2_000);
+    recommendationQueue.startWorker(2_000);
   };
 
   // Bind 0.0.0.0:$PORT immediately so /api/health passes Railway probes without waiting on migrations.
@@ -320,6 +337,7 @@ function main(): void {
     shuttingDown = true;
     if (reminderTimer) clearInterval(reminderTimer);
     documentJobs.stopWorker();
+    recommendationQueue.stopWorker();
     logger.info({ signal }, 'Shutting down');
     server.close(() => {
       void prisma.$disconnect().finally(() => process.exit(0));

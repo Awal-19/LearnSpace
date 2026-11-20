@@ -15,6 +15,7 @@ import {
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validate } from '../../middleware/validate';
 import { recordAuditLog } from './admin.logging';
+import { HARDCODED_DENY_DOMAINS } from '../courses/recommendations.safety';
 import {
   acceptAdminInviteSchema,
   bulkUsersSchema,
@@ -28,6 +29,7 @@ import {
   paginationQuerySchema,
   replyFeedbackSchema,
   resolveFlagSchema,
+  resolveRecommendationReportSchema,
   rollbackSettingsSchema,
   stepUpVerifySchema,
   studentFeedbackSchema,
@@ -38,6 +40,7 @@ import {
   updateAppSettingsSchema,
   updateFeedbackSchema,
   updatePlatformSettingsSchema,
+  updateRecommendationSettingsSchema,
   updateUserRoleSchema,
   updateUserStatusSchema,
   uuidParamSchema,
@@ -752,6 +755,179 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
         `attachment; filename="${safeContentDispositionFilename(file.fileName, 'export')}"`,
       );
       res.send(file.bytes);
+    }),
+  );
+
+  router.get(
+    '/recommendations/overview',
+    requirePermission('can_view_ai_usage'),
+    asyncHandler(async (_req, res) => {
+      const monthStart = new Date(
+        Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+      );
+      const [settings, usageAgg, jobsCount, cacheCount, reports] = await Promise.all([
+        prisma.appSettings.findUnique({ where: { id: 'global' } }).catch(() => null),
+        prisma.usageEvent.aggregate({
+          where: { feature: 'course_resource_search', createdAt: { gte: monthStart } },
+          _count: { _all: true },
+          _sum: { tokensIn: true, tokensOut: true, costUsd: true },
+        }),
+        prisma.recommendationJob.count({ where: { createdAt: { gte: monthStart } } }),
+        prisma.recommendationCache.count({ where: { expiresAt: { gt: new Date() } } }),
+        prisma.recommendationReport.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            recommendation: { select: { title: true, status: true, courseId: true } },
+            user: { select: { email: true } },
+          },
+        }),
+      ]);
+
+      res.json({
+        featureCourseRecommendations: settings?.featureCourseRecommendations ?? true,
+        dailyCourseSearchLimit: settings?.dailyCourseSearchLimit ?? 5,
+        monthlySearchCostCapUsd: settings?.monthlySearchCostCapUsd ?? 25.0,
+        allowDomains: Array.isArray(settings?.recommendationAllowDomainsJson)
+          ? settings.recommendationAllowDomainsJson
+          : [],
+        blockDomains: Array.isArray(settings?.recommendationBlockDomainsJson)
+          ? settings.recommendationBlockDomainsJson
+          : [],
+        hardcodedDenyDomains: HARDCODED_DENY_DOMAINS,
+        monthlyUsage: {
+          searchesThisMonth: usageAgg._count._all,
+          jobsThisMonth: jobsCount,
+          tokensIn: usageAgg._sum.tokensIn ?? 0,
+          tokensOut: usageAgg._sum.tokensOut ?? 0,
+          estimatedCostUsd: Number((usageAgg._sum.costUsd ?? 0).toFixed(4)),
+          activeCacheEntries: cacheCount,
+        },
+        reports: reports.map((r) => ({
+          id: r.id,
+          recommendationId: r.recommendationId,
+          title: r.recommendation?.title ?? 'Unknown',
+          recStatus: r.recommendation?.status ?? 'active',
+          url: r.url,
+          sourceDomain: r.sourceDomain,
+          reason: r.reason,
+          status: r.status,
+          reporterEmail: r.user?.email ?? null,
+          createdAt: r.createdAt,
+        })),
+      });
+    }),
+  );
+
+  router.patch(
+    '/recommendations/settings',
+    superAdminOnly,
+    requireStepUp,
+    validate({ body: updateRecommendationSettingsSchema }),
+    asyncHandler(async (req, res) => {
+      const body = req.body as z.infer<typeof updateRecommendationSettingsSchema>;
+      const updated = await prisma.appSettings.upsert({
+        where: { id: 'global' },
+        create: {
+          id: 'global',
+          updatedById: req.user!.id,
+          ...(body.featureCourseRecommendations !== undefined
+            ? { featureCourseRecommendations: body.featureCourseRecommendations }
+            : {}),
+          ...(body.dailyCourseSearchLimit !== undefined
+            ? { dailyCourseSearchLimit: body.dailyCourseSearchLimit }
+            : {}),
+          ...(body.monthlySearchCostCapUsd !== undefined
+            ? { monthlySearchCostCapUsd: body.monthlySearchCostCapUsd }
+            : {}),
+          ...(body.allowDomains !== undefined
+            ? { recommendationAllowDomainsJson: body.allowDomains }
+            : {}),
+          ...(body.blockDomains !== undefined
+            ? { recommendationBlockDomainsJson: body.blockDomains }
+            : {}),
+        },
+        update: {
+          updatedById: req.user!.id,
+          ...(body.featureCourseRecommendations !== undefined
+            ? { featureCourseRecommendations: body.featureCourseRecommendations }
+            : {}),
+          ...(body.dailyCourseSearchLimit !== undefined
+            ? { dailyCourseSearchLimit: body.dailyCourseSearchLimit }
+            : {}),
+          ...(body.monthlySearchCostCapUsd !== undefined
+            ? { monthlySearchCostCapUsd: body.monthlySearchCostCapUsd }
+            : {}),
+          ...(body.allowDomains !== undefined
+            ? { recommendationAllowDomainsJson: body.allowDomains }
+            : {}),
+          ...(body.blockDomains !== undefined
+            ? { recommendationBlockDomainsJson: body.blockDomains }
+            : {}),
+        },
+      });
+      await recordAuditLog(prisma, {
+        actorId: req.user!.id,
+        action: 'recommendations.settings_updated',
+        targetType: 'app_settings',
+        targetId: 'global',
+        ip: req.ip,
+        metadata: body,
+      });
+      res.json({
+        featureCourseRecommendations: updated.featureCourseRecommendations,
+        dailyCourseSearchLimit: updated.dailyCourseSearchLimit,
+        monthlySearchCostCapUsd: updated.monthlySearchCostCapUsd,
+        allowDomains: updated.recommendationAllowDomainsJson,
+        blockDomains: updated.recommendationBlockDomainsJson,
+      });
+    }),
+  );
+
+  router.post(
+    '/recommendations/reports/:id/resolve',
+    requirePermission('can_moderate_content'),
+    validate({ body: resolveRecommendationReportSchema }),
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Report not found');
+      const { action } = req.body as z.infer<typeof resolveRecommendationReportSchema>;
+      const report = await prisma.recommendationReport.findUnique({ where: { id: id.data } });
+      if (!report) throw new AppError('NOT_FOUND', 'Report not found');
+
+      if (action === 'mark_dead' || action === 'block_domain') {
+        await prisma.courseRecommendation.updateMany({
+          where: { id: report.recommendationId },
+          data: { status: 'dead' },
+        });
+      }
+
+      if (action === 'block_domain') {
+        const settings = await prisma.appSettings.findUnique({ where: { id: 'global' } });
+        const existing = Array.isArray(settings?.recommendationBlockDomainsJson)
+          ? (settings!.recommendationBlockDomainsJson as string[])
+          : [];
+        const next = Array.from(new Set([...existing, report.sourceDomain.toLowerCase()]));
+        await prisma.appSettings.upsert({
+          where: { id: 'global' },
+          create: { id: 'global', updatedById: req.user!.id, recommendationBlockDomainsJson: next },
+          update: { updatedById: req.user!.id, recommendationBlockDomainsJson: next },
+        });
+      }
+
+      const updated = await prisma.recommendationReport.update({
+        where: { id: report.id },
+        data: { status: action === 'dismiss' ? 'dismissed' : 'resolved' },
+      });
+      await recordAuditLog(prisma, {
+        actorId: req.user!.id,
+        action: 'recommendations.report_resolved',
+        targetType: 'recommendation_report',
+        targetId: report.id,
+        ip: req.ip,
+        metadata: { action, domain: report.sourceDomain },
+      });
+      res.json({ report: updated });
     }),
   );
 

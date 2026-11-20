@@ -98,3 +98,12 @@ Rotate `JWT_SECRET` (invalidates all access tokens; refresh tokens survive) and 
 - **Admin Resend (`POST /api/admin/users/:id/resend-verification`):** Generates a fresh hashed 6-digit `otpCode` (never returned to the admin), enforces a 60-second cooldown + 5/hour target cap + 10/15min admin rate limit, surfaces provider failures instead of silently returning `204`, and writes `user.resend_verification` to `audit_logs`.
 - **Manual Verification (`POST /api/admin/users/:id/mark-verified`):** Requires `can_manage_users`, personal step-up confirmation, and a typed `reason` (min 5 chars), logged to `audit_logs`.
 - **Delivery Logging (`email_delivery_logs`):** Records recipient, kind, provider, status (`sent`/`failed`), provider message ID, and error message (never OTP codes).
+
+## 13. Course Resource Web Search Security
+
+- **Privacy & Minimal Search Inputs:** Only `{ courseName, code, level, programme, university }` are sent to the search provider (`SEARCH_PROVIDER=tavily|brave|serper`). Student name, email, notes, and uploaded documents are never sent.
+- **No Invented URLs:** Every recommendation URL must match an exact URL returned by the search provider; LLM outputs are Zod-validated (retried once on invalid JSON) and non-matching URLs are dropped.
+- **Piracy Deny List & Admin Allow/Block Lists:** A hardcoded deny list (`HARDCODED_DENY_DOMAINS` in `recommendations.safety.ts`) blocks shadow libraries, piracy hubs, torrent sites, and file lockers, merged with admin-configurable block/allow lists.
+- **SSRF & Link Verification:** `verifyPublicHttpUrl` enforces `http:`/`https:` schemes, blocks private/loopback/link-local/CGNAT IPs (before and after DNS lookup), disables automatic redirects (`redirect: 'manual'`), re-validates every redirect target (up to 3 hops), and uses a 5-second timeout.
+- **Prompt Injection Defense:** Search titles and snippets are sanitized and wrapped in `<untrusted_web_result>` blocks; the model has no autonomous browsing or tool calls.
+- **Cost & Abuse Controls:** Per-user daily search limits (`dailyCourseSearchLimit`), global monthly search cost cap (`monthlySearchCostCapUsd`), 30-day caching, `UsageEvent` cost logging, and an admin feature kill-switch.

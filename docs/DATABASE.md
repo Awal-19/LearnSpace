@@ -234,3 +234,11 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
   - Enable daily automated snapshots in Railway PostgreSQL (**Database → Backups → Daily**) with 7–30 day retention.
   - Before major schema migrations, take an on-demand snapshot or encrypted `pg_dump --format=custom --no-owner` backup.
   - **Restore verification drill (monthly):** restore the latest snapshot into a staging Postgres service, run `npx prisma migrate status`, verify row counts (`users`, `notes`, `documents`, `audit_logs`), and confirm `/api/health/ready` returns `200`.
+
+### Course Resource Recommendations & Caching
+
+- **`course_recommendations`**: Stores verified web-search recommendations per course (`category`, `title`, `authors`, `edition`, `year`, `institutionOrBody`, `paperType`, `topicsJson`, `url`, `sourceDomain`, `accessType`, `reason`, `status`, `score`, `hidden`, `lastCheckedAt`). Unique on `(courseId, url)`.
+- **`course_resources`**: Student's saved resources per course (`recommendationId`, `title`, `url`, `sourceDomain`, `accessType`). Paired with `courses.useResourcesInAssistant`.
+- **`recommendation_jobs`**: Background job queue (`auto_create`, `refresh`, `find_more`, `link_recheck`) with `status`, `attempts`, `searchesRun`, `resultsCount`, `errorCode`, `errorMessage`.
+- **`recommendation_cache`**: 30-day cache keyed by normalized `courseName::level` (`payloadJson`, `expiresAt`).
+- **`recommendation_reports`**: Student-submitted bad/dead link reports (`url`, `sourceDomain`, `reason`, `status`).

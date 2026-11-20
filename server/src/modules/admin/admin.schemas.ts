@@ -133,7 +133,12 @@ export const updateAppSettingsSchema = z
     featureUploads: z.boolean().optional(),
     featureDocuments: z.boolean().optional(),
     featureSignups: z.boolean().optional(),
+    featureCourseRecommendations: z.boolean().optional(),
     dailyMessageLimit: z.number().int().min(1).max(10_000).optional(),
+    dailyCourseSearchLimit: z.number().int().min(1).max(100).optional(),
+    monthlySearchCostCapUsd: z.number().min(0.5).max(10_000).optional(),
+    recommendationAllowDomainsJson: z.array(z.string().trim().min(2).max(120)).max(200).optional(),
+    recommendationBlockDomainsJson: z.array(z.string().trim().min(2).max(120)).max(200).optional(),
     maxUploadBytes: z
       .number()
       .int()
@@ -143,6 +148,22 @@ export const updateAppSettingsSchema = z
     dailyUploadQuota: z.number().int().min(1).max(1000).optional(),
     dailyCostAlertUsd: z.number().min(0.1).max(10_000).optional(),
     allowedFileTypesJson: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
+  })
+  .strict();
+
+export const updateRecommendationSettingsSchema = z
+  .object({
+    featureCourseRecommendations: z.boolean().optional(),
+    dailyCourseSearchLimit: z.number().int().min(1).max(100).optional(),
+    monthlySearchCostCapUsd: z.number().min(0.5).max(10_000).optional(),
+    allowDomains: z.array(z.string().trim().min(2).max(120)).max(200).optional(),
+    blockDomains: z.array(z.string().trim().min(2).max(120)).max(200).optional(),
+  })
+  .strict();
+
+export const resolveRecommendationReportSchema = z
+  .object({
+    action: z.enum(['dismiss', 'mark_dead', 'block_domain']),
   })
   .strict();
 

@@ -30,6 +30,8 @@ export interface CourseSummary {
   deckCount: number;
   quizCount: number;
   studySeconds: number;
+  recommendationCount?: number;
+  recommendationJobStatus?: string | null;
 }
 
 export interface CourseDetailResponse {
@@ -144,4 +146,124 @@ export function formatStudyDuration(totalSeconds: number): string {
   const hrs = Math.floor(mins / 60);
   const rem = mins % 60;
   return rem === 0 ? `${hrs}h` : `${hrs}h ${rem}m`;
+}
+
+export type RecommendationCategory = 'book' | 'past_question' | 'video' | 'notes';
+export type RecommendationAccessType = 'free' | 'preview' | 'borrow' | 'paid';
+
+export interface CourseRecommendationItem {
+  id: string;
+  courseId: string;
+  category: RecommendationCategory;
+  title: string;
+  authors: string | null;
+  edition: string | null;
+  year: number | null;
+  institutionOrBody: string | null;
+  paperType: string | null;
+  topics: string[];
+  url: string;
+  sourceDomain: string;
+  accessType: RecommendationAccessType;
+  reason: string;
+  status: 'active' | 'saved' | 'hidden' | 'dead';
+  score: number;
+  lastCheckedAt: string | null;
+  createdAt: string;
+}
+
+export interface CourseResourceItem {
+  id: string;
+  courseId: string;
+  recommendationId: string | null;
+  category: RecommendationCategory;
+  title: string;
+  authors: string | null;
+  year: number | null;
+  url: string;
+  sourceDomain: string;
+  accessType: RecommendationAccessType;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface CourseRecommendationsResponse {
+  recommendations: CourseRecommendationItem[];
+  resources: CourseResourceItem[];
+  useResourcesInAssistant: boolean;
+  latestJob: {
+    id: string;
+    status: 'queued' | 'running' | 'completed' | 'failed';
+    trigger: string;
+    errorCode: string | null;
+    errorMessage: string | null;
+    resultsCount: number;
+    createdAt: string;
+    finishedAt: string | null;
+  } | null;
+  dailySearchesUsed: number;
+  dailySearchLimit: number;
+  featureEnabled: boolean;
+  pastQuestionsGuidance: {
+    hasPastQuestions: boolean;
+    message: string;
+    suggestions: string[];
+  };
+}
+
+export function getCourseRecommendations(courseId: string): Promise<CourseRecommendationsResponse> {
+  return request<CourseRecommendationsResponse>(`/courses/${courseId}/recommendations`);
+}
+
+export function refreshCourseRecommendations(
+  courseId: string,
+  mode: 'refresh' | 'find_more' = 'refresh',
+): Promise<{ id: string; status: string; trigger: string; createdAt: string }> {
+  return request(`/courses/${courseId}/recommendations/refresh`, {
+    method: 'POST',
+    body: { mode },
+  });
+}
+
+export function saveCourseRecommendation(
+  courseId: string,
+  recId: string,
+): Promise<CourseResourceItem> {
+  return request<CourseResourceItem>(`/courses/${courseId}/recommendations/${recId}/save`, {
+    method: 'POST',
+  });
+}
+
+export function removeCourseResource(courseId: string, resourceId: string): Promise<void> {
+  return request<void>(`/courses/${courseId}/resources/${resourceId}`, { method: 'DELETE' });
+}
+
+export function toggleCourseResourcesInAssistant(
+  courseId: string,
+  useResourcesInAssistant: boolean,
+): Promise<{ useResourcesInAssistant: boolean }> {
+  return request<{ useResourcesInAssistant: boolean }>(
+    `/courses/${courseId}/resources/assistant-toggle`,
+    {
+      method: 'PATCH',
+      body: { useResourcesInAssistant },
+    },
+  );
+}
+
+export function hideCourseRecommendation(courseId: string, recId: string): Promise<void> {
+  return request<void>(`/courses/${courseId}/recommendations/${recId}/hide`, {
+    method: 'POST',
+  });
+}
+
+export function reportCourseRecommendation(
+  courseId: string,
+  recId: string,
+  reason: string,
+): Promise<{ id: string; status: string }> {
+  return request(`/courses/${courseId}/recommendations/${recId}/report`, {
+    method: 'POST',
+    body: { reason },
+  });
 }

@@ -379,7 +379,46 @@ export function createAiService({
           );
         });
       const ragContext = formatRagContext(retrievedChunks);
-      const textParts = [ragContext, ...docSections, basePromptText].filter(Boolean);
+      let courseResourcesContext = '';
+      if (convCourseId && prisma.course?.findFirst && prisma.courseResource?.findMany) {
+        const courseCfg = await prisma.course
+          .findFirst({
+            where: { id: convCourseId, userId },
+            select: { name: true, useResourcesInAssistant: true },
+          })
+          .catch(() => null);
+        if (courseCfg?.useResourcesInAssistant) {
+          const savedResources = await prisma.courseResource
+            .findMany({
+              where: { courseId: convCourseId, userId },
+              orderBy: { createdAt: 'desc' },
+              take: 10,
+              select: {
+                category: true,
+                title: true,
+                authors: true,
+                year: true,
+                sourceDomain: true,
+                url: true,
+              },
+            })
+            .catch(() => []);
+          if (savedResources.length > 0) {
+            const lines = savedResources.map(
+              (r) =>
+                `- [${r.category}] ${r.title}${r.authors ? ` by ${r.authors}` : ''}${r.year ? ` (${r.year})` : ''} — ${r.sourceDomain} (${r.url})`,
+            );
+            courseResourcesContext = wrapUntrustedContext(
+              'lecture_notes',
+              `Saved reference resources for ${courseCfg.name}:\n${lines.join('\n')}`,
+              { name: 'saved_course_resources' },
+            );
+          }
+        }
+      }
+      const textParts = [ragContext, courseResourcesContext, ...docSections, basePromptText].filter(
+        Boolean,
+      );
       const combinedText = textParts.join('\n\n');
 
       const imageAttachments = linkedAttachments.filter((a) => a.kind === 'image');

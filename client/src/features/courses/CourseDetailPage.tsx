@@ -21,6 +21,7 @@ import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, useToast } from 
 import { ApiError } from '../../lib/apiClient';
 import { EXAM_TYPE_LABELS, formatExamCountdown, type ExamType } from '../exams/examsApi';
 import { CourseFormModal } from './CourseFormModal';
+import { CourseRecommendedPanel } from './CourseRecommendedPanel';
 import { DeleteCourseModal } from './DeleteCourseModal';
 import {
   deleteCourse,
@@ -30,7 +31,8 @@ import {
   type CourseMutationPayload,
 } from './coursesApi';
 
-type DetailTab = 'notes' | 'documents' | 'tasks' | 'flashcards' | 'quizzes' | 'exams';
+type DetailTab =
+  'notes' | 'documents' | 'tasks' | 'flashcards' | 'quizzes' | 'exams' | 'recommended';
 
 export function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -123,7 +125,8 @@ export function CourseDetailPage() {
     navigate(path('/courses'), { replace: true });
   };
 
-  const tabs: Array<{ id: DetailTab; label: string; count: number }> = [
+  const tabs: Array<{ id: DetailTab; label: string; count?: number }> = [
+    { id: 'recommended', label: 'Recommended' },
     { id: 'notes', label: 'Notes', count: notes.length },
     { id: 'documents', label: 'Documents', count: documents.length },
     { id: 'tasks', label: 'Tasks', count: tasks.length },
@@ -274,13 +277,16 @@ export function CourseDetailPage() {
                 : 'text-muted hover:text-fg'
             }`}
           >
-            {item.label} ({item.count})
+            {item.label}
+            {item.count !== undefined ? ` (${item.count})` : ''}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
       <Card className="p-5 sm:p-6">
+        {tab === 'recommended' ? <CourseRecommendedPanel courseId={course.id} /> : null}
+
         {tab === 'notes' ? (
           notes.length === 0 ? (
             <EmptyState

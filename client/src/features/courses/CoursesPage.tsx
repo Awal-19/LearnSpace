@@ -12,6 +12,7 @@ import {
   Layers,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -61,6 +62,14 @@ export function CoursesPage() {
     queryKey: ['courses', 'all'],
     queryFn: () => listCourses({ archived: 'all' }),
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!Array.isArray(data)) return false;
+      const hasPending = data.some(
+        (c) => c.recommendationJobStatus === 'queued' || c.recommendationJobStatus === 'running',
+      );
+      return hasPending ? 4_000 : false;
+    },
   });
 
   const allCourses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
@@ -306,6 +315,18 @@ export function CoursesPage() {
                           <Badge tone="neutral">{course.creditHours} cr</Badge>
                         ) : null}
                         {course.semester ? <Badge tone="neutral">{course.semester}</Badge> : null}
+                        {course.recommendationJobStatus === 'queued' ||
+                        course.recommendationJobStatus === 'running' ? (
+                          <Badge tone="primary" className="inline-flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 animate-pulse" aria-hidden="true" />
+                            Finding resources...
+                          </Badge>
+                        ) : (course.recommendationCount ?? 0) > 0 ? (
+                          <Badge tone="success" className="inline-flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" aria-hidden="true" />
+                            Resources ({course.recommendationCount})
+                          </Badge>
+                        ) : null}
                       </div>
 
                       <Link

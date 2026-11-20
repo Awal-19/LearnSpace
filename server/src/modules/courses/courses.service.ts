@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import { AppError } from '../../lib/errors';
 import type { StorageService } from '../../lib/storage';
 import type { CreateCourseInput, ListCoursesQuery, UpdateCourseInput } from './courses.schemas';
+import type { RecommendationJobQueue } from './recommendations.jobs';
 
 export interface PublicCourse {
   id: string;
@@ -23,6 +24,8 @@ export interface PublicCourse {
   deckCount: number;
   quizCount: number;
   studySeconds: number;
+  recommendationCount: number;
+  recommendationJobStatus: string | null;
 }
 
 export interface CourseDetailResponse {
@@ -97,7 +100,12 @@ type CourseWithOptionalCounts = Course & {
   };
 };
 
-function toPublicCourse(c: CourseWithOptionalCounts, studySeconds = 0): PublicCourse {
+function toPublicCourse(
+  c: CourseWithOptionalCounts,
+  studySeconds = 0,
+  recommendationCount = 0,
+  recommendationJobStatus: string | null = null,
+): PublicCourse {
   return {
     id: c.id,
     name: c.name,
@@ -117,12 +125,15 @@ function toPublicCourse(c: CourseWithOptionalCounts, studySeconds = 0): PublicCo
     deckCount: c._count?.decks ?? 0,
     quizCount: c._count?.quizzes ?? 0,
     studySeconds,
+    recommendationCount,
+    recommendationJobStatus,
   };
 }
 
 export interface CoursesServiceDeps {
   prisma: PrismaClient;
   storage?: StorageService;
+  recommendationQueue?: RecommendationJobQueue;
   logger: Logger;
 }
 
@@ -137,6 +148,7 @@ export interface CoursesService {
 export function createCoursesService({
   prisma,
   storage,
+  recommendationQueue,
   logger,
 }: CoursesServiceDeps): CoursesService {
   async function assertCourseOwned(userId: string, courseId: string) {
@@ -174,7 +186,7 @@ export function createCoursesService({
         ...(query.semester ? { semester: query.semester } : {}),
       };
 
-      const [courses, secondsMap] = await Promise.all([
+      const [courses, secondsMap, recCounts, latestJobs] = await Promise.all([
         prisma.course.findMany({
           where,
           orderBy: [{ archivedAt: 'asc' }, { name: 'asc' }],
@@ -191,9 +203,46 @@ export function createCoursesService({
           },
         }),
         studySecondsByCourseMap(userId),
+        prisma.courseRecommendation?.groupBy
+          ? prisma.courseRecommendation
+              .groupBy({
+                by: ['courseId'],
+                where: { userId, hidden: false, status: { in: ['active', 'saved'] } },
+                _count: { _all: true },
+              })
+              .catch(() => [])
+          : Promise.resolve([]),
+        prisma.recommendationJob?.findMany
+          ? prisma.recommendationJob
+              .findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                take: 100,
+                select: { courseId: true, status: true },
+              })
+              .catch(() => [])
+          : Promise.resolve([]),
       ]);
 
-      return courses.map((c) => toPublicCourse(c, secondsMap.get(c.id) ?? 0));
+      const recCountMap = new Map<string, number>();
+      for (const row of recCounts) {
+        recCountMap.set(row.courseId, row._count._all);
+      }
+      const jobStatusMap = new Map<string, string>();
+      for (const job of latestJobs) {
+        if (!jobStatusMap.has(job.courseId)) {
+          jobStatusMap.set(job.courseId, job.status);
+        }
+      }
+
+      return courses.map((c) =>
+        toPublicCourse(
+          c,
+          secondsMap.get(c.id) ?? 0,
+          recCountMap.get(c.id) ?? 0,
+          jobStatusMap.get(c.id) ?? null,
+        ),
+      );
     },
 
     async getCourseDetail(userId, courseId) {
@@ -391,7 +440,20 @@ export function createCoursesService({
           courseNotes: input.notes ?? null,
         },
       });
-      return toPublicCourse(created, 0);
+      let jobStatus: string | null = null;
+      if (recommendationQueue) {
+        try {
+          const job = await recommendationQueue.enqueue({
+            courseId: created.id,
+            userId,
+            trigger: 'auto_create',
+          });
+          jobStatus = job.status;
+        } catch (err) {
+          logger.warn({ err, courseId: created.id }, 'Failed to enqueue course recommendation job');
+        }
+      }
+      return toPublicCourse(created, 0, 0, jobStatus);
     },
 
     async updateCourse(userId, courseId, input) {

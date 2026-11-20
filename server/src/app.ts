@@ -26,6 +26,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import type { AuthService } from './modules/auth/auth.service';
 import { coursesRouter } from './modules/courses/courses.routes';
 import type { CoursesService } from './modules/courses/courses.service';
+import type { RecommendationsService } from './modules/courses/recommendations.service';
 import { dashboardRouter } from './modules/dashboard/dashboard.service';
 import { examsRouter } from './modules/exams/exams.routes';
 import type { ExamsService } from './modules/exams/exams.service';
@@ -50,6 +51,7 @@ export interface AppDeps extends HealthDeps {
   auth?: AuthService;
   users?: UsersService;
   courses?: CoursesService;
+  recommendations?: RecommendationsService;
   timetable?: TimetableService;
   exams?: { service: ExamsService; isEmailVerified: (userId: string) => Promise<boolean> };
   ai?: {
@@ -231,7 +233,7 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     app.use(API_PREFIX, usersRouter(deps.users, env));
   }
   if (deps.courses) {
-    app.use(API_PREFIX, coursesRouter(deps.courses, env));
+    app.use(API_PREFIX, coursesRouter(deps.courses, env, deps.recommendations));
   }
   if (deps.timetable) {
     app.use(API_PREFIX, timetableRouter(deps.timetable, env));

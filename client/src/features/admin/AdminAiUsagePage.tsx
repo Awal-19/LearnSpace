@@ -12,7 +12,14 @@ import {
   useToast,
 } from '../../design';
 import { ApiError } from '../../lib/apiClient';
-import { fetchAdminAiUsage, updateAdminAiLimits, type AdminRange } from './adminApi';
+import {
+  fetchAdminAiUsage,
+  fetchAdminRecommendationsOverview,
+  resolveAdminRecommendationReport,
+  updateAdminAiLimits,
+  updateAdminRecommendationSettings,
+  type AdminRange,
+} from './adminApi';
 
 export function AdminAiUsagePage() {
   const toast = useToast();
@@ -23,10 +30,32 @@ export function AdminAiUsagePage() {
   const [dailyCostAlertUsd, setDailyCostAlertUsd] = useState(5);
   const [saving, setSaving] = useState(false);
 
+  const [recEnabled, setRecEnabled] = useState(true);
+  const [recDailyLimit, setRecDailyLimit] = useState(5);
+  const [recMonthlyCap, setRecMonthlyCap] = useState(25);
+  const [recAllowText, setRecAllowText] = useState('');
+  const [recBlockText, setRecBlockText] = useState('');
+  const [savingRec, setSavingRec] = useState(false);
+
   const query = useQuery({
     queryKey: ['admin', 'ai-usage', range],
     queryFn: () => fetchAdminAiUsage(range),
   });
+
+  const recQuery = useQuery({
+    queryKey: ['admin', 'recommendations-overview'],
+    queryFn: () => fetchAdminRecommendationsOverview(),
+  });
+
+  useEffect(() => {
+    if (recQuery.data) {
+      setRecEnabled(recQuery.data.featureCourseRecommendations);
+      setRecDailyLimit(recQuery.data.dailyCourseSearchLimit);
+      setRecMonthlyCap(recQuery.data.monthlySearchCostCapUsd);
+      setRecAllowText(recQuery.data.allowDomains.join(', '));
+      setRecBlockText(recQuery.data.blockDomains.join(', '));
+    }
+  }, [recQuery.data]);
 
   useEffect(() => {
     if (query.data?.limits) {
@@ -281,6 +310,179 @@ export function AdminAiUsagePage() {
           </form>
         </GlassCard>
       </div>
+
+      {/* Course Resource Web Search Controls & Reported Links */}
+      {recQuery.data ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <GlassCard className="p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-display text-base font-semibold">Course Resource Web Search</h2>
+              <span className="text-xs text-muted">
+                ${recQuery.data.monthlyUsage.estimatedCostUsd.toFixed(4)} / $
+                {recQuery.data.monthlySearchCostCapUsd.toFixed(2)} this month ·{' '}
+                {recQuery.data.monthlyUsage.activeCacheEntries} cached
+              </span>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSavingRec(true);
+                try {
+                  const parseList = (raw: string) =>
+                    raw
+                      .split(/[,\n]/)
+                      .map((s) => s.trim().toLowerCase())
+                      .filter(Boolean);
+                  await updateAdminRecommendationSettings({
+                    featureCourseRecommendations: recEnabled,
+                    dailyCourseSearchLimit: recDailyLimit,
+                    monthlySearchCostCapUsd: recMonthlyCap,
+                    allowDomains: parseList(recAllowText),
+                    blockDomains: parseList(recBlockText),
+                  });
+                  toast.show({ kind: 'success', title: 'Course search settings saved' });
+                  await recQuery.refetch();
+                } catch (err) {
+                  toast.show({
+                    kind: 'error',
+                    title: 'Could not save settings',
+                    description: err instanceof ApiError ? err.message : 'Try again.',
+                  });
+                } finally {
+                  setSavingRec(false);
+                }
+              }}
+              className="mt-4 space-y-3 text-sm"
+            >
+              <label className="flex items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  checked={recEnabled}
+                  onChange={(e) => setRecEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-line"
+                />
+                Enable course resource web search
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-muted">Daily searches / student</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={recDailyLimit}
+                    onChange={(e) => setRecDailyLimit(Number(e.target.value))}
+                    className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-muted">Monthly cost cap (USD)</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0.5}
+                    value={recMonthlyCap}
+                    onChange={(e) => setRecMonthlyCap(Number(e.target.value))}
+                    className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg"
+                  />
+                </label>
+              </div>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-muted">
+                  Priority allow domains (comma-separated)
+                </span>
+                <input
+                  type="text"
+                  value={recAllowText}
+                  onChange={(e) => setRecAllowText(e.target.value)}
+                  placeholder="openstax.org, libretexts.org, ocw.mit.edu"
+                  className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-muted">
+                  Extra blocked domains (comma-separated, added to piracy deny list)
+                </span>
+                <input
+                  type="text"
+                  value={recBlockText}
+                  onChange={(e) => setRecBlockText(e.target.value)}
+                  placeholder="spam-site.com"
+                  className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-sm text-fg"
+                />
+              </label>
+              <Button type="submit" size="sm" loading={savingRec}>
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+                Save search controls
+              </Button>
+            </form>
+          </GlassCard>
+
+          <GlassCard className="p-5 sm:p-6">
+            <h2 className="font-display text-base font-semibold">Reported Bad Links</h2>
+            {recQuery.data.reports.length === 0 ? (
+              <p className="mt-4 text-xs text-muted">No reported resource links yet.</p>
+            ) : (
+              <div className="mt-3 max-h-80 space-y-2.5 overflow-y-auto pr-1 text-xs">
+                {recQuery.data.reports.map((rep) => (
+                  <div
+                    key={rep.id}
+                    className="space-y-1.5 rounded-xl border border-line/80 bg-surface2/40 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-fg">{rep.title}</span>
+                      <span className="rounded-md bg-surface px-2 py-0.5 text-[11px] text-muted">
+                        {rep.status}
+                      </span>
+                    </div>
+                    <p className="truncate text-muted">{rep.url}</p>
+                    <p className="text-fg/85">Reason: {rep.reason}</p>
+                    {rep.status === 'open' ? (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={async () => {
+                            await resolveAdminRecommendationReport(rep.id, 'mark_dead');
+                            await recQuery.refetch();
+                            toast.show({ kind: 'success', title: 'Link marked dead' });
+                          }}
+                        >
+                          Mark dead
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={async () => {
+                            await resolveAdminRecommendationReport(rep.id, 'block_domain');
+                            await recQuery.refetch();
+                            toast.show({ kind: 'success', title: 'Domain blocked' });
+                          }}
+                        >
+                          Block {rep.sourceDomain}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            await resolveAdminRecommendationReport(rep.id, 'dismiss');
+                            await recQuery.refetch();
+                          }}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+        </div>
+      ) : null}
     </div>
   );
 }

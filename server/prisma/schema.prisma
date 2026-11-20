@@ -76,6 +76,48 @@ enum UsageFeature {
   flashcards
   quiz
   revision_plan
+  course_resource_search
+}
+
+enum RecommendationCategory {
+  book
+  past_question
+  video
+  notes
+}
+
+enum RecommendationAccessType {
+  free
+  preview
+  borrow
+  paid
+}
+
+enum RecommendationStatus {
+  active
+  saved
+  hidden
+  dead
+}
+
+enum RecommendationJobTrigger {
+  auto_create
+  refresh
+  find_more
+  link_recheck
+}
+
+enum RecommendationJobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum RecommendationReportStatus {
+  open
+  resolved
+  dismissed
 }
 
 enum UsageStatus {
@@ -326,6 +368,10 @@ model User {
   activityEvents           ActivityEvent[]
   loginHistory             LoginHistory[]
   avatar                   UserAvatar?
+  courseRecommendations    CourseRecommendation[]
+  courseResources          CourseResource[]
+  recommendationJobs       RecommendationJob[]
+  recommendationReports    RecommendationReport[]
 
   @@index([role])
   @@index([status])
@@ -506,24 +552,28 @@ model Course {
   level       String?   @db.VarChar(30)
   color       String?   @db.VarChar(7)
   courseNotes String?   @db.VarChar(4000)
-  archivedAt  DateTime? @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+  archivedAt              DateTime? @db.Timestamptz(3)
+  useResourcesInAssistant Boolean   @default(false)
+  createdAt               DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  notes            Note[]
-  tasks            Task[]
-  timetableEntries TimetableEntry[]
-  exams            Exam[]
-  revisionSessions RevisionSession[]
-  documents        Document[]
-  conversations  Conversation[]
-  studySessions  StudySession[]
-  decks          Deck[]
-  reviewLogs     ReviewLog[]
-  gradeRecords   GradeRecord[]
-  quizzes        Quiz[]
-  studyDocuments StudyDocument[]
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes               Note[]
+  tasks               Task[]
+  timetableEntries    TimetableEntry[]
+  exams               Exam[]
+  revisionSessions    RevisionSession[]
+  documents           Document[]
+  conversations       Conversation[]
+  studySessions       StudySession[]
+  decks               Deck[]
+  reviewLogs          ReviewLog[]
+  gradeRecords        GradeRecord[]
+  quizzes             Quiz[]
+  studyDocuments      StudyDocument[]
+  recommendations     CourseRecommendation[]
+  resources           CourseResource[]
+  recommendationJobs  RecommendationJob[]
 
   @@index([userId])
   @@index([userId, archivedAt])
@@ -1075,14 +1125,19 @@ model AppSettings {
   featureChat          Boolean  @default(true)
   featureUploads       Boolean  @default(true)
   featureDocuments         Boolean  @default(true)
-  featureSignups           Boolean  @default(true)
-  featureGoogleLogin       Boolean  @default(true)
-  maintenanceAllowlistJson Json     @default("[]")
-  dailyMessageLimit        Int      @default(100)
-  maxUploadBytes           Int      @default(20971520)
-  dailyUploadQuota         Int      @default(50)
-  dailyCostAlertUsd        Float    @default(5.0)
-  monthlyCostCapUsd        Float    @default(100.0)
+  featureSignups                  Boolean  @default(true)
+  featureGoogleLogin              Boolean  @default(true)
+  featureCourseRecommendations    Boolean  @default(true)
+  maintenanceAllowlistJson        Json     @default("[]")
+  dailyMessageLimit               Int      @default(100)
+  dailyCourseSearchLimit          Int      @default(5)
+  maxUploadBytes                  Int      @default(20971520)
+  dailyUploadQuota                Int      @default(50)
+  dailyCostAlertUsd               Float    @default(5.0)
+  monthlyCostCapUsd               Float    @default(100.0)
+  monthlySearchCostCapUsd         Float    @default(25.0)
+  recommendationAllowDomainsJson  Json     @default("[]")
+  recommendationBlockDomainsJson  Json     @default("[]")
   sessionLifetimeMinutes   Int      @default(10080)
   minPasswordLength        Int      @default(8)
   requireEmailVerification Boolean  @default(true)
@@ -1374,4 +1429,117 @@ model EmailDeliveryLog {
   @@index([recipientEmail, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@map("email_delivery_logs")
+}
+
+model CourseRecommendation {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId          String                   @db.Uuid
+  userId            String                   @db.Uuid
+  cacheKey          String?                  @db.VarChar(200)
+  category          RecommendationCategory
+  title             String                   @db.VarChar(240)
+  authors           String?                  @db.VarChar(240)
+  edition           String?                  @db.VarChar(80)
+  year              Int?
+  institutionOrBody String?                  @db.VarChar(180)
+  paperType         String?                  @db.VarChar(60)
+  topicsJson        Json                     @default("[]")
+  url               String                   @db.VarChar(1200)
+  sourceDomain      String                   @db.VarChar(255)
+  accessType        RecommendationAccessType @default(free)
+  reason            String                   @db.VarChar(600)
+  status            RecommendationStatus     @default(active)
+  score             Float                    @default(0)
+  hidden            Boolean                  @default(false)
+  lastCheckedAt     DateTime?                @db.Timestamptz(3)
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(3)
+
+  course    Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resources CourseResource[]
+  reports   RecommendationReport[]
+
+  @@unique([courseId, url])
+  @@index([courseId, category, hidden, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, lastCheckedAt])
+  @@map("course_recommendations")
+}
+
+model CourseResource {
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId         String                   @db.Uuid
+  userId           String                   @db.Uuid
+  recommendationId String?                  @db.Uuid
+  category         RecommendationCategory
+  title            String                   @db.VarChar(240)
+  authors          String?                  @db.VarChar(240)
+  year             Int?
+  url              String                   @db.VarChar(1200)
+  sourceDomain     String                   @db.VarChar(255)
+  accessType       RecommendationAccessType @default(free)
+  reason           String?                  @db.VarChar(600)
+  createdAt        DateTime                 @default(now()) @db.Timestamptz(3)
+
+  course         Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendation CourseRecommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+
+  @@unique([courseId, url])
+  @@index([courseId, userId])
+  @@map("course_resources")
+}
+
+model RecommendationJob {
+  id           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId     String                   @db.Uuid
+  userId       String                   @db.Uuid
+  trigger      RecommendationJobTrigger @default(auto_create)
+  status       RecommendationJobStatus  @default(queued)
+  attempts     Int                      @default(0)
+  searchesRun  Int                      @default(0)
+  resultsCount Int                      @default(0)
+  errorCode    String?                  @db.VarChar(80)
+  errorMessage String?                  @db.VarChar(500)
+  startedAt    DateTime?                @db.Timestamptz(3)
+  finishedAt   DateTime?                @db.Timestamptz(3)
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(3)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([courseId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("recommendation_jobs")
+}
+
+model RecommendationCache {
+  cacheKey    String   @id @db.VarChar(200)
+  payloadJson Json
+  expiresAt   DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("recommendation_cache")
+}
+
+model RecommendationReport {
+  id               String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recommendationId String                     @db.Uuid
+  userId           String                     @db.Uuid
+  url              String                     @db.VarChar(1200)
+  sourceDomain     String                     @db.VarChar(255)
+  reason           String                     @db.VarChar(500)
+  status           RecommendationReportStatus @default(open)
+  createdAt        DateTime                   @default(now()) @db.Timestamptz(3)
+
+  recommendation CourseRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([recommendationId])
+  @@map("recommendation_reports")
 }

@@ -784,3 +784,56 @@ export function acceptAdminInvite(body: { token: string; name?: string; password
     auth: false,
   });
 }
+
+export interface AdminRecommendationsOverview {
+  featureCourseRecommendations: boolean;
+  dailyCourseSearchLimit: number;
+  monthlySearchCostCapUsd: number;
+  allowDomains: string[];
+  blockDomains: string[];
+  hardcodedDenyDomains: string[];
+  monthlyUsage: {
+    searchesThisMonth: number;
+    jobsThisMonth: number;
+    tokensIn: number;
+    tokensOut: number;
+    estimatedCostUsd: number;
+    activeCacheEntries: number;
+  };
+  reports: Array<{
+    id: string;
+    recommendationId: string;
+    title: string;
+    recStatus: string;
+    url: string;
+    sourceDomain: string;
+    reason: string;
+    status: string;
+    reporterEmail: string | null;
+    createdAt: string;
+  }>;
+}
+
+export function fetchAdminRecommendationsOverview() {
+  return adminRequest<AdminRecommendationsOverview>('/recommendations/overview');
+}
+
+export function updateAdminRecommendationSettings(body: {
+  featureCourseRecommendations?: boolean;
+  dailyCourseSearchLimit?: number;
+  monthlySearchCostCapUsd?: number;
+  allowDomains?: string[];
+  blockDomains?: string[];
+}) {
+  return adminRequest('/recommendations/settings', { method: 'PATCH', body });
+}
+
+export function resolveAdminRecommendationReport(
+  id: string,
+  action: 'dismiss' | 'mark_dead' | 'block_domain',
+) {
+  return adminRequest(`/recommendations/reports/${id}/resolve`, {
+    method: 'POST',
+    body: { action },
+  });
+}

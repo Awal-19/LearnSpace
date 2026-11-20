@@ -398,3 +398,21 @@ Multipart `form-data` (`audio` file ≤ 10 MB, max 120 seconds, plus optional `l
 
 Res `200`: `{ "text": "...", "language": "en-GH", "duration": 4 }`.  
 Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `429 RATE_LIMITED`, `503 AI_UNAVAILABLE`.
+
+## 14. Course Resource Web Search (Books & Past Questions)
+
+### Student Endpoints (`/api/v1/courses/:id/*`) 🔒✅
+
+- `GET /courses/:id/recommendations` — Returns `recommendations` (`book`, `past_question`, `video`, `notes`), saved `resources`, `useResourcesInAssistant`, `latestJob`, `dailySearchesUsed`, `dailySearchLimit`, `featureEnabled`, and `pastQuestionsGuidance`.
+- `POST /courses/:id/recommendations/refresh` — Body `{ mode?: "refresh" | "find_more", force?: boolean }`. Queues a background search job (`202 Accepted`), enforcing per-user daily limits and global monthly cost caps.
+- `POST /courses/:id/recommendations/:recId/save` — Saves a recommended item into `course_resources` (`201 Created`).
+- `DELETE /courses/:id/resources/:resourceId` — Removes a saved course resource (`204`).
+- `PATCH /courses/:id/resources/assistant-toggle` — Body `{ useResourcesInAssistant: boolean }`. Enables/disables using saved course resources in course-scoped AI Assistant chats.
+- `POST /courses/:id/recommendations/:recId/hide` — Marks a recommendation as not relevant (`204`).
+- `POST /courses/:id/recommendations/:recId/report` — Body `{ reason: string }`. Submits a bad/dead link report (`201`).
+
+### Admin Endpoints (`/api/admin/recommendations/*`)
+
+- `GET /api/admin/recommendations/overview` — Monthly search usage/costs, active cache count, allow/block domain lists, and reported links.
+- `PATCH /api/admin/recommendations/settings` (`super_admin` + step-up) — Updates `featureCourseRecommendations`, `dailyCourseSearchLimit`, `monthlySearchCostCapUsd`, `allowDomains`, and `blockDomains`.
+- `POST /api/admin/recommendations/reports/:id/resolve` — Body `{ action: "dismiss" | "mark_dead" | "block_domain" }`.
