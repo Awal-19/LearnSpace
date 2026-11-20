@@ -30,7 +30,9 @@ import {
   replyFeedbackSchema,
   resolveFlagSchema,
   resolveRecommendationReportSchema,
+  resolveCommunityReportSchema,
   rollbackSettingsSchema,
+  setCommunityRoleSchema,
   stepUpVerifySchema,
   studentFeedbackSchema,
   studentFlagMessageSchema,
@@ -38,6 +40,7 @@ import {
   updateAiLimitsSchema,
   updateAnnouncementSchema,
   updateAppSettingsSchema,
+  updateCommunitySettingsSchema,
   updateFeedbackSchema,
   updatePlatformSettingsSchema,
   updateRecommendationSettingsSchema,
@@ -928,6 +931,261 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
         metadata: { action, domain: report.sourceDomain },
       });
       res.json({ report: updated });
+    }),
+  );
+
+  router.get(
+    '/community/overview',
+    requirePermission('can_moderate_content'),
+    asyncHandler(async (_req, res) => {
+      const [
+        settings,
+        totalPosts,
+        totalReplies,
+        activeGroups,
+        openReports,
+        reports,
+        flaggedPosts,
+        communities,
+      ] = await Promise.all([
+        prisma.appSettings.findUnique({ where: { id: 'global' } }).catch(() => null),
+        prisma.communityPost.count({ where: { hidden: false } }),
+        prisma.communityReply.count({ where: { hidden: false } }),
+        prisma.studyGroup.count(),
+        prisma.communityReport.count({ where: { status: 'open' } }),
+        prisma.communityReport.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            reporter: { select: { id: true, name: true, email: true } },
+            targetUser: { select: { id: true, name: true, email: true, status: true } },
+          },
+        }),
+        prisma.communityPost.findMany({
+          where: { flaggedByFilter: true, hidden: false },
+          orderBy: { createdAt: 'desc' },
+          take: 25,
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+            community: { select: { id: true, displayName: true } },
+          },
+        }),
+        prisma.community.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: { id: true, slug: true, displayName: true, universityName: true, isPaused: true },
+        }),
+      ]);
+
+      res.json({
+        stats: {
+          totalPosts,
+          totalReplies,
+          activeGroups,
+          openReports,
+        },
+        settings: {
+          featureCommunity: settings?.featureCommunity ?? true,
+          bannedWords: Array.isArray(settings?.communityBannedWordsJson)
+            ? settings.communityBannedWordsJson
+            : [],
+          examNoticeEnabled: settings?.communityExamNoticeEnabled ?? false,
+          examNoticeMessage:
+            settings?.communityExamNoticeMessage ??
+            'Exam period notice: remember academic integrity rules—no cheating or sharing live exam answers.',
+          pausedCourseSlugs: Array.isArray(settings?.communityPausedCourseSlugsJson)
+            ? settings.communityPausedCourseSlugsJson
+            : [],
+        },
+        reports,
+        flaggedPosts,
+        communities,
+      });
+    }),
+  );
+
+  router.post(
+    '/community/reports/:id/resolve',
+    requirePermission('can_moderate_content'),
+    validate({ body: resolveCommunityReportSchema }),
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Report not found');
+      const { action, reviewNote, muteHours } = req.body as z.infer<
+        typeof resolveCommunityReportSchema
+      >;
+      const report = await prisma.communityReport.findUnique({ where: { id: id.data } });
+      if (!report) throw new AppError('NOT_FOUND', 'Report not found');
+
+      if (action === 'hide' || action === 'delete') {
+        if (report.targetType === 'post') {
+          await prisma.communityPost.updateMany({
+            where: { id: report.targetId },
+            data: { hidden: true },
+          });
+        } else if (report.targetType === 'reply') {
+          await prisma.communityReply.updateMany({
+            where: { id: report.targetId },
+            data: { hidden: true },
+          });
+        } else if (report.targetType === 'message') {
+          await prisma.studyGroupMessage.updateMany({
+            where: { id: report.targetId },
+            data: { hidden: true },
+          });
+        } else if (report.targetType === 'resource') {
+          await prisma.sharedResource.updateMany({
+            where: { id: report.targetId },
+            data: { hidden: true },
+          });
+        }
+      }
+
+      if (action === 'mute' && report.targetUserId) {
+        const until = new Date(Date.now() + muteHours * 60 * 60 * 1000);
+        await prisma.userCommunityProfile.upsert({
+          where: { userId: report.targetUserId },
+          create: { userId: report.targetUserId, mutedUntil: until },
+          update: { mutedUntil: until },
+        });
+      } else if (action === 'suspend' && report.targetUserId) {
+        await prisma.user.update({
+          where: { id: report.targetUserId },
+          data: {
+            status: 'suspended',
+            suspendedAt: new Date(),
+            suspendedReason: reviewNote ?? 'Suspended via community moderation',
+          },
+        });
+      }
+
+      const updated = await prisma.communityReport.update({
+        where: { id: report.id },
+        data: {
+          status: action === 'dismiss' ? 'dismissed' : 'resolved',
+          reviewNote: reviewNote ?? null,
+          reviewedById: req.user!.id,
+        },
+      });
+
+      await Promise.all([
+        prisma.moderationAction.create({
+          data: {
+            actorId: req.user!.id,
+            targetUserId: report.targetUserId,
+            targetType: report.targetType,
+            targetId: report.targetId,
+            action,
+            reason: reviewNote ?? report.reason,
+          },
+        }),
+        recordAuditLog(prisma, {
+          actorId: req.user!.id,
+          action: `community.report_${action}`,
+          targetType: 'community_report',
+          targetId: report.id,
+          ip: req.ip,
+          metadata: { targetType: report.targetType, targetId: report.targetId },
+        }),
+      ]);
+
+      res.json({ report: updated });
+    }),
+  );
+
+  router.patch(
+    '/community/settings',
+    superAdminOnly,
+    requireStepUp,
+    validate({ body: updateCommunitySettingsSchema }),
+    asyncHandler(async (req, res) => {
+      const body = req.body as z.infer<typeof updateCommunitySettingsSchema>;
+      const updated = await prisma.appSettings.upsert({
+        where: { id: 'global' },
+        create: {
+          id: 'global',
+          updatedById: req.user!.id,
+          ...(body.featureCommunity !== undefined
+            ? { featureCommunity: body.featureCommunity }
+            : {}),
+          ...(body.bannedWords !== undefined ? { communityBannedWordsJson: body.bannedWords } : {}),
+          ...(body.examNoticeEnabled !== undefined
+            ? { communityExamNoticeEnabled: body.examNoticeEnabled }
+            : {}),
+          ...(body.examNoticeMessage !== undefined
+            ? { communityExamNoticeMessage: body.examNoticeMessage }
+            : {}),
+          ...(body.pausedCourseSlugs !== undefined
+            ? { communityPausedCourseSlugsJson: body.pausedCourseSlugs }
+            : {}),
+        },
+        update: {
+          updatedById: req.user!.id,
+          ...(body.featureCommunity !== undefined
+            ? { featureCommunity: body.featureCommunity }
+            : {}),
+          ...(body.bannedWords !== undefined ? { communityBannedWordsJson: body.bannedWords } : {}),
+          ...(body.examNoticeEnabled !== undefined
+            ? { communityExamNoticeEnabled: body.examNoticeEnabled }
+            : {}),
+          ...(body.examNoticeMessage !== undefined
+            ? { communityExamNoticeMessage: body.examNoticeMessage }
+            : {}),
+          ...(body.pausedCourseSlugs !== undefined
+            ? { communityPausedCourseSlugsJson: body.pausedCourseSlugs }
+            : {}),
+        },
+      });
+      await recordAuditLog(prisma, {
+        actorId: req.user!.id,
+        action: 'community.settings_updated',
+        targetType: 'app_settings',
+        targetId: 'global',
+        ip: req.ip,
+        metadata: body,
+      });
+      res.json({
+        featureCommunity: updated.featureCommunity,
+        bannedWords: updated.communityBannedWordsJson,
+        examNoticeEnabled: updated.communityExamNoticeEnabled,
+        examNoticeMessage: updated.communityExamNoticeMessage,
+        pausedCourseSlugs: updated.communityPausedCourseSlugsJson,
+      });
+    }),
+  );
+
+  router.post(
+    '/community/moderators',
+    requirePermission('can_manage_users'),
+    validate({ body: setCommunityRoleSchema }),
+    asyncHandler(async (req, res) => {
+      const { communityId, userId, role } = req.body as z.infer<typeof setCommunityRoleSchema>;
+      await prisma.communityMember.upsert({
+        where: { communityId_userId: { communityId, userId } },
+        create: { communityId, userId, role },
+        update: { role },
+      });
+      await Promise.all([
+        prisma.moderationAction.create({
+          data: {
+            communityId,
+            actorId: req.user!.id,
+            targetUserId: userId,
+            targetType: 'user',
+            targetId: userId,
+            action: `set_role_${role}`,
+          },
+        }),
+        recordAuditLog(prisma, {
+          actorId: req.user!.id,
+          action: 'community.moderator_role_updated',
+          targetType: 'community_member',
+          targetId: userId,
+          ip: req.ip,
+          metadata: { communityId, role },
+        }),
+      ]);
+      res.json({ ok: true, role });
     }),
   );
 

@@ -75,3 +75,8 @@ This guide explains how to access and use each page of the LearnSpace Admin Cons
 - **Resend verify:** On a user's detail page, click **Resend verify** to send a fresh 6-digit OTP (returns masked email; never reveals the code).
 - **Mark verified:** For students who cannot receive email, click **Mark verified**, enter a reason, and confirm step-up authentication (recorded in Audit Logs).
 - **Delivery Visibility:** The user detail page displays **Last Email Delivery** (`sent`/`failed` + provider), and **System Health** surfaces recent failed email provider errors.
+
+## Community Moderation & Exam Controls
+
+- **Moderation Queue:** In **Admin -> Content & Moderation -> Community Moderation**, review reported posts, replies, messages, resources, and users; apply `dismiss`, `hide`, `mute`, or `suspend` (all logged to `moderation_actions` and `audit_logs`).
+- **Safety & Exam Controls:** Toggle `featureCommunity`, manage `bannedWords`, enable the **Exam-Period Integrity Notice**, or pause question posting for specific course slugs.

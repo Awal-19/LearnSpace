@@ -111,6 +111,17 @@ interface DashboardResponse {
   stats: { streakDays: number; hoursLast7Days: number };
   recentConversations: Array<{ id: string; title: string; updatedAt: string }>;
   unreadNotifications: number;
+  communitySummary?: {
+    communitiesCount: number;
+    recentPostsCount: number;
+    unansweredQuestions: Array<{
+      id: string;
+      title: string;
+      communityId: string;
+      communityName: string;
+    }>;
+    myGroups: Array<{ id: string; name: string }>;
+  };
 }
 
 export function DashboardPage() {
@@ -841,6 +852,64 @@ export function DashboardPage() {
           )}
         </Card>
       </div>
+
+      {/* Community Activity Card */}
+      {data.communitySummary ? (
+        <GlassCard className="p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-fg">Course Community</h2>
+              <p className="text-xs text-muted">
+                {data.communitySummary.recentPostsCount} recent post(s) across{' '}
+                {data.communitySummary.communitiesCount} course community(ies)
+              </p>
+            </div>
+            <Link to={path('/community')}>
+              <Button size="sm" variant="secondary">
+                Open Community
+              </Button>
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted">Unanswered questions to help with</p>
+              {data.communitySummary.unansweredQuestions.length === 0 ? (
+                <p className="text-xs text-muted">All caught up in your courses!</p>
+              ) : (
+                <div className="space-y-1">
+                  {data.communitySummary.unansweredQuestions.map((q) => (
+                    <Link
+                      key={q.id}
+                      to={path(`/community/courses/${q.communityId}?post=${q.id}`)}
+                      className="block truncate rounded-lg bg-surface2/50 px-2.5 py-1.5 text-xs text-fg hover:text-primary-600"
+                    >
+                      {q.title} · <span className="text-muted">{q.communityName}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted">Your study groups</p>
+              {data.communitySummary.myGroups.length === 0 ? (
+                <p className="text-xs text-muted">No study groups joined yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {data.communitySummary.myGroups.map((g) => (
+                    <Link
+                      key={g.id}
+                      to={path(`/community/groups/${g.id}`)}
+                      className="rounded-lg border border-line bg-surface2/60 px-2.5 py-1 text-xs font-medium text-fg hover:border-primary-300"
+                    >
+                      {g.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </GlassCard>
+      ) : null}
 
       {/* Quick Launch Learning Hub */}
       <div className="space-y-3">

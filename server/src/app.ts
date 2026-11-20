@@ -27,6 +27,10 @@ import type { AuthService } from './modules/auth/auth.service';
 import { coursesRouter } from './modules/courses/courses.routes';
 import type { CoursesService } from './modules/courses/courses.service';
 import type { RecommendationsService } from './modules/courses/recommendations.service';
+import { communityRouter } from './modules/community/community.routes';
+import type { createCommunityService } from './modules/community/community.service';
+import type { createCommunityGroupsService } from './modules/community/community.groups.service';
+import type { CommunityRealtimeHub } from './modules/community/community.realtime';
 import { dashboardRouter } from './modules/dashboard/dashboard.service';
 import { examsRouter } from './modules/exams/exams.routes';
 import type { ExamsService } from './modules/exams/exams.service';
@@ -52,6 +56,12 @@ export interface AppDeps extends HealthDeps {
   users?: UsersService;
   courses?: CoursesService;
   recommendations?: RecommendationsService;
+  community?: {
+    core: ReturnType<typeof createCommunityService>;
+    groups: ReturnType<typeof createCommunityGroupsService>;
+    realtime: CommunityRealtimeHub;
+    isEmailVerified: (userId: string) => Promise<boolean>;
+  };
   timetable?: TimetableService;
   exams?: { service: ExamsService; isEmailVerified: (userId: string) => Promise<boolean> };
   ai?: {
@@ -234,6 +244,18 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   }
   if (deps.courses) {
     app.use(API_PREFIX, coursesRouter(deps.courses, env, deps.recommendations));
+  }
+  if (deps.community) {
+    app.use(
+      API_PREFIX,
+      communityRouter({
+        core: deps.community.core,
+        groups: deps.community.groups,
+        realtime: deps.community.realtime,
+        env,
+        isEmailVerified: deps.community.isEmailVerified,
+      }),
+    );
   }
   if (deps.timetable) {
     app.use(API_PREFIX, timetableRouter(deps.timetable, env));

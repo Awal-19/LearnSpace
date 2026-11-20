@@ -242,3 +242,12 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
 - **`recommendation_jobs`**: Background job queue (`auto_create`, `refresh`, `find_more`, `link_recheck`) with `status`, `attempts`, `searchesRun`, `resultsCount`, `errorCode`, `errorMessage`.
 - **`recommendation_cache`**: 30-day cache keyed by normalized `courseName::level` (`payloadJson`, `expiresAt`).
 - **`recommendation_reports`**: Student-submitted bad/dead link reports (`url`, `sourceDomain`, `reason`, `status`).
+
+### Collaboration & Community Tables
+
+- **`communities` & `community_members`**: Course-matched communities (`slug = normalizedName::universityKey` or `normalizedName`) and per-user roles (`member`, `moderator`, `course_rep`) + `mutedUntil`.
+- **`user_community_profiles`**: Helper reputation (`helpedCount`, `acceptedCount`), privacy toggles (`hideStats`, `showInClassmates`), `rulesAcceptedAt`, and `mutedUntil`.
+- **`community_posts`, `community_replies`, `community_votes`, `community_attachments`**: Q&A threads with status (`unanswered | answered | resolved`), `isAnonymous`, `isPinned`, `acceptedReplyId`, unique votes per `(userId, targetType, targetId)`, and secure attachments.
+- **`study_groups`, `study_group_members`, `study_group_messages`, `study_group_tasks`**: Course-scoped public or invite-only study groups, SSE-backed chat with `clientMessageId` deduplication, shared tasks, and Focus timer state.
+- **`shared_resources`**: Read-only note copies, document summaries, and safe links shared with a course community or group.
+- **`community_reports`, `user_blocks`, `moderation_actions`, `community_notification_preferences`**: Moderation queue, user blocking, audit trail, and granular in-app/email notification preferences.

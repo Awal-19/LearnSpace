@@ -258,3 +258,8 @@ Stateless API behind a load balancer; scheduler needs leader election or a singl
 
 - **Backend:** `server/src/modules/admin/` (`admin.schemas.ts`, `admin.logging.ts`, `admin.service.ts`, `admin.routes.ts`) mounted at `/api/admin` (plus student engagement routes on `/api/v1`). `admin.logging.ts` records `usage_events`, `activity_events`, `login_history`, `error_logs`, and `audit_logs`.
 - **Frontend:** `client/src/features/admin/` with a dedicated `AdminLayout` (collapsible sidebar, top search, theme toggle, profile menu) guarded by `RequireAdmin`, rendering real-time charts (`recharts`) and tables via TanStack Query.
+
+## Collaboration & Real-Time Architecture
+
+- **Course Matching:** Courses map to `Community` records via normalized `courseName` + optional normalized `university` (`buildCommunitySlug`), allowing students to switch between university-scoped and global communities.
+- **Real-Time Study Groups (SSE + POST):** Study group chat uses Server-Sent Events (`GET /api/v1/community/groups/:groupId/stream`) managed by `CommunityRealtimeHub` with 25-second heartbeats, combined with idempotent `POST` (`clientMessageId`) for reliable mobile reconnects behind Railway's HTTP proxy.

@@ -167,6 +167,32 @@ export const resolveRecommendationReportSchema = z
   })
   .strict();
 
+export const resolveCommunityReportSchema = z
+  .object({
+    action: z.enum(['dismiss', 'hide', 'delete', 'warn', 'mute', 'suspend']),
+    reviewNote: z.string().trim().max(500).optional(),
+    muteHours: z.coerce.number().int().min(1).max(720).default(24),
+  })
+  .strict();
+
+export const updateCommunitySettingsSchema = z
+  .object({
+    featureCommunity: z.boolean().optional(),
+    bannedWords: z.array(z.string().trim().min(2).max(60)).max(200).optional(),
+    examNoticeEnabled: z.boolean().optional(),
+    examNoticeMessage: z.string().trim().min(5).max(500).optional(),
+    pausedCourseSlugs: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+  })
+  .strict();
+
+export const setCommunityRoleSchema = z
+  .object({
+    communityId: z.string().uuid(),
+    userId: z.string().uuid(),
+    role: z.enum(['member', 'moderator', 'course_rep']),
+  })
+  .strict();
+
 export const createExportSchema = z
   .object({
     kind: z.enum(['users', 'usage', 'ai_costs', 'feedback', 'overview_pdf']),

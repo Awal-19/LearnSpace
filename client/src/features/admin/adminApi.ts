@@ -837,3 +837,69 @@ export function resolveAdminRecommendationReport(
     body: { action },
   });
 }
+
+export interface AdminCommunityOverview {
+  stats: {
+    totalPosts: number;
+    totalReplies: number;
+    activeGroups: number;
+    openReports: number;
+  };
+  settings: {
+    featureCommunity: boolean;
+    bannedWords: string[];
+    examNoticeEnabled: boolean;
+    examNoticeMessage: string;
+    pausedCourseSlugs: string[];
+  };
+  reports: Array<{
+    id: string;
+    targetType: string;
+    targetId: string;
+    reason: string;
+    status: string;
+    createdAt: string;
+    reporter: { id: string; name: string; email: string } | null;
+    targetUser: { id: string; name: string; email: string; status: string } | null;
+  }>;
+  flaggedPosts: Array<{
+    id: string;
+    title: string;
+    flagReason: string | null;
+    createdAt: string;
+    community: { id: string; displayName: string };
+    author: { id: string; name: string; email: string } | null;
+  }>;
+  communities: Array<{
+    id: string;
+    slug: string;
+    displayName: string;
+    universityName: string | null;
+    isPaused: boolean;
+  }>;
+}
+
+export function fetchAdminCommunityOverview() {
+  return adminRequest<AdminCommunityOverview>('/community/overview');
+}
+
+export function resolveAdminCommunityReport(
+  id: string,
+  body: {
+    action: 'dismiss' | 'hide' | 'delete' | 'warn' | 'mute' | 'suspend';
+    reviewNote?: string;
+    muteHours?: number;
+  },
+) {
+  return adminRequest(`/community/reports/${id}/resolve`, { method: 'POST', body });
+}
+
+export function updateAdminCommunitySettings(body: {
+  featureCommunity?: boolean;
+  bannedWords?: string[];
+  examNoticeEnabled?: boolean;
+  examNoticeMessage?: string;
+  pausedCourseSlugs?: string[];
+}) {
+  return adminRequest('/community/settings', { method: 'PATCH', body });
+}

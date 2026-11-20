@@ -13,6 +13,7 @@ import {
   Settings,
   Timer,
   User,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ export interface NavItem {
 export const MAIN_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/courses', label: 'Courses', icon: BookMarked },
+  { to: '/community', label: 'Community', icon: Users },
   { to: '/chat', label: 'Assistant', icon: MessageSquare },
   { to: '/notes', label: 'Notes', icon: BookOpen },
   { to: '/documents', label: 'Documents', icon: FileUp },

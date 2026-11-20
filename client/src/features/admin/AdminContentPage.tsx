@@ -1,22 +1,32 @@
 import { useQuery } from '@tanstack/react-query';
-import { Eye, FileSearch, Flag, HardDrive, MessageSquare, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Eye, FileSearch, Flag, HardDrive, MessageSquare, Trash2, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Badge, Button, DataTable, EmptyState, GlassCard, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { formatBytes } from '../chat/imagePrep';
 import {
   deleteAdminUpload,
+  fetchAdminCommunityOverview,
   fetchAdminConversations,
   fetchAdminFlagged,
   fetchAdminUploads,
   inspectAdminConversation,
   inspectAdminUpload,
+  resolveAdminCommunityReport,
   resolveAdminFlag,
+  updateAdminCommunitySettings,
 } from './adminApi';
 
 export function AdminContentPage() {
   const toast = useToast();
-  const [tab, setTab] = useState<'conversations' | 'flagged' | 'uploads'>('conversations');
+  const [tab, setTab] = useState<'conversations' | 'flagged' | 'uploads' | 'community'>(
+    'conversations',
+  );
+  const [commEnabled, setCommEnabled] = useState(true);
+  const [bannedWordsText, setBannedWordsText] = useState('');
+  const [examNoticeEnabled, setExamNoticeEnabled] = useState(false);
+  const [examNoticeMsg, setExamNoticeMsg] = useState('');
+  const [pausedSlugsText, setPausedSlugsText] = useState('');
   const [q, setQ] = useState('');
   const [inspectedConv, setInspectedConv] = useState<{
     title: string;
@@ -45,6 +55,22 @@ export function AdminContentPage() {
     queryFn: () => fetchAdminUploads(),
     enabled: tab === 'uploads',
   });
+
+  const communityQuery = useQuery({
+    queryKey: ['admin', 'community'],
+    queryFn: () => fetchAdminCommunityOverview(),
+    enabled: tab === 'community',
+  });
+
+  useEffect(() => {
+    if (communityQuery.data?.settings) {
+      setCommEnabled(communityQuery.data.settings.featureCommunity);
+      setBannedWordsText(communityQuery.data.settings.bannedWords.join(', '));
+      setExamNoticeEnabled(communityQuery.data.settings.examNoticeEnabled);
+      setExamNoticeMsg(communityQuery.data.settings.examNoticeMessage);
+      setPausedSlugsText(communityQuery.data.settings.pausedCourseSlugs.join(', '));
+    }
+  }, [communityQuery.data]);
 
   const handleInspectConversation = async (id: string) => {
     const reason = window.prompt(
@@ -151,6 +177,7 @@ export function AdminContentPage() {
               { id: 'conversations', label: 'Conversations', icon: MessageSquare },
               { id: 'flagged', label: 'Flagged Queue', icon: Flag },
               { id: 'uploads', label: 'Uploads & Storage', icon: HardDrive },
+              { id: 'community', label: 'Community Moderation', icon: Users },
             ] as const
           ).map((item) => {
             const Icon = item.icon;
@@ -413,6 +440,173 @@ export function AdminContentPage() {
             ) : null}
           </div>
         )
+      ) : null}
+
+      {tab === 'community' ? (
+        communityQuery.isLoading ? (
+          <Skeleton className="h-56" />
+        ) : communityQuery.data ? (
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <GlassCard className="p-4">
+                <p className="text-xs text-muted">Total Posts</p>
+                <p className="font-display text-xl font-bold text-fg">
+                  {communityQuery.data.stats.totalPosts}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4">
+                <p className="text-xs text-muted">Total Replies</p>
+                <p className="font-display text-xl font-bold text-fg">
+                  {communityQuery.data.stats.totalReplies}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4">
+                <p className="text-xs text-muted">Active Groups</p>
+                <p className="font-display text-xl font-bold text-fg">
+                  {communityQuery.data.stats.activeGroups}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4">
+                <p className="text-xs text-muted">Open Reports</p>
+                <p className="font-display text-xl font-bold text-fg">
+                  {communityQuery.data.stats.openReports}
+                </p>
+              </GlassCard>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <GlassCard className="space-y-3 p-5">
+                <h2 className="font-display text-base font-semibold">Community Reports Queue</h2>
+                {communityQuery.data.reports.length === 0 ? (
+                  <p className="text-xs text-muted">No community reports yet.</p>
+                ) : (
+                  <div className="max-h-96 space-y-2.5 overflow-y-auto pr-1 text-xs">
+                    {communityQuery.data.reports.map((rep) => (
+                      <div key={rep.id} className="space-y-1.5 rounded-xl border border-line p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge tone={rep.status === 'open' ? 'warning' : 'neutral'}>
+                            {rep.targetType} · {rep.status}
+                          </Badge>
+                          <span className="text-muted">
+                            {new Date(rep.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-fg">Reason: {rep.reason}</p>
+                        {rep.targetUser ? (
+                          <p className="text-muted">
+                            Target user: {rep.targetUser.name} ({rep.targetUser.email})
+                          </p>
+                        ) : null}
+                        {rep.status === 'open' ? (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {(['dismiss', 'hide', 'mute', 'suspend'] as const).map((act) => (
+                              <Button
+                                key={act}
+                                size="sm"
+                                variant={act === 'suspend' ? 'danger' : 'secondary'}
+                                onClick={async () => {
+                                  await resolveAdminCommunityReport(rep.id, { action: act });
+                                  await communityQuery.refetch();
+                                  toast.show({ kind: 'success', title: `Action applied: ${act}` });
+                                }}
+                              >
+                                {act}
+                              </Button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </GlassCard>
+
+              <GlassCard className="space-y-3 p-5">
+                <h2 className="font-display text-base font-semibold">
+                  Community Safety &amp; Exam Controls
+                </h2>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const splitList = (raw: string) =>
+                      raw
+                        .split(/[,\n]/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                    try {
+                      await updateAdminCommunitySettings({
+                        featureCommunity: commEnabled,
+                        bannedWords: splitList(bannedWordsText),
+                        examNoticeEnabled,
+                        examNoticeMessage: examNoticeMsg,
+                        pausedCourseSlugs: splitList(pausedSlugsText),
+                      });
+                      toast.show({ kind: 'success', title: 'Community settings updated' });
+                      await communityQuery.refetch();
+                    } catch (err) {
+                      toast.show({
+                        kind: 'error',
+                        title: 'Could not save settings',
+                        description:
+                          err instanceof ApiError ? err.message : 'Step-up may be required.',
+                      });
+                    }
+                  }}
+                  className="space-y-3 text-xs"
+                >
+                  <label className="flex items-center gap-2 font-medium text-fg">
+                    <input
+                      type="checkbox"
+                      checked={commEnabled}
+                      onChange={(e) => setCommEnabled(e.target.checked)}
+                    />
+                    Enable Community feature
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="font-medium text-muted">Banned words (comma-separated)</span>
+                    <input
+                      type="text"
+                      value={bannedWordsText}
+                      onChange={(e) => setBannedWordsText(e.target.value)}
+                      className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-fg"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 font-medium text-fg">
+                    <input
+                      type="checkbox"
+                      checked={examNoticeEnabled}
+                      onChange={(e) => setExamNoticeEnabled(e.target.checked)}
+                    />
+                    Show Exam-Period Integrity Notice
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="font-medium text-muted">Exam notice message</span>
+                    <input
+                      type="text"
+                      value={examNoticeMsg}
+                      onChange={(e) => setExamNoticeMsg(e.target.value)}
+                      className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-fg"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="font-medium text-muted">
+                      Paused course slugs (comma-separated)
+                    </span>
+                    <input
+                      type="text"
+                      value={pausedSlugsText}
+                      onChange={(e) => setPausedSlugsText(e.target.value)}
+                      className="w-full rounded-xl border border-line bg-surface2/50 px-3 py-2 text-fg"
+                    />
+                  </label>
+                  <Button type="submit" size="sm">
+                    Save community controls
+                  </Button>
+                </form>
+              </GlassCard>
+            </div>
+          </div>
+        ) : null
       ) : null}
     </div>
   );

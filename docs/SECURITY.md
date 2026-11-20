@@ -107,3 +107,10 @@ Rotate `JWT_SECRET` (invalidates all access tokens; refresh tokens survive) and 
 - **SSRF & Link Verification:** `verifyPublicHttpUrl` enforces `http:`/`https:` schemes, blocks private/loopback/link-local/CGNAT IPs (before and after DNS lookup), disables automatic redirects (`redirect: 'manual'`), re-validates every redirect target (up to 3 hops), and uses a 5-second timeout.
 - **Prompt Injection Defense:** Search titles and snippets are sanitized and wrapped in `<untrusted_web_result>` blocks; the model has no autonomous browsing or tool calls.
 - **Cost & Abuse Controls:** Per-user daily search limits (`dailyCourseSearchLimit`), global monthly search cost cap (`monthlySearchCostCapUsd`), 30-day caching, `UsageEvent` cost logging, and an admin feature kill-switch.
+
+## 14. Collaboration & Community Security
+
+- **Verified & Membership-Scoped:** Every `/api/v1/community/*` endpoint requires `requireAuth` + `requireVerifiedEmail` (non-suspended, verified email). Students can only access communities and study groups they belong to; private (`invite_only`) groups require an invite code.
+- **Account Deletion & Privacy:** Deleting an account anonymizes community posts/replies (`authorId = null`, displayed as `[Deleted user]`) while keeping Q&A threads intact, and removes personal memberships/blocks/preferences. `GET /users/me/export` includes community posts, replies, groups, and shared resources. Anonymous posts hide identity from students while retaining `authorId` for admin moderation.
+- **XSS, Profanity & Link Safety:** All user text is sanitized (`sanitizeCommunityText`) and rendered through `MarkdownContent` (`rehype-sanitize`). Profanity/banned words flag posts for moderation rather than silently deleting. Brand-new accounts (<24h) are limited to 1 link per post/message, and piracy/deny-listed domains are blocked.
+- **Real-Time SSE Authorization:** `GET /api/v1/community/groups/:groupId/stream` authenticates the Bearer token and verifies active `StudyGroupMember` membership before streaming events.

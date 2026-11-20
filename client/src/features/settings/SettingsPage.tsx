@@ -5,6 +5,11 @@ import { useAuth } from '../../app/AuthContext';
 import { useTheme } from '../../app/ThemeProvider';
 import { Button, Card, Checkbox, ErrorState, Input, Skeleton, useToast } from '../../design';
 import { ApiError, downloadFile, request } from '../../lib/apiClient';
+import {
+  fetchCommunityNotifPrefs,
+  updateCommunityNotifPrefs,
+  type CommunityNotificationPrefs,
+} from '../community/communityApi';
 
 interface UserSettings {
   theme: 'system' | 'light' | 'dark';
@@ -43,6 +48,11 @@ export function SettingsPage() {
   const settingsQuery = useQuery({
     queryKey: ['users', 'me', 'settings'],
     queryFn: () => request<UserSettings>('/users/me/settings'),
+  });
+
+  const commPrefsQuery = useQuery({
+    queryKey: ['community', 'notif-prefs'],
+    queryFn: fetchCommunityNotifPrefs,
   });
 
   const [form, setForm] = useState<UserSettings | null>(null);
@@ -259,6 +269,48 @@ export function SettingsPage() {
             onChange={(e) => setForm({ ...form, longBreakMinutes: Number(e.target.value) || 15 })}
           />
         </div>
+      </Card>
+
+      <Card className="p-6 space-y-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
+            <Bell className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-fg">Community Notifications</h2>
+            <p className="text-xs text-muted">
+              Choose which course community &amp; study group alerts you receive.
+            </p>
+          </div>
+        </div>
+        {commPrefsQuery.data ? (
+          <div className="grid gap-2 text-xs sm:grid-cols-2">
+            {(
+              [
+                ['inAppAnswer', 'In-app: New answer to my question'],
+                ['inAppAccepted', 'In-app: My answer accepted'],
+                ['inAppReply', 'In-app: Reply to my post'],
+                ['inAppGroupInvite', 'In-app: Study group invite'],
+                ['inAppMention', 'In-app: @mention in group chat'],
+                ['emailAnswer', 'Email: New answer to my question'],
+                ['emailAccepted', 'Email: My answer accepted'],
+                ['emailGroupInvite', 'Email: Study group invite'],
+                ['emailDailyDigest', 'Email: Daily unanswered digest'],
+              ] as Array<[keyof CommunityNotificationPrefs, string]>
+            ).map(([key, label]) => (
+              <Checkbox
+                key={key}
+                label={label}
+                checked={commPrefsQuery.data[key]}
+                onChange={async (e) => {
+                  await updateCommunityNotifPrefs({ [key]: e.target.checked });
+                  void commPrefsQuery.refetch();
+                  toast.show({ kind: 'success', title: 'Notification preference saved' });
+                }}
+              />
+            ))}
+          </div>
+        ) : null}
       </Card>
 
       <Card className="p-6 space-y-3">

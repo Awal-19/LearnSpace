@@ -240,3 +240,8 @@ Visible labels on all inputs Â· `aria-invalid` + `aria-describedby` for errors Â
 - **Layout:** Dedicated collapsible sidebar (`Overview`, `Users`, `AI Usage`, `Content`, `Learning`, `Announcements`, `Feedback`, `Audit Log`, `System`, `Settings`, `Reports`, plus `Team` and `Platform Settings` for `super_admin`), top bar with search, light/dark toggle, and admin profile menu.
 - **Data & Feedback:** Tables include sticky headers, filters, sorting, loading skeletons, empty states, and confirmation modals for destructive or moderation actions. Charts use `recharts` and display empty states when no data exists. `AdminLearningPage` aggregates platform-wide academic counts (courses, timetable classes, exams, revision plans, quizzes, SM-2 card reviews, study documents, GPA records, notes, tasks, study hours) without exposing private student records.
 - **Student Integration:** `AppLayout` surfaces active announcements, maintenance mode banners, and a floating **Feedback** modal for bug, suggestion, and abuse reports.
+
+## Community & Collaboration UI
+
+- **Navigation & Dashboard:** Accessible via **Community** in the desktop sidebar and mobile **More** menu, plus a **Course Community** liquid-glass card on the Dashboard showing recent activity, unanswered questions, and study groups.
+- **Screens:** `CommunityHomePage`, `CourseCommunityPage` (Q&A feed, Ask AWAL first, threaded post detail, Study Groups, Shared Resources, Classmates), and `StudyGroupPage` (pinned composer chat, math rendering, shared tasks with Planner sync, Focus timer).

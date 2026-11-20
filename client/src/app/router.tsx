@@ -36,6 +36,19 @@ const StudyPage = lazy(() =>
 const DocumentsPage = lazy(() =>
   import('../features/documents/DocumentsPage').then((m) => ({ default: m.DocumentsPage })),
 );
+const CommunityHomePage = lazy(() =>
+  import('../features/community/CommunityHomePage').then((m) => ({
+    default: m.CommunityHomePage,
+  })),
+);
+const CourseCommunityPage = lazy(() =>
+  import('../features/community/CourseCommunityPage').then((m) => ({
+    default: m.CourseCommunityPage,
+  })),
+);
+const StudyGroupPage = lazy(() =>
+  import('../features/community/StudyGroupPage').then((m) => ({ default: m.StudyGroupPage })),
+);
 const RequireAdmin = lazy(() =>
   import('../features/admin/RequireAdmin').then((m) => ({ default: m.RequireAdmin })),
 );
@@ -184,6 +197,18 @@ export const appRoutes: RouteObject[] = [
   {
     path: 'documents/:documentId',
     element: withSuspense(<DocumentsPage />),
+  },
+  {
+    path: 'community',
+    element: withSuspense(<CommunityHomePage />),
+  },
+  {
+    path: 'community/courses/:communityId',
+    element: withSuspense(<CourseCommunityPage />),
+  },
+  {
+    path: 'community/groups/:groupId',
+    element: withSuspense(<StudyGroupPage />),
   },
   {
     path: 'profile',

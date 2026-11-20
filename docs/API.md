@@ -416,3 +416,32 @@ Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`
 - `GET /api/admin/recommendations/overview` — Monthly search usage/costs, active cache count, allow/block domain lists, and reported links.
 - `PATCH /api/admin/recommendations/settings` (`super_admin` + step-up) — Updates `featureCourseRecommendations`, `dailyCourseSearchLimit`, `monthlySearchCostCapUsd`, `allowDomains`, and `blockDomains`.
 - `POST /api/admin/recommendations/reports/:id/resolve` — Body `{ action: "dismiss" | "mark_dead" | "block_domain" }`.
+
+## 15. Collaboration & Course Community
+
+### Student Endpoints (`/api/v1/community/*`) 🔒✅
+
+- `GET /community/home` — Returns `rulesAccepted`, `profile`, `examNotice`, `communities`, `myGroups`, `unanswered`, and `trending`.
+- `POST /community/rules/accept` — Records community rules acceptance.
+- `PATCH /community/profile` — Updates `hideStats` and `showInClassmates`.
+- `POST /community/courses/:courseId/switch` — Switches a course between university-scoped and global community.
+- `GET /community/courses/:communityId` / `POST /community/courses/:communityId/leave` — View community details/classmates or leave.
+- `GET /community/courses/:communityId/posts` (cursor paginated) / `POST /community/courses/:communityId/posts` — Q&A feed (`question`, `discussion`, `resource`, `announcement`).
+- `GET /community/posts/:postId`, `PATCH /community/posts/:postId`, `DELETE /community/posts/:postId`
+- `POST /community/posts/:postId/replies`, `POST /community/posts/:postId/accept/:replyId`
+- `POST /community/votes` — Toggle helpful vote (`post | reply | resource`).
+- `POST /community/ai/ask-awal` — Instant AI explanation or helper draft (`ask_first | draft_helper`), logged in `UsageEvent`.
+- `POST /community/reports`, `POST /community/blocks`, `DELETE /community/blocks/:userId`, `POST /community/courses/:communityId/moderate`
+- `GET /community/courses/:communityId/groups`, `POST /community/groups`, `POST /community/groups/:groupId/join`, `POST /community/groups/join-code`, `POST /community/groups/:groupId/leave`, `PATCH /community/groups/:groupId/mute`, `POST /community/groups/:groupId/invite/:targetUserId`
+- `GET /community/groups/:groupId`, `GET /community/groups/:groupId/messages` (cursor paginated), `POST /community/groups/:groupId/messages`, `PATCH/DELETE /community/groups/:groupId/messages/:messageId`, `POST .../pin`, `POST .../typing`, `GET /community/groups/:groupId/stream` (SSE real-time stream)
+- `POST /community/groups/:groupId/tasks`, `PATCH .../tasks/:taskId`, `POST .../tasks/:taskId/sync-planner`, `POST .../focus`
+- `GET /community/courses/:communityId/resources`, `POST /community/resources`, `POST /community/resources/:resourceId/save`
+- `POST /community/attachments`, `GET /community/attachments/:attachmentId/content`
+- `GET /community/notifications/preferences`, `PATCH /community/notifications/preferences`
+
+### Admin Endpoints (`/api/admin/community/*`)
+
+- `GET /api/admin/community/overview` — Community stats, open reports queue, flagged posts, and safety settings.
+- `POST /api/admin/community/reports/:id/resolve` — `dismiss | hide | delete | warn | mute | suspend`.
+- `PATCH /api/admin/community/settings` (`super_admin` + step-up) — `featureCommunity`, `bannedWords`, `examNoticeEnabled`, `examNoticeMessage`, `pausedCourseSlugs`.
+- `POST /api/admin/community/moderators` — Assign `member | moderator | course_rep` per course community.

@@ -86,3 +86,9 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 
 - On your first verified visit, the Dashboard greets you with **"Welcome to LearnSpace"** and a **Getting Started** checklist (`Add a course`, `Create your first note`, `Upload a document`, `Ask AWAL a question`, `Plan a task`) that completes automatically as you use the app, or can be dismissed with **Hide**.
 - On subsequent sessions, LearnSpace welcomes you back with time-of-day context (and a special **"Good to see you again"** greeting after 30+ days away).
+
+## Course Community & Study Groups
+
+- **Ask & Answer:** Open **Community** in the sidebar to view communities for each of your courses. Click **Ask a question**, optionally try **Ask AWAL first** for an instant AI explanation, and post to your classmates (anonymously if preferred).
+- **Study Groups:** Create public or invite-only study groups, chat in real time (mention `@AWAL` for group AI help), share tasks that sync to your Planner, and start a 25-minute Focus timer together.
+- **Share Safely:** Share read-only note copies or safe study links, and report or block any abusive content. Manage notification preferences in **Settings**.

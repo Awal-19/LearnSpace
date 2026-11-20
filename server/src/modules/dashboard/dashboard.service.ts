@@ -87,6 +87,17 @@ export interface DashboardData {
     streakDays: number;
     hoursLast7Days: number;
   };
+  communitySummary?: {
+    communitiesCount: number;
+    recentPostsCount: number;
+    unansweredQuestions: Array<{
+      id: string;
+      title: string;
+      communityId: string;
+      communityName: string;
+    }>;
+    myGroups: Array<{ id: string; name: string }>;
+  };
   recentConversations: Array<{
     id: string;
     title: string;
@@ -292,7 +303,15 @@ export async function getDashboard(
   }
 
   const greetingName = sanitizeFirstName(user.name);
-  const [courseCount, noteCount, docCount, convCount, anyTaskCount] = await Promise.all([
+  const [
+    courseCount,
+    noteCount,
+    docCount,
+    convCount,
+    anyTaskCount,
+    commMemberships,
+    groupMemberships,
+  ] = await Promise.all([
     prisma.course?.count ? prisma.course.count({ where: { userId } }).catch(() => 0) : 0,
     prisma.note?.count ? prisma.note.count({ where: { userId } }).catch(() => 0) : 0,
     prisma.document?.count ? prisma.document.count({ where: { userId } }).catch(() => 0) : 0,
@@ -300,7 +319,55 @@ export async function getDashboard(
       ? prisma.conversation.count({ where: { userId } }).catch(() => 0)
       : 0,
     prisma.task?.count ? prisma.task.count({ where: { userId } }).catch(() => 0) : 0,
+    prisma.communityMember?.findMany
+      ? prisma.communityMember
+          .findMany({ where: { userId }, select: { communityId: true } })
+          .catch(() => [])
+      : [],
+    prisma.studyGroupMember?.findMany
+      ? prisma.studyGroupMember
+          .findMany({
+            where: { userId },
+            take: 3,
+            include: { group: { select: { id: true, name: true } } },
+          })
+          .catch(() => [])
+      : [],
   ]);
+
+  const commIds = commMemberships.map((m) => m.communityId);
+  const [recentCommunityPosts, unansweredQuestions] =
+    commIds.length > 0 && prisma.communityPost?.findMany
+      ? await Promise.all([
+          prisma.communityPost
+            .count({
+              where: {
+                communityId: { in: commIds },
+                hidden: false,
+                createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+              },
+            })
+            .catch(() => 0),
+          prisma.communityPost
+            .findMany({
+              where: {
+                communityId: { in: commIds },
+                hidden: false,
+                status: 'unanswered',
+                authorId: { not: userId },
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 3,
+              select: {
+                id: true,
+                title: true,
+                communityId: true,
+                community: { select: { displayName: true } },
+              },
+            })
+            .catch(() => []),
+        ])
+      : [0, []];
   const userWithGreeting = user as typeof user & {
     firstLoginAt?: Date | null;
     lastLoginAt?: Date | null;
@@ -336,6 +403,20 @@ export async function getDashboard(
     },
     recentConversations,
     unreadNotifications,
+    communitySummary: {
+      communitiesCount: commIds.length,
+      recentPostsCount: recentCommunityPosts,
+      unansweredQuestions: unansweredQuestions.map((q) => ({
+        id: q.id,
+        title: q.title,
+        communityId: q.communityId,
+        communityName: q.community.displayName,
+      })),
+      myGroups: groupMemberships.map((g) => ({
+        id: g.group.id,
+        name: g.group.name,
+      })),
+    },
   };
 }
 

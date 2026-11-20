@@ -334,6 +334,10 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
         notifications,
         conversations,
         documents,
+        communityPosts,
+        communityReplies,
+        communitySharedResources,
+        studyGroupMemberships,
       ] = await Promise.all([
         prisma.userSettings.findUnique({ where: { userId } }),
         prisma.course?.findMany
@@ -424,6 +428,44 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
               },
             })
           : Promise.resolve([]),
+        prisma.communityPost?.findMany
+          ? prisma.communityPost.findMany({
+              where: { authorId: userId },
+              select: {
+                id: true,
+                communityId: true,
+                type: true,
+                title: true,
+                body: true,
+                createdAt: true,
+              },
+            })
+          : Promise.resolve([]),
+        prisma.communityReply?.findMany
+          ? prisma.communityReply.findMany({
+              where: { authorId: userId },
+              select: { id: true, postId: true, body: true, createdAt: true },
+            })
+          : Promise.resolve([]),
+        prisma.sharedResource?.findMany
+          ? prisma.sharedResource.findMany({
+              where: { authorId: userId },
+              select: {
+                id: true,
+                communityId: true,
+                sourceType: true,
+                title: true,
+                url: true,
+                createdAt: true,
+              },
+            })
+          : Promise.resolve([]),
+        prisma.studyGroupMember?.findMany
+          ? prisma.studyGroupMember.findMany({
+              where: { userId },
+              select: { groupId: true, role: true, joinedAt: true },
+            })
+          : Promise.resolve([]),
       ]);
 
       return {
@@ -438,6 +480,12 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
         exams,
         revisionPlans,
         decks,
+        community: {
+          posts: communityPosts,
+          replies: communityReplies,
+          sharedResources: communitySharedResources,
+          studyGroups: studyGroupMemberships,
+        },
         reviewLogs,
         quizzes,
         gradingScales,

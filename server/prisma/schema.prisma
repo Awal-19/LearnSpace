@@ -77,6 +77,64 @@ enum UsageFeature {
   quiz
   revision_plan
   course_resource_search
+  community_ai
+}
+
+enum CommunityMemberRole {
+  member
+  moderator
+  course_rep
+}
+
+enum CommunityPostType {
+  question
+  discussion
+  resource
+  announcement
+}
+
+enum CommunityPostStatus {
+  unanswered
+  answered
+  resolved
+}
+
+enum CommunityVoteTargetType {
+  post
+  reply
+  resource
+}
+
+enum StudyGroupVisibility {
+  public_course
+  invite_only
+}
+
+enum StudyGroupMemberRole {
+  owner
+  moderator
+  member
+}
+
+enum SharedResourceSourceType {
+  note_copy
+  document
+  link
+  recommendation
+}
+
+enum CommunityReportTargetType {
+  post
+  reply
+  message
+  resource
+  user
+}
+
+enum CommunityReportStatus {
+  open
+  dismissed
+  resolved
 }
 
 enum RecommendationCategory {
@@ -372,6 +430,23 @@ model User {
   courseResources          CourseResource[]
   recommendationJobs       RecommendationJob[]
   recommendationReports    RecommendationReport[]
+  communityProfile         UserCommunityProfile?
+  communityMemberships     CommunityMember[]
+  communityPosts           CommunityPost[]
+  communityReplies         CommunityReply[]
+  communityVotes           CommunityVote[]
+  communityAttachments     CommunityAttachment[]
+  studyGroupMemberships    StudyGroupMember[]
+  studyGroupMessages       StudyGroupMessage[]
+  studyGroupTasks          StudyGroupTask[]
+  sharedResources          SharedResource[]
+  communityReportsFiled    CommunityReport[]              @relation("CommunityReportReporter")
+  communityReportsAgainst  CommunityReport[]              @relation("CommunityReportTargetUser")
+  blocksInitiated          UserBlock[]                    @relation("UserBlockBlocker")
+  blocksReceived           UserBlock[]                    @relation("UserBlockBlocked")
+  moderationActionsActor   ModerationAction[]             @relation("ModerationActionActor")
+  moderationActionsTarget  ModerationAction[]             @relation("ModerationActionTargetUser")
+  communityNotifPrefs      CommunityNotificationPreference?
 
   @@index([role])
   @@index([status])
@@ -554,10 +629,12 @@ model Course {
   courseNotes String?   @db.VarChar(4000)
   archivedAt              DateTime? @db.Timestamptz(3)
   useResourcesInAssistant Boolean   @default(false)
+  communityId             String?   @db.Uuid
   createdAt               DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community           Community?             @relation(fields: [communityId], references: [id], onDelete: SetNull)
   notes               Note[]
   tasks               Task[]
   timetableEntries    TimetableEntry[]
@@ -1148,8 +1225,13 @@ model AppSettings {
   aiSystemPromptVersion    String   @default("v1") @db.VarChar(40)
   aiMaxTokens              Int      @default(2048)
   currentVersion           Int      @default(1)
-  allowedFileTypesJson     Json     @default("[\"pdf\",\"docx\",\"pptx\",\"txt\",\"csv\",\"jpg\",\"png\",\"webp\",\"heic\"]")
-  updatedById              String?  @db.Uuid
+  allowedFileTypesJson          Json     @default("[\"pdf\",\"docx\",\"pptx\",\"txt\",\"csv\",\"jpg\",\"png\",\"webp\",\"heic\"]")
+  featureCommunity              Boolean  @default(true)
+  communityBannedWordsJson      Json     @default("[]")
+  communityExamNoticeEnabled    Boolean  @default(false)
+  communityExamNoticeMessage    String   @default("Exam period notice: remember academic integrity rules—no cheating or sharing live exam answers.") @db.VarChar(500)
+  communityPausedCourseSlugsJson Json    @default("[]")
+  updatedById                   String?  @db.Uuid
   updatedAt                DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("app_settings")
@@ -1542,4 +1624,339 @@ model RecommendationReport {
   @@index([status, createdAt(sort: Desc)])
   @@index([recommendationId])
   @@map("recommendation_reports")
+}
+
+// ---------------------------------------------------------------- collaboration & community
+
+model Community {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String   @unique @db.VarChar(200)
+  normalizedName String   @db.VarChar(120)
+  displayName    String   @db.VarChar(120)
+  universityKey  String?  @db.VarChar(120)
+  universityName String?  @db.VarChar(120)
+  isPaused       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  courses           Course[]
+  members           CommunityMember[]
+  posts             CommunityPost[]
+  studyGroups       StudyGroup[]
+  sharedResources   SharedResource[]
+  moderationActions ModerationAction[]
+
+  @@index([normalizedName])
+  @@index([universityKey])
+  @@map("communities")
+}
+
+model CommunityMember {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communityId String              @db.Uuid
+  userId      String              @db.Uuid
+  role        CommunityMemberRole @default(member)
+  mutedUntil  DateTime?           @db.Timestamptz(3)
+  joinedAt    DateTime            @default(now()) @db.Timestamptz(3)
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([userId])
+  @@map("community_members")
+}
+
+model UserCommunityProfile {
+  userId           String    @id @db.Uuid
+  helpedCount      Int       @default(0)
+  acceptedCount    Int       @default(0)
+  hideStats        Boolean   @default(false)
+  showInClassmates Boolean   @default(true)
+  rulesAcceptedAt  DateTime? @db.Timestamptz(3)
+  mutedUntil       DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_community_profiles")
+}
+
+model CommunityPost {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communityId     String              @db.Uuid
+  authorId        String?             @db.Uuid
+  type            CommunityPostType   @default(question)
+  title           String              @db.VarChar(200)
+  body            String
+  topicTag        String?             @db.VarChar(60)
+  status          CommunityPostStatus @default(unanswered)
+  isAnonymous     Boolean             @default(false)
+  isPinned        Boolean             @default(false)
+  acceptedReplyId String?             @db.Uuid
+  helpfulCount    Int                 @default(0)
+  replyCount      Int                 @default(0)
+  hidden          Boolean             @default(false)
+  flaggedByFilter Boolean             @default(false)
+  flagReason      String?             @db.VarChar(200)
+  aiAttempt       String?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(3)
+
+  community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author      User?                 @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  replies     CommunityReply[]
+  attachments CommunityAttachment[]
+
+  @@index([communityId, hidden, isPinned(sort: Desc), createdAt(sort: Desc)])
+  @@index([communityId, status, createdAt(sort: Desc)])
+  @@index([authorId])
+  @@map("community_posts")
+}
+
+model CommunityReply {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId          String   @db.Uuid
+  parentReplyId   String?  @db.Uuid
+  authorId        String?  @db.Uuid
+  body            String
+  isAnonymous     Boolean  @default(false)
+  isAiGenerated   Boolean  @default(false)
+  helpfulCount    Int      @default(0)
+  hidden          Boolean  @default(false)
+  flaggedByFilter Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  post        CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentReply CommunityReply?       @relation("ReplyThread", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  children    CommunityReply[]      @relation("ReplyThread")
+  author      User?                 @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  attachments CommunityAttachment[]
+
+  @@index([postId, hidden, createdAt])
+  @@index([authorId])
+  @@map("community_replies")
+}
+
+model CommunityVote {
+  id         String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String                  @db.Uuid
+  targetType CommunityVoteTargetType
+  targetId   String                  @db.Uuid
+  createdAt  DateTime                @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@map("community_votes")
+}
+
+model CommunityAttachment {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @db.Uuid
+  postId       String?        @db.Uuid
+  replyId      String?        @db.Uuid
+  messageId    String?        @db.Uuid
+  originalName String         @db.VarChar(255)
+  mimeType     String         @db.VarChar(120)
+  kind         AttachmentKind
+  sizeBytes    Int
+  storageKey   String         @db.VarChar(255)
+  storageUrl   String         @db.VarChar(1024)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    CommunityPost?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply   CommunityReply?    @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  message StudyGroupMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([replyId])
+  @@index([messageId])
+  @@index([userId])
+  @@map("community_attachments")
+}
+
+model StudyGroup {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communityId      String               @db.Uuid
+  creatorId        String?              @db.Uuid
+  name             String               @db.VarChar(100)
+  description      String?              @db.VarChar(500)
+  visibility       StudyGroupVisibility @default(public_course)
+  inviteCode       String               @unique @db.VarChar(32)
+  pinnedMessageId  String?              @db.Uuid
+  activeFocusTitle String?              @db.VarChar(120)
+  activeFocusEndsAt DateTime?           @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+
+  community       Community           @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  members         StudyGroupMember[]
+  messages        StudyGroupMessage[]
+  tasks           StudyGroupTask[]
+  sharedResources SharedResource[]
+
+  @@index([communityId, visibility, createdAt(sort: Desc)])
+  @@map("study_groups")
+}
+
+model StudyGroupMember {
+  id       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId  String               @db.Uuid
+  userId   String               @db.Uuid
+  role     StudyGroupMemberRole @default(member)
+  muted    Boolean              @default(false)
+  joinedAt DateTime             @default(now()) @db.Timestamptz(3)
+
+  group StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("study_group_members")
+}
+
+model StudyGroupMessage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId         String   @db.Uuid
+  authorId        String?  @db.Uuid
+  replyToId       String?  @db.Uuid
+  clientMessageId String?  @db.VarChar(80)
+  body            String
+  isAiGenerated   Boolean  @default(false)
+  linkPreviewJson Json?
+  hidden          Boolean  @default(false)
+  flaggedByFilter Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  group       StudyGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author      User?                 @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  replyTo     StudyGroupMessage?    @relation("GroupMessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     StudyGroupMessage[]   @relation("GroupMessageReply")
+  attachments CommunityAttachment[]
+
+  @@unique([groupId, clientMessageId])
+  @@index([groupId, createdAt(sort: Desc)])
+  @@map("study_group_messages")
+}
+
+model StudyGroupTask {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId   String    @db.Uuid
+  creatorId String?   @db.Uuid
+  title     String    @db.VarChar(180)
+  dueAt     DateTime? @db.Timestamptz(3)
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  group   StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creator User?      @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  @@index([groupId, done, createdAt])
+  @@map("study_group_tasks")
+}
+
+model SharedResource {
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communityId   String                   @db.Uuid
+  groupId       String?                  @db.Uuid
+  authorId      String?                  @db.Uuid
+  sourceType    SharedResourceSourceType
+  title         String                   @db.VarChar(200)
+  description   String?                  @db.VarChar(600)
+  bodySnapshot  String?
+  url           String?                  @db.VarChar(1200)
+  sourceDomain  String?                  @db.VarChar(255)
+  attachmentKey String?                  @db.VarChar(255)
+  helpfulCount  Int                      @default(0)
+  hidden        Boolean                  @default(false)
+  createdAt     DateTime                 @default(now()) @db.Timestamptz(3)
+
+  community Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  group     StudyGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([communityId, hidden, createdAt(sort: Desc)])
+  @@index([groupId, hidden, createdAt(sort: Desc)])
+  @@map("shared_resources")
+}
+
+model CommunityReport {
+  id           String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId   String                    @db.Uuid
+  targetType   CommunityReportTargetType
+  targetId     String                    @db.Uuid
+  targetUserId String?                   @db.Uuid
+  reason       String                    @db.VarChar(600)
+  status       CommunityReportStatus     @default(open)
+  reviewNote   String?                   @db.VarChar(500)
+  reviewedById String?                   @db.Uuid
+  createdAt    DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                  @updatedAt @db.Timestamptz(3)
+
+  reporter   User  @relation("CommunityReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUser User? @relation("CommunityReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@map("community_reports")
+}
+
+model UserBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blockerId String   @db.Uuid
+  blockedId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  blocker User @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
+}
+
+model ModerationAction {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communityId  String?  @db.Uuid
+  actorId      String   @db.Uuid
+  targetUserId String?  @db.Uuid
+  targetType   String   @db.VarChar(40)
+  targetId     String   @db.Uuid
+  action       String   @db.VarChar(60)
+  reason       String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  community  Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  actor      User       @relation("ModerationActionActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetUser User?      @relation("ModerationActionTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([communityId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("moderation_actions")
+}
+
+model CommunityNotificationPreference {
+  userId            String   @id @db.Uuid
+  inAppAnswer       Boolean  @default(true)
+  inAppAccepted     Boolean  @default(true)
+  inAppReply        Boolean  @default(true)
+  inAppGroupInvite  Boolean  @default(true)
+  inAppMention      Boolean  @default(true)
+  emailAnswer       Boolean  @default(false)
+  emailAccepted     Boolean  @default(true)
+  emailReply        Boolean  @default(false)
+  emailGroupInvite  Boolean  @default(true)
+  emailMention      Boolean  @default(true)
+  emailDailyDigest  Boolean  @default(false)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("community_notification_preferences")
 }
