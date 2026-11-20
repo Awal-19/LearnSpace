@@ -50,6 +50,15 @@ export interface AdminOverviewResponse {
     api: string;
     database: string;
     email: string;
+    emailProvider?: string;
+    recentEmailErrors?: Array<{
+      id: string;
+      recipientEmail: string;
+      kind: string;
+      provider: string;
+      errorMessage: string | null;
+      createdAt: string;
+    }>;
     ai: string;
     storage: string;
   };
@@ -94,6 +103,14 @@ export interface AdminUserDetailResponse {
     studyHours: number;
     streak: number;
   };
+  lastEmailDelivery?: {
+    status: string;
+    provider: string;
+    kind: string;
+    providerMessageId: string | null;
+    errorMessage: string | null;
+    createdAt: string;
+  } | null;
   recentActivity: Array<{
     id: string;
     action: string;
@@ -150,7 +167,16 @@ export function forceLogoutAdminUser(userId: string) {
 }
 
 export function resendAdminUserVerification(userId: string) {
-  return adminRequest<void>(`/users/${userId}/resend-verification`, { method: 'POST' });
+  return adminRequest<{ sent: true; maskedEmail: string }>(`/users/${userId}/resend-verification`, {
+    method: 'POST',
+  });
+}
+
+export function markAdminUserVerified(userId: string, reason: string) {
+  return adminRequest<{ emailVerified: true }>(`/users/${userId}/mark-verified`, {
+    method: 'POST',
+    body: { reason },
+  });
 }
 
 export function triggerAdminUserReset(userId: string) {
@@ -491,6 +517,15 @@ export function fetchAdminSystemHealth() {
     database: string;
     dbLatencyMs: number;
     email: string;
+    emailProvider?: string;
+    recentEmailErrors?: Array<{
+      id: string;
+      recipientEmail: string;
+      kind: string;
+      provider: string;
+      errorMessage: string | null;
+      createdAt: string;
+    }>;
     ai: string;
     storage: string;
   }>('/health');

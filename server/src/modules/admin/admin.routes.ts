@@ -23,6 +23,7 @@ import {
   inspectContentSchema,
   inviteAdminSchema,
   listUsersQuerySchema,
+  markEmailVerifiedSchema,
   overviewQuerySchema,
   paginationQuerySchema,
   replyFeedbackSchema,
@@ -230,14 +231,35 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
     }),
   );
 
+  const adminResendLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    keyGenerator: (req) => `admin-resend:${req.user?.id ?? req.ip ?? 'unknown'}`,
+    skip: () => env.NODE_ENV === 'test',
+  });
+
   router.post(
     '/users/:id/resend-verification',
     requirePermission('can_manage_users'),
+    adminResendLimiter,
     asyncHandler(async (req, res) => {
       const id = uuidParamSchema.safeParse(req.params.id);
       if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
-      await admin.resendVerification(req.user!.id, id.data, req.ip);
-      res.status(204).end();
+      const result = await admin.resendVerification(req.user!.id, id.data, req.ip);
+      res.json(result);
+    }),
+  );
+
+  router.post(
+    '/users/:id/mark-verified',
+    requirePermission('can_manage_users'),
+    requireStepUp,
+    validate({ body: markEmailVerifiedSchema }),
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'User not found');
+      const result = await admin.markEmailVerified(req.user!.id, id.data, req.body.reason, req.ip);
+      res.json(result);
     }),
   );
 

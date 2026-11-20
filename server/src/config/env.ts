@@ -61,9 +61,11 @@ const schema = z.object({
   RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().min(1).default(600),
 
   // Later phases. Optional here; the feature that needs them checks at use time.
-  EMAIL_PROVIDER: z.enum(['auto', 'resend', 'smtp', 'emailjs']).default('auto'),
+  EMAIL_PROVIDER: z.enum(['auto', 'resend', 'brevo', 'smtp', 'emailjs']).default('auto'),
   RESEND_API_KEY: optionalString,
+  BREVO_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
+  EMAIL_REPLY_TO: optionalString,
   SMTP_URL: optionalString,
   EMAILJS_SERVICE_ID: optionalString,
   EMAILJS_TEMPLATE_ID: optionalString,

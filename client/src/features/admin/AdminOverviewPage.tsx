@@ -395,15 +395,19 @@ export function AdminOverviewPage() {
             </h2>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2.5 text-xs sm:grid-cols-2">
-            {Object.entries(systemHealth).map(([k, v]) => (
-              <div
-                key={k}
-                className="flex items-center justify-between rounded-xl border border-line/80 bg-surface2/40 px-3 py-2"
-              >
-                <span className="capitalize font-medium text-muted">{k}</span>
-                <Badge tone={v === 'up' || v === 'configured' ? 'success' : 'warning'}>{v}</Badge>
-              </div>
-            ))}
+            {Object.entries(systemHealth)
+              .filter(([, v]) => typeof v === 'string')
+              .map(([k, v]) => (
+                <div
+                  key={k}
+                  className="flex items-center justify-between rounded-xl border border-line/80 bg-surface2/40 px-3 py-2"
+                >
+                  <span className="capitalize font-medium text-muted">{k}</span>
+                  <Badge tone={v === 'up' || v === 'configured' ? 'success' : 'warning'}>
+                    {String(v)}
+                  </Badge>
+                </div>
+              ))}
           </div>
           <div className="mt-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">

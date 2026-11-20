@@ -92,3 +92,9 @@ Rotate `JWT_SECRET` (invalidates all access tokens; refresh tokens survive) and 
 - **Deny-by-default `requireVerified` middleware (`server/src/middleware/auth.ts`, `server/src/app.ts`):** Reads `emailVerified`, `status`, and `tokensValidAfter` directly from PostgreSQL on every request (never trusting token claims). Rejects `verify_only` tokens and unverified users with `403 EMAIL_NOT_VERIFIED` across all protected `/api/v1/*` and `/api/admin/*` routes.
 - **Unverified Allowlist:** Only public routes plus `GET /api/v1/auth/me` (minimal `{ email, emailVerified }`), `POST /api/v1/auth/verify-otp`, `POST /api/v1/auth/resend-otp`, `POST /api/v1/auth/change-email`, and `POST /api/v1/auth/logout` are permitted prior to verification.
 - **Refresh & Email Change:** `POST /api/v1/auth/refresh` refuses unverified accounts and revokes their refresh family; changing email sets `emailVerified = false`, revokes all sessions, and requires a new 6-digit OTP.
+
+## 12. Email Delivery & Admin Verification Controls
+
+- **Admin Resend (`POST /api/admin/users/:id/resend-verification`):** Generates a fresh hashed 6-digit `otpCode` (never returned to the admin), enforces a 60-second cooldown + 5/hour target cap + 10/15min admin rate limit, surfaces provider failures instead of silently returning `204`, and writes `user.resend_verification` to `audit_logs`.
+- **Manual Verification (`POST /api/admin/users/:id/mark-verified`):** Requires `can_manage_users`, personal step-up confirmation, and a typed `reason` (min 5 chars), logged to `audit_logs`.
+- **Delivery Logging (`email_delivery_logs`):** Records recipient, kind, provider, status (`sent`/`failed`), provider message ID, and error message (never OTP codes).

@@ -69,3 +69,9 @@ This guide explains how to access and use each page of the LearnSpace Admin Cons
 ### 11. Reports (`/admin/reports`)
 
 - Generate background export jobs for **Users**, **Usage**, **AI Costs**, **Feedback** (CSV), and **Overview Report** (PDF), with optional date range filters and audit logging.
+
+## Verification & Email Deliverability Tools
+
+- **Resend verify:** On a user's detail page, click **Resend verify** to send a fresh 6-digit OTP (returns masked email; never reveals the code).
+- **Mark verified:** For students who cannot receive email, click **Mark verified**, enter a reason, and confirm step-up authentication (recorded in Audit Logs).
+- **Delivery Visibility:** The user detail page displays **Last Email Delivery** (`sent`/`failed` + provider), and **System Health** surfaces recent failed email provider errors.

@@ -54,7 +54,10 @@ export function AdminSystemPage() {
                 name: `Database (${healthQuery.data.dbLatencyMs}ms)`,
                 val: healthQuery.data.database,
               },
-              { name: 'Email', val: healthQuery.data.email },
+              {
+                name: `Email (${healthQuery.data.emailProvider ?? 'auto'})`,
+                val: healthQuery.data.email,
+              },
               { name: 'AI Provider', val: healthQuery.data.ai },
               { name: 'Storage', val: healthQuery.data.storage },
             ].map((s) => (
@@ -130,6 +133,25 @@ export function AdminSystemPage() {
           )}
         </GlassCard>
       </div>
+
+      {(healthQuery.data?.recentEmailErrors?.length ?? 0) > 0 ? (
+        <GlassCard className="p-5">
+          <h2 className="font-display text-base font-semibold">Recent Email Provider Errors</h2>
+          <ul className="mt-3 max-h-72 divide-y divide-line overflow-y-auto text-xs">
+            {healthQuery.data!.recentEmailErrors!.map((e) => (
+              <li key={e.id} className="py-2">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="font-semibold text-danger">
+                    {e.provider} · {e.kind} → {e.recipientEmail}
+                  </span>
+                  <span className="text-muted">{new Date(e.createdAt).toLocaleString()}</span>
+                </div>
+                {e.errorMessage ? <p className="mt-0.5 text-muted">{e.errorMessage}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      ) : null}
     </div>
   );
 }

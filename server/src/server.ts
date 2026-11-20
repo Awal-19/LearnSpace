@@ -167,7 +167,7 @@ function main(): void {
 
   const logger = createLogger(env);
   const prisma = createPrismaClient(env.DATABASE_URL);
-  const email = createEmailService(env, logger);
+  const email = createEmailService(env, logger, prisma);
   const storage = createStorageService(env, logger, prisma);
   if (env.CLOUDINARY_URL) {
     logger.info('Storage initialized with Cloudinary');

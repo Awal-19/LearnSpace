@@ -379,7 +379,7 @@ Returns real-activity analytics in the user's configured timezone: `summary` (`t
 All `/api/admin/*` routes require `requireAuth` + `requireAdmin` (verified `admin` or `super_admin` and `status === "active"`). Role changes require `requireSuperAdmin`.
 
 - **Overview:** `GET /overview?range=7d|30d|90d|custom&from=&to=`
-- **Users:** `GET /users`, `GET /users/:id`, `PATCH /users/:id/status`, `POST /users/:id/force-logout`, `POST /users/:id/resend-verification`, `POST /users/:id/trigger-reset`, `PATCH /users/:id/role` (`super_admin` only), `DELETE /users/:id`, `POST /users/bulk`
+- **Users:** `GET /users`, `GET /users/:id`, `PATCH /users/:id/status`, `POST /users/:id/force-logout`, `POST /users/:id/resend-verification` (returns `{ sent, maskedEmail }`), `POST /users/:id/mark-verified` (requires `reason` + step-up), `POST /users/:id/trigger-reset`, `PATCH /users/:id/role` (`super_admin` only), `DELETE /users/:id`, `POST /users/bulk`
 - **AI Usage & Limits:** `GET /ai-usage`, `PATCH /ai-usage/limits`
 - **Moderation & Uploads:** `GET /conversations` (metadata only), `POST /conversations/:id/inspect` (requires `reason`, audited), `GET /uploads`, `POST /uploads/:kind/:id/inspect` (requires `reason`, audited), `DELETE /uploads/:kind/:id`, `GET /flagged`, `PATCH /flagged/:id`
 - **Learning:** `GET /learning`

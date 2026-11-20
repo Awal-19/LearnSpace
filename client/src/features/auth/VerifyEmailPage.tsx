@@ -371,6 +371,10 @@ export function VerifyEmailPage() {
         </div>
       </div>
 
+      <p className="text-center text-xs text-muted">
+        Didn&apos;t get it? Check your spam or promotions folder and mark LearnSpace as Not spam.
+      </p>
+
       {changeEmailOpen ? (
         <form
           onSubmit={async (e) => {

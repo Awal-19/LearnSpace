@@ -1357,3 +1357,18 @@ model StoredBlob {
   @@map("stored_blobs")
 }
 
+
+model EmailDeliveryLog {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientEmail    String   @db.VarChar(255)
+  kind              String   @db.VarChar(40)
+  provider          String   @db.VarChar(30)
+  status            String   @db.VarChar(20)
+  providerMessageId String?  @db.VarChar(180)
+  errorMessage      String?  @db.VarChar(500)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([recipientEmail, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("email_delivery_logs")
+}

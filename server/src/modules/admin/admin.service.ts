@@ -13,9 +13,15 @@ import {
   ADMIN_2FA_TTL_MS,
   generateOpaqueToken,
   hashToken,
+  OTP_EXPIRY_MINUTES,
   RESET_PASSWORD_TTL_MS,
-  VERIFY_EMAIL_TTL_MS,
 } from '../../lib/tokens';
+
+function maskEmailAddress(email: string): string {
+  const [local = '', domain = ''] = email.split('@');
+  if (!local || !domain) return '***';
+  return `${local[0]}***@${domain}`;
+}
 import { hashPassword, verifyPassword } from '../../lib/password';
 import { buildPdfBuffer } from '../documents/documents.export';
 import { computeStreaks, localDateString } from '../users/stats';
@@ -431,6 +437,38 @@ export function createAdminService(deps: AdminServiceDeps) {
       const activeDayKeys = new Set(studySessions.map((s) => localDateString(s.startedAt, tz)));
       const { streakDays: streak } = computeStreaks(activeDayKeys, tz);
 
+      const maybeEmailLog = (
+        prisma as unknown as {
+          emailDeliveryLog?: {
+            findFirst?: (args: unknown) => Promise<{
+              status: string;
+              provider: string;
+              kind: string;
+              providerMessageId: string | null;
+              errorMessage: string | null;
+              createdAt: Date;
+            } | null>;
+          };
+        }
+      ).emailDeliveryLog;
+
+      const lastEmailDelivery = maybeEmailLog?.findFirst
+        ? await maybeEmailLog
+            .findFirst({
+              where: { recipientEmail: user.email.toLowerCase() },
+              orderBy: { createdAt: 'desc' },
+              select: {
+                status: true,
+                provider: true,
+                kind: true,
+                providerMessageId: true,
+                errorMessage: true,
+                createdAt: true,
+              },
+            })
+            .catch(() => null)
+        : null;
+
       return {
         user: {
           ...user,
@@ -444,6 +482,7 @@ export function createAdminService(deps: AdminServiceDeps) {
           studyHours: Number((totalSeconds / 3600).toFixed(1)),
           streak,
         },
+        lastEmailDelivery,
         recentActivity,
         recentLogins,
       };
@@ -535,26 +574,66 @@ export function createAdminService(deps: AdminServiceDeps) {
         select: { id: true, email: true, name: true, emailVerified: true },
       });
       if (!user) throw new AppError('NOT_FOUND', 'User not found');
-      const { raw, hash } = generateOpaqueToken();
+      if (user.emailVerified) {
+        throw new AppError('VALIDATION_ERROR', 'User email is already verified.');
+      }
+
       const current = new Date();
+      const oneHourAgo = new Date(current.getTime() - 60 * 60 * 1000);
+      const [latestOtp, recentCount] = await Promise.all([
+        prisma.otpCode.findFirst({
+          where: { userId: user.id, purpose: 'verify_email' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+        prisma.otpCode.count({
+          where: { userId: user.id, purpose: 'verify_email', createdAt: { gte: oneHourAgo } },
+        }),
+      ]);
+
+      if (latestOtp) {
+        const elapsedSec = Math.floor((current.getTime() - latestOtp.createdAt.getTime()) / 1000);
+        if (elapsedSec < 60) {
+          throw new AppError(
+            'RATE_LIMITED',
+            `Please wait ${60 - elapsedSec}s before resending a verification code to this user.`,
+          );
+        }
+      }
+      if (recentCount >= 5) {
+        throw new AppError(
+          'RATE_LIMITED',
+          'Hourly verification code limit reached for this user. Try again later.',
+        );
+      }
+
+      const code = String(randomInt(100000, 1000000));
+      const codeHash = hashToken(code);
+      const expiresAt = new Date(current.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
       await prisma.$transaction([
-        prisma.emailToken.updateMany({
-          where: { userId: user.id, type: 'verify_email', usedAt: null },
+        prisma.otpCode.updateMany({
+          where: { userId: user.id, purpose: 'verify_email', usedAt: null },
           data: { usedAt: current },
         }),
-        prisma.emailToken.create({
+        prisma.otpCode.create({
           data: {
             userId: user.id,
-            type: 'verify_email',
-            tokenHash: hash,
-            expiresAt: new Date(current.getTime() + VERIFY_EMAIL_TTL_MS),
+            purpose: 'verify_email',
+            codeHash,
+            expiresAt,
           },
         }),
       ]);
-      const url = `${env.CLIENT_URL}/verify-email?token=${encodeURIComponent(raw)}`;
-      await email.sendVerificationEmail(user.email, user.name, url).catch((err) => {
-        logger.warn({ err, userId: user.id }, 'Admin resendVerification email failed');
-      });
+
+      try {
+        await email.sendOtpEmail({ email: user.email, name: user.name, code });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'Email provider rejected the request.';
+        logger.error({ err, userId: user.id }, 'Admin resendVerification OTP email failed');
+        throw new AppError('AI_UNAVAILABLE', `Failed to send verification code: ${reason}`);
+      }
+
       await recordAuditLog(prisma, {
         actorId,
         action: 'user.resend_verification',
@@ -562,6 +641,44 @@ export function createAdminService(deps: AdminServiceDeps) {
         targetId: user.id,
         ip,
       });
+
+      return { sent: true as const, maskedEmail: maskEmailAddress(user.email) };
+    },
+
+    async markEmailVerified(
+      actorId: string,
+      targetUserId: string,
+      reason: string,
+      ip: string | undefined,
+    ) {
+      const user = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, email: true, emailVerified: true },
+      });
+      if (!user) throw new AppError('NOT_FOUND', 'User not found');
+
+      const current = new Date();
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerified: true },
+        }),
+        prisma.otpCode.updateMany({
+          where: { userId: user.id, purpose: 'verify_email', usedAt: null },
+          data: { usedAt: current },
+        }),
+      ]);
+
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'user.mark_email_verified',
+        targetType: 'user',
+        targetId: user.id,
+        reason,
+        ip,
+      });
+
+      return { emailVerified: true as const };
     },
 
     async triggerPasswordReset(actorId: string, targetUserId: string, ip: string | undefined) {
@@ -1658,6 +1775,50 @@ export function createAdminService(deps: AdminServiceDeps) {
       }
       const dbLatencyMs = Date.now() - dbStart;
 
+      const emailConfigured = Boolean(
+        env.RESEND_API_KEY ||
+        env.BREVO_API_KEY ||
+        env.SMTP_URL ||
+        (env.EMAILJS_SERVICE_ID &&
+          env.EMAILJS_TEMPLATE_ID &&
+          env.EMAILJS_PUBLIC_KEY &&
+          env.EMAILJS_PRIVATE_KEY),
+      );
+      const maybeEmailLog = (
+        prisma as unknown as {
+          emailDeliveryLog?: {
+            findMany?: (args: unknown) => Promise<
+              Array<{
+                id: string;
+                recipientEmail: string;
+                kind: string;
+                provider: string;
+                errorMessage: string | null;
+                createdAt: Date;
+              }>
+            >;
+          };
+        }
+      ).emailDeliveryLog;
+
+      const recentEmailErrors = maybeEmailLog?.findMany
+        ? await maybeEmailLog
+            .findMany({
+              where: { status: 'failed' },
+              orderBy: { createdAt: 'desc' },
+              take: 15,
+              select: {
+                id: true,
+                recipientEmail: true,
+                kind: true,
+                provider: true,
+                errorMessage: true,
+                createdAt: true,
+              },
+            })
+            .catch(() => [])
+        : [];
+
       return {
         version: '0.1.0',
         nodeVersion: process.version,
@@ -1665,7 +1826,9 @@ export function createAdminService(deps: AdminServiceDeps) {
         api: 'up',
         database: dbStatus,
         dbLatencyMs,
-        email: env.RESEND_API_KEY || env.SMTP_URL ? 'configured' : 'unconfigured',
+        email: emailConfigured ? 'configured' : 'unconfigured',
+        emailProvider: env.EMAIL_PROVIDER ?? 'auto',
+        recentEmailErrors,
         ai: llm?.isConfigured() ? 'configured' : 'unconfigured',
         storage: storage.isConfigured() ? 'configured' : 'unconfigured',
       };

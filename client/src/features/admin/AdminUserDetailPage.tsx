@@ -10,6 +10,7 @@ import {
   deleteAdminUser,
   fetchAdminUserDetail,
   forceLogoutAdminUser,
+  markAdminUserVerified,
   resendAdminUserVerification,
   triggerAdminUserReset,
   updateAdminUserRole,
@@ -47,7 +48,7 @@ export function AdminUserDetailPage() {
     );
   }
 
-  const { user, stats, recentActivity, recentLogins } = query.data;
+  const { user, stats, lastEmailDelivery, recentActivity, recentLogins } = query.data;
   const isSuperAdmin = actor?.role === 'super_admin';
 
   const runAction = async (fn: () => Promise<unknown>, successMsg: string) => {
@@ -201,20 +202,69 @@ export function AdminUserDetailPage() {
               <LogOut className="mr-1.5 h-3.5 w-3.5" />
               Force logout
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={() =>
-                void runAction(
-                  () => resendAdminUserVerification(user.id),
-                  'Verification email sent',
-                )
-              }
-            >
-              <Mail className="mr-1.5 h-3.5 w-3.5" />
-              Resend verify
-            </Button>
+            {!user.emailVerified ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm(`Send a new 6-digit verification code to ${user.email}?`)) {
+                      return;
+                    }
+                    void (async () => {
+                      setBusy(true);
+                      try {
+                        const res = await resendAdminUserVerification(user.id);
+                        toast.show({
+                          kind: 'success',
+                          title: `Code sent to ${res.maskedEmail}`,
+                        });
+                        await query.refetch();
+                      } catch (err) {
+                        toast.show({
+                          kind: 'error',
+                          title: 'Could not send verification code',
+                          description: err instanceof ApiError ? err.message : 'Try again.',
+                        });
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  <Mail className="mr-1.5 h-3.5 w-3.5" />
+                  Resend verify
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    const reason = window.prompt(
+                      `Enter a reason to mark ${user.email} as verified (min 5 characters):`,
+                    );
+                    if (!reason || reason.trim().length < 5) {
+                      if (reason !== null) {
+                        toast.show({
+                          kind: 'error',
+                          title: 'Reason required',
+                          description: 'Provide at least 5 characters.',
+                        });
+                      }
+                      return;
+                    }
+                    void runAction(
+                      () => markAdminUserVerified(user.id, reason.trim()),
+                      'User email marked as verified',
+                    );
+                  }}
+                >
+                  <Shield className="mr-1.5 h-3.5 w-3.5" />
+                  Mark verified
+                </Button>
+              </>
+            ) : null}
             <Button
               size="sm"
               variant="secondary"
@@ -251,6 +301,31 @@ export function AdminUserDetailPage() {
           </div>
         ) : null}
       </GlassCard>
+
+      {lastEmailDelivery ? (
+        <GlassCard className="p-4 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-primary-600" aria-hidden="true" />
+              <span className="font-medium">Last Email Delivery:</span>
+              <Badge tone={lastEmailDelivery.status === 'sent' ? 'success' : 'danger'}>
+                {lastEmailDelivery.status}
+              </Badge>
+              <span className="text-xs text-muted">
+                {lastEmailDelivery.provider} · {lastEmailDelivery.kind}
+              </span>
+            </div>
+            <span className="text-xs text-muted">
+              {new Date(lastEmailDelivery.createdAt).toLocaleString()}
+            </span>
+          </div>
+          {lastEmailDelivery.errorMessage ? (
+            <p className="mt-2 rounded-lg bg-danger/10 px-3 py-1.5 text-xs text-danger">
+              {lastEmailDelivery.errorMessage}
+            </p>
+          ) : null}
+        </GlassCard>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[

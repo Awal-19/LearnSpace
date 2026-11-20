@@ -34,6 +34,12 @@ export const updateUserRoleSchema = z
   })
   .strict();
 
+export const markEmailVerifiedSchema = z
+  .object({
+    reason: z.string().trim().min(5, 'Provide a reason (at least 5 characters)').max(500),
+  })
+  .strict();
+
 export const bulkUsersSchema = z
   .object({
     action: z.enum(['suspend', 'export_csv']),
