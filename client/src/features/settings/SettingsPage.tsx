@@ -355,6 +355,14 @@ export function SettingsPage() {
             <Download className="h-4 w-4" aria-hidden="true" />
             Export my data (JSON)
           </Button>
+          <a
+            href="/LearnSpace_Agile_Documentation_Full.pdf"
+            download="LearnSpace_Agile_Documentation_Full.pdf"
+            className="ml-2 inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface2/60 px-3 py-1.5 text-xs font-medium text-fg transition-colors hover:border-primary-300"
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden="true" />
+            Download System Docs (PDF)
+          </a>
         </div>
       </Card>
 
