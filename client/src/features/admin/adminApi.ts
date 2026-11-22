@@ -903,3 +903,77 @@ export function updateAdminCommunitySettings(body: {
 }) {
   return adminRequest('/community/settings', { method: 'PATCH', body });
 }
+
+export interface AdminShsOverviewResponse {
+  counts: {
+    shsUsers: number;
+    universityUsers: number;
+    consentPending: number;
+    consentGiven: number;
+    consentWithdrawn: number;
+    openFlagsCount: number;
+  };
+  settings: {
+    featureShsSignups: boolean;
+    featureShsCommunity: boolean;
+    shsBannedWords: string[];
+    shsSyllabusSource: string;
+  };
+  flags: Array<{
+    id: string;
+    source: string;
+    direction: string;
+    reason: string;
+    excerpt: string;
+    createdAt: string;
+    user: { id: string; name: string; schoolYear: string | null } | null;
+  }>;
+  subjects: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+    isCore: boolean;
+    syllabusVersion: string;
+    active: boolean;
+    topics: Array<{ id: string; title: string; schoolYear: string | null }>;
+  }>;
+}
+
+export function fetchAdminShsOverview() {
+  return adminRequest<AdminShsOverviewResponse>('/shs/overview');
+}
+
+export function updateAdminShsSettings(body: {
+  featureShsSignups?: boolean;
+  featureShsCommunity?: boolean;
+  shsBannedWords?: string[];
+  shsSyllabusSource?: string;
+}) {
+  return adminRequest('/shs/settings', { method: 'PATCH', body });
+}
+
+export function resolveAdminShsFlag(flagId: string) {
+  return adminRequest(`/shs/flags/${flagId}`, { method: 'PATCH' });
+}
+
+export function createAdminShsSubject(body: {
+  name: string;
+  code?: string | null;
+  isCore: boolean;
+  programmeSlugs?: string[];
+  syllabusVersion?: string;
+  sourceCitation?: string;
+}) {
+  return adminRequest('/shs/subjects', { method: 'POST', body });
+}
+
+export function toggleAdminShsSubject(subjectId: string, active: boolean) {
+  return adminRequest(`/shs/subjects/${subjectId}`, { method: 'PATCH', body: { active } });
+}
+
+export function addAdminShsTopic(
+  subjectId: string,
+  body: { title: string; schoolYear?: string | null },
+) {
+  return adminRequest(`/shs/subjects/${subjectId}/topics`, { method: 'POST', body });
+}

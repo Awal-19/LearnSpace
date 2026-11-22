@@ -17,10 +17,11 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { ThemeToggle } from '../../app/ThemeToggle';
 import { Avatar, Badge, cn, VerifiedBadge } from '../../design';
+import { AdminPageErrorBoundary } from './AdminPageErrorBoundary';
 
 const ADMIN_NAV = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true, superOnly: false },
@@ -42,6 +43,7 @@ const ADMIN_NAV = [
 export function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
 
@@ -272,7 +274,9 @@ export function AdminLayout() {
         </header>
 
         <main className="mx-auto w-full min-w-0 max-w-content flex-1 animate-fade-up px-4 py-6 sm:px-6">
-          <Outlet />
+          <AdminPageErrorBoundary key={location.pathname}>
+            <Outlet />
+          </AdminPageErrorBoundary>
         </main>
       </div>
     </div>

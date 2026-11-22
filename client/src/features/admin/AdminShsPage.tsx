@@ -1,43 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, CheckCircle2, Plus, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, GlassCard, Input, Skeleton, useToast } from '../../design';
-import { ApiError, request } from '../../lib/apiClient';
-
-interface ShsOverviewResponse {
-  counts: {
-    shsUsers: number;
-    universityUsers: number;
-    consentPending: number;
-    consentGiven: number;
-    consentWithdrawn: number;
-    openFlagsCount: number;
-  };
-  settings: {
-    featureShsSignups: boolean;
-    featureShsCommunity: boolean;
-    shsBannedWords: string[];
-    shsSyllabusSource: string;
-  };
-  flags: Array<{
-    id: string;
-    source: string;
-    direction: string;
-    reason: string;
-    excerpt: string;
-    createdAt: string;
-    user: { id: string; name: string; schoolYear: string | null };
-  }>;
-  subjects: Array<{
-    id: string;
-    name: string;
-    code: string | null;
-    isCore: boolean;
-    syllabusVersion: string;
-    active: boolean;
-    topics: Array<{ id: string; title: string; schoolYear: string | null }>;
-  }>;
-}
+import { ApiError } from '../../lib/apiClient';
+import {
+  addAdminShsTopic,
+  createAdminShsSubject,
+  fetchAdminShsOverview,
+  resolveAdminShsFlag,
+  toggleAdminShsSubject,
+  updateAdminShsSettings,
+} from './adminApi';
 
 export function AdminShsPage() {
   const toast = useToast();
@@ -45,7 +18,7 @@ export function AdminShsPage() {
 
   const query = useQuery({
     queryKey: ['admin', 'shs-overview'],
-    queryFn: () => request<ShsOverviewResponse>('/admin/shs/overview'),
+    queryFn: fetchAdminShsOverview,
   });
 
   const [bannedWordsText, setBannedWordsText] = useState('');
@@ -58,9 +31,9 @@ export function AdminShsPage() {
 
   useEffect(() => {
     if (query.data) {
-      setBannedWordsText(query.data.settings.shsBannedWords.join(', '));
-      setSyllabusSource(query.data.settings.shsSyllabusSource);
-      if (!topicSubjectId && query.data.subjects[0]?.id) {
+      setBannedWordsText((query.data.settings?.shsBannedWords ?? []).join(', '));
+      setSyllabusSource(query.data.settings?.shsSyllabusSource ?? '');
+      if (!topicSubjectId && query.data.subjects?.[0]?.id) {
         setTopicSubjectId(query.data.subjects[0].id);
       }
     }
@@ -68,9 +41,9 @@ export function AdminShsPage() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin', 'shs-overview'] });
 
-  const updateSettings = async (patch: Record<string, unknown>) => {
+  const updateSettings = async (patch: Parameters<typeof updateAdminShsSettings>[0]) => {
     try {
-      await request('/admin/shs/settings', { method: 'PATCH', body: patch });
+      await updateAdminShsSettings(patch);
       await refresh();
       toast.show({ kind: 'success', title: 'SHS settings updated' });
     } catch (err) {
@@ -82,11 +55,54 @@ export function AdminShsPage() {
     }
   };
 
-  if (query.isLoading || !query.data) {
-    return <Skeleton className="h-64 w-full rounded-2xl" />;
+  if (query.isLoading) {
+    return (
+      <div className="space-y-6" aria-label="Loading SHS & Safety">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+        </div>
+        <Skeleton className="h-56 w-full rounded-2xl" />
+      </div>
+    );
   }
 
-  const { counts, settings, flags, subjects } = query.data;
+  if (query.isError || !query.data) {
+    const status = query.error instanceof ApiError ? query.error.status : null;
+    const isForbidden = status === 403 || status === 401;
+    return (
+      <GlassCard className="mx-auto max-w-lg space-y-4 p-6 text-center">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-danger/15 text-danger">
+          <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div>
+          <h2 className="font-display text-lg font-semibold text-fg">
+            {isForbidden
+              ? 'This page needs admin or super admin access'
+              : 'Could not load SHS & Safety dashboard'}
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            {isForbidden
+              ? 'Unlock the admin console or sign in with an authorized admin account.'
+              : 'The server returned an error while loading SHS & Safety data.'}
+            {status ? ` (HTTP ${status})` : ''}
+          </p>
+        </div>
+        <div className="flex justify-center">
+          <Button type="button" size="sm" onClick={() => void query.refetch()}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      </GlassCard>
+    );
+  }
+
+  const { counts, settings, flags = [], subjects = [] } = query.data;
 
   return (
     <div className="space-y-6">
@@ -175,7 +191,9 @@ export function AdminShsPage() {
           </h2>
         </div>
         {flags.length === 0 ? (
-          <p className="text-xs text-muted">No unreviewed SHS safety flags.</p>
+          <p className="rounded-xl border border-dashed border-line bg-surface2/30 px-4 py-6 text-center text-xs text-muted">
+            No pending SHS moderation flags. Flagged AI chats or community posts will appear here.
+          </p>
         ) : (
           <div className="space-y-2">
             {flags.map((f) => (
@@ -188,7 +206,7 @@ export function AdminShsPage() {
                     <Badge tone="warning">{f.source}</Badge>
                     <Badge tone="danger">{f.reason}</Badge>
                     <span className="font-medium text-fg">
-                      {f.user.name} ({f.user.schoolYear ?? 'SHS'})
+                      {f.user?.name ?? 'Student'} ({f.user?.schoolYear ?? 'SHS'})
                     </span>
                   </div>
                   <p className="text-muted">{f.excerpt}</p>
@@ -198,7 +216,7 @@ export function AdminShsPage() {
                   size="sm"
                   variant="secondary"
                   onClick={async () => {
-                    await request(`/admin/shs/flags/${f.id}`, { method: 'PATCH' });
+                    await resolveAdminShsFlag(f.id);
                     await refresh();
                     toast.show({ kind: 'success', title: 'Flag marked reviewed' });
                   }}
@@ -247,13 +265,10 @@ export function AdminShsPage() {
               size="sm"
               onClick={async () => {
                 if (!newSubjName.trim()) return;
-                await request('/admin/shs/subjects', {
-                  method: 'POST',
-                  body: {
-                    name: newSubjName.trim(),
-                    code: newSubjCode.trim() || null,
-                    isCore: newSubjCore,
-                  },
+                await createAdminShsSubject({
+                  name: newSubjName.trim(),
+                  code: newSubjCode.trim() || null,
+                  isCore: newSubjCore,
                 });
                 setNewSubjName('');
                 setNewSubjCode('');
@@ -267,79 +282,82 @@ export function AdminShsPage() {
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3 border-t border-line pt-3">
-          <label className="block space-y-1 text-xs">
-            <span className="font-medium text-fg">Add topic to subject</span>
-            <select
-              value={topicSubjectId}
-              onChange={(e) => setTopicSubjectId(e.target.value)}
-              className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
-            >
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input
-            label="Topic title"
-            value={newTopicTitle}
-            onChange={(e) => setNewTopicTitle(e.target.value)}
-            placeholder="e.g. Electrolysis"
-          />
-          <div className="flex items-end">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                if (!topicSubjectId || !newTopicTitle.trim()) return;
-                await request(`/admin/shs/subjects/${topicSubjectId}/topics`, {
-                  method: 'POST',
-                  body: { title: newTopicTitle.trim() },
-                });
-                setNewTopicTitle('');
-                await refresh();
-                toast.show({ kind: 'success', title: 'Topic added' });
-              }}
-            >
-              Add Topic
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {subjects.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center justify-between rounded-xl border border-line bg-surface2/40 px-3 py-2 text-xs"
-            >
-              <div>
-                <p className="font-medium text-fg">
-                  {s.name} {s.code ? `(${s.code})` : ''}
-                </p>
-                <p className="text-muted">
-                  {s.isCore ? 'Core' : 'Elective'} · {s.topics.length} topics · {s.syllabusVersion}
-                </p>
-              </div>
+        {subjects.length > 0 ? (
+          <div className="grid gap-2 border-t border-line pt-3 sm:grid-cols-3">
+            <label className="block space-y-1 text-xs">
+              <span className="font-medium text-fg">Add topic to subject</span>
+              <select
+                value={topicSubjectId}
+                onChange={(e) => setTopicSubjectId(e.target.value)}
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+              >
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Input
+              label="Topic title"
+              value={newTopicTitle}
+              onChange={(e) => setNewTopicTitle(e.target.value)}
+              placeholder="e.g. Electrolysis"
+            />
+            <div className="flex items-end">
               <Button
                 type="button"
                 size="sm"
-                variant="ghost"
+                variant="secondary"
                 onClick={async () => {
-                  await request(`/admin/shs/subjects/${s.id}`, {
-                    method: 'PATCH',
-                    body: { active: !s.active },
-                  });
+                  if (!topicSubjectId || !newTopicTitle.trim()) return;
+                  await addAdminShsTopic(topicSubjectId, { title: newTopicTitle.trim() });
+                  setNewTopicTitle('');
                   await refresh();
+                  toast.show({ kind: 'success', title: 'Topic added' });
                 }}
               >
-                {s.active ? 'Retire' : 'Activate'}
+                Add Topic
               </Button>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : null}
+
+        {subjects.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line bg-surface2/30 px-4 py-6 text-center text-xs text-muted">
+            No SHS subjects in the catalogue yet. Add a subject above to get started.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {subjects.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between rounded-xl border border-line bg-surface2/40 px-3 py-2 text-xs"
+              >
+                <div>
+                  <p className="font-medium text-fg">
+                    {s.name} {s.code ? `(${s.code})` : ''}
+                  </p>
+                  <p className="text-muted">
+                    {s.isCore ? 'Core' : 'Elective'} · {s.topics?.length ?? 0} topics ·{' '}
+                    {s.syllabusVersion}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    await toggleAdminShsSubject(s.id, !s.active);
+                    await refresh();
+                  }}
+                >
+                  {s.active ? 'Retire' : 'Activate'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </GlassCard>
     </div>
   );

@@ -73,6 +73,22 @@ async function runStartupMigrations(databaseUrl: string, logger: Logger): Promis
         timeout: 30_000,
       });
       logger.info({ attempt }, 'Database migrations verified');
+      try {
+        const { stdout } = await execFileAsync(
+          process.execPath,
+          [prismaCliPath, 'migrate', 'status'],
+          {
+            cwd: serverRoot,
+            env: { ...process.env, DATABASE_URL: databaseUrl },
+            timeout: 15_000,
+          },
+        );
+        if (/not yet been applied|drift|behind/i.test(stdout)) {
+          logger.warn({ statusOutput: stdout.slice(0, 500) }, 'Database schema may be behind code');
+        }
+      } catch (statusErr) {
+        logger.warn({ err: statusErr }, 'Could not verify Prisma migrate status after deploy');
+      }
       return true;
     } catch (err) {
       logger.warn(

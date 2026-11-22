@@ -31,6 +31,7 @@ import {
   scrubDeletedUserLoginHistory,
 } from '../users/userCleanup';
 import { getAppSettings, invalidateAppSettingsCache, recordAuditLog } from './admin.logging';
+import { ensureShsCatalogueSeeded } from '../shs/shs.catalogue';
 import type {
   acceptAdminInviteSchema,
   bulkUsersSchema,
@@ -2575,6 +2576,10 @@ export function createAdminService(deps: AdminServiceDeps) {
     },
 
     async getShsOverview() {
+      await ensureShsCatalogueSeeded(prisma).catch((err) => {
+        logger.warn({ err }, 'Admin SHS catalogue seed check failed');
+      });
+
       const [
         shsUsers,
         universityUsers,
