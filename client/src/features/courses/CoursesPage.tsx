@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { CourseFormModal } from './CourseFormModal';
 import { DeleteCourseModal } from './DeleteCourseModal';
+import { ShsSubjectPickerModal } from './ShsSubjectPickerModal';
 import {
   createCourse,
   deleteCourse,
@@ -47,6 +49,8 @@ function invalidateCourseDependents(qc: ReturnType<typeof useQueryClient>) {
 }
 
 export function CoursesPage() {
+  const { user } = useAuth();
+  const isShs = user?.learnerType === 'shs';
   const path = useAppPath();
   const toast = useToast();
   const qc = useQueryClient();
@@ -55,6 +59,7 @@ export function CoursesPage() {
   const [search, setSearch] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [shsPickerOpen, setShsPickerOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CourseSummary | null>(null);
   const [deletingCourse, setDeletingCourse] = useState<CourseSummary | null>(null);
 
@@ -156,24 +161,35 @@ export function CoursesPage() {
             <BookMarked className="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Courses</h1>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
+              {isShs ? 'Subjects' : 'Courses'}
+            </h1>
             <p className="mt-0.5 text-sm text-muted">
-              Organize your semester modules, track linked study materials, and monitor course
-              progress.
+              {isShs
+                ? `Organize your ${user?.schoolYear ?? 'SHS'} subjects, track linked study materials, and monitor your progress.`
+                : 'Organize your semester modules, track linked study materials, and monitor course progress.'}
             </p>
           </div>
         </div>
 
-        <Button
-          type="button"
-          onClick={() => {
-            setEditingCourse(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Add course
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isShs ? (
+            <Button type="button" variant="secondary" onClick={() => setShsPickerOpen(true)}>
+              <BookMarked className="h-4 w-4" aria-hidden="true" />
+              Pick SHS Subjects
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            onClick={() => {
+              setEditingCourse(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {isShs ? 'Add subject' : 'Add course'}
+          </Button>
+        </div>
       </div>
 
       {/* Filters & Tabs */}
@@ -417,7 +433,7 @@ export function CoursesPage() {
                     to={path(`/courses/${course.id}`)}
                     className="inline-flex w-full items-center justify-center rounded-xl border border-line bg-surface2/50 py-2 text-xs font-medium text-fg transition-colors hover:border-primary-300 hover:bg-primary-50/70 hover:text-primary-700 dark:hover:bg-primary-500/15 dark:hover:text-primary-300"
                   >
-                    Open course hub
+                    {isShs ? 'Open subject hub' : 'Open course hub'}
                   </Link>
                 </div>
               </Card>
@@ -438,6 +454,8 @@ export function CoursesPage() {
         onClose={() => setDeletingCourse(null)}
         onConfirm={handleDeleteCourse}
       />
+
+      <ShsSubjectPickerModal open={shsPickerOpen} onClose={() => setShsPickerOpen(false)} />
     </div>
   );
 }

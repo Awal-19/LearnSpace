@@ -144,6 +144,13 @@ export function createUsersService({ prisma, storage, logger }: UsersServiceDeps
       if (input.level !== undefined) data.level = input.level;
       if (input.university !== undefined) data.university = input.university;
       if (input.bio !== undefined) data.bio = input.bio;
+      if (input.learnerType !== undefined) data.learnerType = input.learnerType;
+      if (input.schoolYear !== undefined) {
+        data.schoolYear = input.schoolYear;
+        if (input.schoolYear) data.level = input.schoolYear;
+      }
+      if (input.schoolName !== undefined) data.schoolName = input.schoolName;
+      if (input.bio !== undefined) data.bio = input.bio;
 
       const user = await prisma.user.update({
         where: { id: userId },

@@ -22,6 +22,8 @@ import {
   trimHistory,
   TUTOR_SYSTEM_PROMPT,
 } from './ai.prompts';
+import { buildShsSystemPrompt } from './ai.shs.prompts';
+import { logShsModerationFlag, screenShsChatContent } from '../shs/shs.safety';
 import { isMathProblem, verifyMathAnswer } from './mathVerify';
 import { acquireAiConcurrency, enforceAiQuota } from './aiQuota';
 import { wrapUntrustedContext } from '../../lib/fileSafety';
@@ -279,7 +281,23 @@ export function createAiService({
       }
 
       const conv = await requireOwnedConversation(userId, conversationId);
-      await enforceAiQuota(prisma, userId, dailyTokenLimit);
+      const userProfile = await prisma.user
+        .findUnique({
+          where: { id: userId },
+          select: { learnerType: true, ageGroup: true, schoolYear: true, programme: true },
+        })
+        .catch(() => null);
+      const isShs = userProfile?.learnerType === 'shs' || userProfile?.ageGroup === 'under_18';
+      const effectiveTokenLimit = isShs
+        ? dailyTokenLimit !== null
+          ? Math.min(dailyTokenLimit, 60_000)
+          : 60_000
+        : dailyTokenLimit;
+      const activeSystemPrompt = isShs
+        ? buildShsSystemPrompt(userProfile ?? undefined)
+        : TUTOR_SYSTEM_PROMPT;
+
+      await enforceAiQuota(prisma, userId, effectiveTokenLimit);
       const { dayDate } = utcDayBounds();
 
       const historyRows = await prisma.message.findMany({
@@ -362,6 +380,33 @@ export function createAiService({
         ...(sources.length > 0 ? { sources } : {}),
         ...(publicAttachments.length > 0 ? { attachments: publicAttachments } : {}),
       });
+
+      if (isShs && input.content.trim().length > 0) {
+        const inputScreen = screenShsChatContent(input.content);
+        if (inputScreen.flagged && inputScreen.safeReply) {
+          await logShsModerationFlag(prisma, {
+            userId,
+            source: 'ai_chat',
+            direction: 'input',
+            reason: inputScreen.reason ?? 'shs_safety_filter',
+            excerpt: input.content,
+          });
+          sink.onDelta(inputScreen.safeReply);
+          await prisma.message.update({
+            where: { id: assistantMessage.id },
+            data: { content: inputScreen.safeReply, status: 'complete' },
+          });
+          await prisma.conversation.update({
+            where: { id: conv.id },
+            data: { updatedAt: new Date() },
+          });
+          sink.onDone({
+            messageId: assistantMessage.id,
+            usage: { inputTokens: 0, outputTokens: 0 },
+          });
+          return;
+        }
+      }
 
       const priorLlmMessages: LLMMessage[] = historyRows
         .filter((m) => m.content.trim().length > 0)
@@ -452,7 +497,7 @@ export function createAiService({
 
       try {
         for await (const chunk of llm.stream(llmMessages, {
-          systemPrompt: TUTOR_SYSTEM_PROMPT,
+          systemPrompt: activeSystemPrompt,
           maxOutputTokens: mathMode ? 4096 : 2048,
           signal,
         })) {
@@ -484,7 +529,7 @@ export function createAiService({
               const recheck = await llm.generateText(
                 `Your previous solution to "${input.content}" failed an automated substitution check (${check.detail}). Re-check the algebra briefly and provide the corrected **Answer:** and **Check your answer** step in LaTeX ($...$ / $$...$$).`,
                 {
-                  systemPrompt: TUTOR_SYSTEM_PROMPT,
+                  systemPrompt: activeSystemPrompt,
                   maxOutputTokens: 1024,
                   signal,
                 },
@@ -497,6 +542,20 @@ export function createAiService({
             } catch (recheckErr) {
               logger.warn({ err: recheckErr }, 'Math answer re-check failed');
             }
+          }
+        }
+
+        if (isShs && fullText.length > 0) {
+          const outputScreen = screenShsChatContent(fullText);
+          if (outputScreen.flagged && outputScreen.safeReply) {
+            await logShsModerationFlag(prisma, {
+              userId,
+              source: 'ai_chat',
+              direction: 'output',
+              reason: outputScreen.reason ?? 'shs_output_filter',
+              excerpt: fullText,
+            });
+            fullText = outputScreen.safeReply;
           }
         }
 
@@ -551,7 +610,7 @@ export function createAiService({
         });
         void recordUsageEvent(prisma, {
           userId,
-          feature: 'chat',
+          feature: isShs ? 'shs_ai' : 'chat',
           model: llm.modelName,
           tokensIn: finalUsage.inputTokens,
           tokensOut: finalUsage.outputTokens,
@@ -574,7 +633,7 @@ export function createAiService({
         logger.warn({ err, conversationId: conv.id }, 'AI stream failed');
         void recordUsageEvent(prisma, {
           userId,
-          feature: 'chat',
+          feature: isShs ? 'shs_ai' : 'chat',
           model: llm.modelName,
           tokensIn: 0,
           tokensOut: 0,

@@ -35,18 +35,32 @@ export function SignupPage() {
     register,
     handleSubmit,
     watch,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
     mode: 'onBlur',
-    defaultValues: { name: '', email: '', password: '', acceptTerms: false },
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+      learnerType: 'university',
+      schoolYear: 'SHS 1',
+      ageGroup: 'adult_18_plus',
+      dateOfBirth: '',
+      guardianEmail: '',
+      guardianPhone: '',
+      acceptTerms: false,
+    },
   });
 
   if (status === 'authenticated') {
     return <Navigate to={user?.emailVerified ? '/' : '/verify-email'} replace />;
   }
 
+  const learnerTypeValue = watch('learnerType', 'university');
+  const ageGroupValue = watch('ageGroup', 'adult_18_plus');
   const passwordValue = watch('password', '');
   const checks = [
     { label: 'At least 8 characters', ok: passwordValue.length >= 8 },
@@ -58,9 +72,19 @@ export function SignupPage() {
     setServerError(null);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     try {
+      const payload = {
+        ...values,
+        schoolYear: values.learnerType === 'shs' ? values.schoolYear : undefined,
+        dateOfBirth: values.dateOfBirth?.trim() || undefined,
+        guardianEmail:
+          values.ageGroup === 'under_18' ? values.guardianEmail?.trim() || undefined : undefined,
+        guardianPhone:
+          values.ageGroup === 'under_18' ? values.guardianPhone?.trim() || undefined : undefined,
+        timezone,
+      };
       const data = await request<SignupResponse>('/auth/signup', {
         method: 'POST',
-        body: { ...values, timezone },
+        body: payload,
         auth: false,
       });
       const targetEmail = data.email || values.email;
@@ -120,6 +144,97 @@ export function SignupPage() {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <div className="space-y-1.5">
+          <span className="block text-xs font-medium text-fg">I am signing up as</span>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ['university', 'University student'],
+                ['shs', 'SHS student (Ghana)'],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setValue('learnerType', val)}
+                className={cn(
+                  'rounded-full border px-3 py-2 text-xs font-medium transition-colors',
+                  learnerTypeValue === val
+                    ? 'border-primary-600 bg-primary-600/10 text-primary-700 dark:text-primary-300'
+                    : 'border-line bg-surface2/50 text-muted hover:text-fg',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {learnerTypeValue === 'shs' ? (
+          <label className="block space-y-1 text-xs">
+            <span className="font-medium text-fg">SHS Year</span>
+            <select
+              {...register('schoolYear')}
+              className="h-10 w-full rounded-full border border-white/95 bg-white/80 px-4 text-sm text-fg shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-surface2/60"
+            >
+              <option value="SHS 1">SHS 1</option>
+              <option value="SHS 2">SHS 2</option>
+              <option value="SHS 3">SHS 3</option>
+            </select>
+          </label>
+        ) : null}
+
+        <div className="space-y-1.5">
+          <span className="block text-xs font-medium text-fg">Age confirmation</span>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ['adult_18_plus', '18 or older'],
+                ['under_18', 'Under 18'],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setValue('ageGroup', val)}
+                className={cn(
+                  'rounded-full border px-3 py-2 text-xs font-medium transition-colors',
+                  ageGroupValue === val
+                    ? 'border-primary-600 bg-primary-600/10 text-primary-700 dark:text-primary-300'
+                    : 'border-line bg-surface2/50 text-muted hover:text-fg',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {ageGroupValue === 'under_18' ? (
+          <div className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/50 p-3.5 text-xs dark:border-amber-500/25 dark:bg-amber-500/10">
+            <p className="font-medium text-fg">
+              Parent or guardian permission is required for students under 18. We will email them a
+              link to approve your account.
+            </p>
+            <Input
+              label="Parent or guardian email"
+              type="email"
+              placeholder="parent@example.com"
+              className="rounded-full border-white/95 bg-white/80 pr-4 dark:border-white/10 dark:bg-surface2/60"
+              error={errors.guardianEmail?.message}
+              {...register('guardianEmail')}
+            />
+            <Input
+              label="Parent or guardian phone (optional)"
+              type="tel"
+              placeholder="e.g. 024 000 0000"
+              className="rounded-full border-white/95 bg-white/80 pr-4 dark:border-white/10 dark:bg-surface2/60"
+              error={errors.guardianPhone?.message}
+              {...register('guardianPhone')}
+            />
+          </div>
+        ) : null}
+
         <Input
           label="Full name"
           autoComplete="name"

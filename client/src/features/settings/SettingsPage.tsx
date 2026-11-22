@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Download, Palette, ShieldCheck, Timer } from 'lucide-react';
+import { Bell, Download, GraduationCap, Palette, ShieldCheck, Timer } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../app/AuthContext';
 import { useTheme } from '../../app/ThemeProvider';
@@ -40,7 +40,7 @@ const COMMON_TIMEZONES = [
 ];
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { setPreference } = useTheme();
   const toast = useToast();
   const qc = useQueryClient();
@@ -58,10 +58,24 @@ export function SettingsPage() {
   const [form, setForm] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [learnerType, setLearnerType] = useState<'university' | 'shs'>(
+    user?.learnerType ?? 'university',
+  );
+  const [schoolYear, setSchoolYear] = useState<string>(user?.schoolYear ?? 'SHS 1');
+  const [schoolName, setSchoolName] = useState<string>(user?.schoolName ?? '');
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     if (settingsQuery.data) setForm(settingsQuery.data);
   }, [settingsQuery.data]);
+
+  useEffect(() => {
+    if (user) {
+      setLearnerType(user.learnerType ?? 'university');
+      setSchoolYear(user.schoolYear ?? 'SHS 1');
+      setSchoolName(user.schoolName ?? '');
+    }
+  }, [user]);
 
   if (settingsQuery.isLoading || !form) {
     return (
@@ -311,6 +325,109 @@ export function SettingsPage() {
             ))}
           </div>
         ) : null}
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600 dark:text-primary-400">
+            <GraduationCap className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-fg">Learner Type &amp; Academic Profile</h2>
+            <p className="text-xs text-muted">
+              Switch between University and Ghanaian SHS mode. Your existing courses or subjects
+              stay intact.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1 text-xs">
+            <span className="font-medium text-fg">Learner type</span>
+            <select
+              value={learnerType}
+              onChange={(e) => setLearnerType(e.target.value as 'university' | 'shs')}
+              className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+            >
+              <option value="university">University student</option>
+              <option value="shs">SHS student (Ghana)</option>
+            </select>
+          </label>
+          {learnerType === 'shs' ? (
+            <label className="block space-y-1 text-xs">
+              <span className="font-medium text-fg">SHS Year</span>
+              <select
+                value={schoolYear}
+                onChange={(e) => setSchoolYear(e.target.value)}
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+              >
+                <option value="SHS 1">SHS 1</option>
+                <option value="SHS 2">SHS 2</option>
+                <option value="SHS 3">SHS 3</option>
+              </select>
+            </label>
+          ) : null}
+        </div>
+        {learnerType === 'shs' ? (
+          <Input
+            label="School name (optional)"
+            placeholder="e.g. Achimota School"
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+          />
+        ) : null}
+        <div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={savingProfile}
+            onClick={async () => {
+              const changingType = learnerType !== (user?.learnerType ?? 'university');
+              if (
+                changingType &&
+                !window.confirm(
+                  `Switch to ${learnerType === 'shs' ? 'SHS student' : 'University student'} mode? Your existing courses/subjects will remain intact.`,
+                )
+              ) {
+                return;
+              }
+              setSavingProfile(true);
+              try {
+                const updated = await request<{
+                  learnerType?: 'university' | 'shs';
+                  schoolYear?: string | null;
+                  schoolName?: string | null;
+                }>('/users/me', {
+                  method: 'PATCH',
+                  body: {
+                    learnerType,
+                    schoolYear: learnerType === 'shs' ? schoolYear : null,
+                    schoolName: learnerType === 'shs' ? schoolName.trim() || null : null,
+                  },
+                });
+                if (user) {
+                  updateUser({
+                    ...user,
+                    learnerType: updated.learnerType ?? learnerType,
+                    schoolYear: updated.schoolYear ?? null,
+                    schoolName: updated.schoolName ?? null,
+                  });
+                }
+                toast.show({ kind: 'success', title: 'Academic profile updated' });
+              } catch (err) {
+                toast.show({
+                  kind: 'error',
+                  title: 'Could not update profile',
+                  description: err instanceof ApiError ? err.message : 'Please try again.',
+                });
+              } finally {
+                setSavingProfile(false);
+              }
+            }}
+          >
+            Update academic profile
+          </Button>
+        </div>
       </Card>
 
       <Card className="p-6 space-y-3">

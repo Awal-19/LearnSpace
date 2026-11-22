@@ -22,6 +22,7 @@ import {
   checkProfanityAndBannedWords,
   sanitizeCommunityText,
 } from './community.safety';
+import { detectShsPii, logShsModerationFlag, screenShsChatContent } from '../shs/shs.safety';
 import type { createCommunityService } from './community.service';
 
 const MAX_NEW_GROUPS_PER_DAY = 3;
@@ -174,10 +175,16 @@ export function createCommunityGroupsService(deps: {
 
     async joinByInviteCode(userId: string, inviteCode: string) {
       await core.assertCommunityFeatureEnabled();
-      const group = await prisma.studyGroup.findUnique({
-        where: { inviteCode: inviteCode.trim() },
-      });
-      if (!group) throw new AppError('NOT_FOUND', 'Invalid or expired group invite code.');
+      const [group, user] = await Promise.all([
+        prisma.studyGroup.findUnique({
+          where: { inviteCode: inviteCode.trim() },
+          include: { community: { select: { learnerScope: true } } },
+        }),
+        prisma.user.findUnique({ where: { id: userId }, select: { learnerType: true } }),
+      ]);
+      if (!group || (user && group.community.learnerScope !== user.learnerType)) {
+        throw new AppError('NOT_FOUND', 'Invalid or expired group invite code.');
+      }
 
       await prisma.communityMember.upsert({
         where: { communityId_userId: { communityId: group.communityId, userId } },
@@ -389,9 +396,34 @@ export function createCommunityGroupsService(deps: {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, name: true, avatarUrl: true, createdAt: true },
+        select: { id: true, name: true, avatarUrl: true, createdAt: true, learnerType: true },
       });
       const body = sanitizeCommunityText(input.body, 4000);
+      if (user?.learnerType === 'shs') {
+        if (/https?:\/\/|www\./i.test(body)) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'External links are not allowed in SHS group chat.',
+          );
+        }
+        const pii = detectShsPii(body);
+        const safety = screenShsChatContent(body);
+        const shsBanned = parseStringArray(settings?.shsBannedWordsJson);
+        const shsWordHit = checkProfanityAndBannedWords(body, shsBanned);
+        if (pii || safety.flagged || shsWordHit.flagged) {
+          await logShsModerationFlag(prisma, {
+            userId,
+            source: 'community_group',
+            direction: 'community',
+            reason: pii ? `pii:${pii}` : (safety.reason ?? 'shs_banned_word'),
+            excerpt: body,
+          });
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Your message was blocked by SHS safety filters (personal info, external links, or inappropriate words are not allowed).',
+          );
+        }
+      }
       const adminBlockDomains = parseStringArray(settings?.recommendationBlockDomainsJson);
 
       try {

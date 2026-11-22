@@ -25,6 +25,7 @@ export function AdminUsersPage() {
   const [status, setStatus] = useState('');
   const [verified, setVerified] = useState('');
   const [authMethod, setAuthMethod] = useState('');
+  const [learnerType, setLearnerType] = useState('');
   const [sortBy, setSortBy] = useState<'createdAt' | 'name' | 'email' | 'lastActiveAt'>(
     'createdAt',
   );
@@ -34,7 +35,19 @@ export function AdminUsersPage() {
   const [busyBulk, setBusyBulk] = useState(false);
 
   const query = useQuery({
-    queryKey: ['admin', 'users', q, role, status, verified, authMethod, sortBy, sortDir, page],
+    queryKey: [
+      'admin',
+      'users',
+      q,
+      role,
+      status,
+      verified,
+      authMethod,
+      learnerType,
+      sortBy,
+      sortDir,
+      page,
+    ],
     queryFn: () =>
       fetchAdminUsers({
         q: q.trim() || undefined,
@@ -42,6 +55,7 @@ export function AdminUsersPage() {
         status: status || undefined,
         verified: verified || undefined,
         authMethod: authMethod || undefined,
+        learnerType: learnerType || undefined,
         sortBy,
         sortDir,
         page,
@@ -163,6 +177,19 @@ export function AdminUsersPage() {
             <option value="student">Student</option>
             <option value="admin">Admin</option>
             <option value="super_admin">Super Admin</option>
+          </Select>
+
+          <Select
+            aria-label="Filter by learner type"
+            value={learnerType}
+            onChange={(e) => {
+              setLearnerType(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All learners</option>
+            <option value="university">University</option>
+            <option value="shs">SHS (Ghana)</option>
           </Select>
 
           <Select

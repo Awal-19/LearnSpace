@@ -24,9 +24,9 @@ export interface LegalDocumentData {
   sections: readonly LegalSection[];
 }
 
-export const LEGAL_VERSION = '2026-11-18';
-export const LEGAL_EFFECTIVE_DATE = 'November 18, 2026';
-export const LEGAL_LAST_UPDATED = 'November 18, 2026';
+export const LEGAL_VERSION = '2026-11-22';
+export const LEGAL_EFFECTIVE_DATE = 'November 22, 2026';
+export const LEGAL_LAST_UPDATED = 'November 22, 2026';
 
 export const LEGAL_DRAFT_NOTICE =
   'Draft Notice: This document is an editable platform draft prepared for review before commercial production release and has not been reviewed by qualified legal counsel. Bracketed items mark operator, jurisdictional, and contact details to be completed prior to production launch.';
@@ -290,8 +290,27 @@ export const PRIVACY_SECTIONS: readonly LegalSection[] = [
     ],
   },
   {
-    id: 'changes-and-contact',
+    id: 'childrens-data-and-guardian-rights',
     number: 9,
+    title: "Children's Data & Guardian Rights (Ghana Data Protection Act, Act 843)",
+    paragraphs: [
+      'Students under 18 (including Senior High School students) receive extra protection on LearnSpace. Accounts marked under 18 remain locked until a parent or legal guardian approves the account via email.',
+      'We collect only the minimum details needed for learning (no precise GPS location, private profile by default, default avatar option, and your email, phone, school, and full name are hidden from other students unless you and your guardian allow it). There is no advertising, no sale of data, and no tracking beyond what the app needs.',
+    ],
+    bullets: [
+      'Access & Export: Parents/guardians and students can export account data in JSON format from Settings.',
+      'Correction: Profile details and guardian contact details can be updated or corrected.',
+      'Withdrawal of Consent: A guardian can withdraw consent at any time using the withdrawal link sent in their consent email, which immediately locks the account.',
+      'Deletion: Accounts and associated workspace records can be permanently deleted from Settings.',
+    ],
+    callout: {
+      title: 'Draft Compliance Notice (Not Legal Advice)',
+      body: "These child-protection provisions are designed to align with Ghana's Data Protection Act, 2012 (Act 843). This draft must be reviewed by a qualified legal practitioner before production launch and does not constitute legal advice.",
+    },
+  },
+  {
+    id: 'changes-and-contact',
+    number: 10,
     title: 'Policy Updates & Privacy Contact',
     paragraphs: [
       'We may update this Privacy Policy as LearnSpace features or third-party integrations change. Updates will carry a revised version number and Last Updated date.',

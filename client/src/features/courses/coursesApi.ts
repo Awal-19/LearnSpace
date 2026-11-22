@@ -30,6 +30,8 @@ export interface CourseSummary {
   deckCount: number;
   quizCount: number;
   studySeconds: number;
+  type?: 'course' | 'subject';
+  catalogueSubjectId?: string | null;
   recommendationCount?: number;
   recommendationJobStatus?: string | null;
 }
@@ -266,4 +268,47 @@ export function reportCourseRecommendation(
     method: 'POST',
     body: { reason },
   });
+}
+
+export interface ShsProgrammeItem {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+export interface ShsCatalogueSubject {
+  id: string;
+  slug: string;
+  name: string;
+  code: string | null;
+  isCore: boolean;
+  programmeSlugs: string[];
+  syllabusVersion: string;
+  sourceCitation: string;
+  topics: Array<{ id: string; title: string; schoolYear: string | null }>;
+}
+
+export interface ShsCatalogueResponse {
+  syllabusSource: string;
+  programmes: ShsProgrammeItem[];
+  subjects: ShsCatalogueSubject[];
+}
+
+export function fetchShsCatalogue() {
+  return request<ShsCatalogueResponse>('/shs/catalogue');
+}
+
+export function saveShsOnboardingSubjects(body: {
+  schoolYear?: 'SHS 1' | 'SHS 2' | 'SHS 3';
+  schoolName?: string | null;
+  programme?: string | null;
+  subjectIds: string[];
+  customNames: string[];
+}) {
+  return request<{
+    schoolYear: string;
+    subjectsCount: number;
+    subjects: Array<{ id: string; name: string; code: string | null; type: string }>;
+  }>('/shs/onboarding/subjects', { method: 'POST', body });
 }

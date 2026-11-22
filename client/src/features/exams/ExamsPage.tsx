@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Clock, Edit3, MapPin, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
 import {
   Badge,
@@ -19,6 +20,7 @@ import { CourseSelect } from '../courses/CourseSelect';
 import { listCourses } from '../courses/coursesApi';
 import { ExamFormModal } from './ExamFormModal';
 import { RevisionPlannerPanel } from './RevisionPlannerPanel';
+import { WasscePrepPanel } from '../shs/WasscePrepPanel';
 import {
   EXAM_TYPE_LABELS,
   createExam,
@@ -31,11 +33,13 @@ import {
 } from './examsApi';
 
 export function ExamsPage() {
+  const { user } = useAuth();
+  const isShs = user?.learnerType === 'shs';
   const path = useAppPath();
   const toast = useToast();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<'exams' | 'revision'>('exams');
+  const [tab, setTab] = useState<'exams' | 'revision' | 'wassce'>(isShs ? 'wassce' : 'exams');
   const [courseFilter, setCourseFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExamItem | null>(null);
@@ -171,6 +175,21 @@ export function ExamsPage() {
           >
             AI Revision Plan
           </button>
+          {isShs ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'wassce'}
+              onClick={() => setTab('wassce')}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                tab === 'wassce'
+                  ? 'bg-surface text-primary-600 shadow-sm dark:text-primary-400'
+                  : 'text-muted hover:text-fg'
+              }`}
+            >
+              WASSCE Prep
+            </button>
+          ) : null}
         </div>
 
         {tab === 'exams' ? (
@@ -187,7 +206,9 @@ export function ExamsPage() {
       </div>
 
       {/* Main Content */}
-      {tab === 'revision' ? (
+      {tab === 'wassce' && isShs ? (
+        <WasscePrepPanel courses={courses} />
+      ) : tab === 'revision' ? (
         <RevisionPlannerPanel exams={exams} courses={courses} />
       ) : examsQuery.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

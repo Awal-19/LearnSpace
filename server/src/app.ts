@@ -7,7 +7,7 @@ import { pinoHttp } from 'pino-http';
 import type { Env } from './config/env';
 import { createLogger } from './lib/logger';
 import { createErrorHandler, notFound } from './middleware/errorHandler';
-import { requireAuth, requireVerified } from './middleware/auth';
+import { requireAuth, requireGuardianConsent, requireVerified } from './middleware/auth';
 import { createRateLimiter, setRateLimitPrisma } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { healthRouter, type HealthDeps } from './modules/health/health.routes';
@@ -31,6 +31,8 @@ import { communityRouter } from './modules/community/community.routes';
 import type { createCommunityService } from './modules/community/community.service';
 import type { createCommunityGroupsService } from './modules/community/community.groups.service';
 import type { CommunityRealtimeHub } from './modules/community/community.realtime';
+import { shsRouter } from './modules/shs/shs.routes';
+import type { createShsService } from './modules/shs/shs.service';
 import { dashboardRouter } from './modules/dashboard/dashboard.service';
 import { examsRouter } from './modules/exams/exams.routes';
 import type { ExamsService } from './modules/exams/exams.service';
@@ -60,6 +62,10 @@ export interface AppDeps extends HealthDeps {
     core: ReturnType<typeof createCommunityService>;
     groups: ReturnType<typeof createCommunityGroupsService>;
     realtime: CommunityRealtimeHub;
+    isEmailVerified: (userId: string) => Promise<boolean>;
+  };
+  shs?: {
+    service: ReturnType<typeof createShsService>;
     isEmailVerified: (userId: string) => Promise<boolean>;
   };
   timetable?: TimetableService;
@@ -212,6 +218,9 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
   if (verifyEmailCheck || deps.dashboardPrisma) {
     const authMiddleware = requireAuth(env.JWT_SECRET);
     const verifiedMiddleware = requireVerified(deps.dashboardPrisma ?? verifyEmailCheck!);
+    const consentMiddleware = deps.dashboardPrisma
+      ? requireGuardianConsent(deps.dashboardPrisma)
+      : null;
 
     app.use(API_PREFIX, (req, res, next) => {
       if (
@@ -231,7 +240,17 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
           next(authErr);
           return;
         }
-        verifiedMiddleware(req, res, next);
+        verifiedMiddleware(req, res, (verifyErr?: unknown) => {
+          if (verifyErr) {
+            next(verifyErr);
+            return;
+          }
+          if (!consentMiddleware || req.path.startsWith('/shs/consent')) {
+            next();
+            return;
+          }
+          consentMiddleware(req, res, next);
+        });
       });
     });
   }
@@ -254,6 +273,16 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
         realtime: deps.community.realtime,
         env,
         isEmailVerified: deps.community.isEmailVerified,
+      }),
+    );
+  }
+  if (deps.shs) {
+    app.use(
+      API_PREFIX,
+      shsRouter({
+        shs: deps.shs.service,
+        env,
+        isEmailVerified: deps.shs.isEmailVerified,
       }),
     );
   }

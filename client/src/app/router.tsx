@@ -73,6 +73,9 @@ const AdminContentPage = lazy(() =>
 const AdminLearningPage = lazy(() =>
   import('../features/admin/AdminLearningPage').then((m) => ({ default: m.AdminLearningPage })),
 );
+const AdminShsPage = lazy(() =>
+  import('../features/admin/AdminShsPage').then((m) => ({ default: m.AdminShsPage })),
+);
 const AdminAnnouncementsPage = lazy(() =>
   import('../features/admin/AdminAnnouncementsPage').then((m) => ({
     default: m.AdminAnnouncementsPage,
@@ -252,10 +255,22 @@ const TermsPage = lazy(() =>
 const PrivacyPolicyPage = lazy(() =>
   import('../features/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })),
 );
+const GuardianConsentGatePage = lazy(() =>
+  import('../features/shs/GuardianConsentGatePage').then((m) => ({
+    default: m.GuardianConsentGatePage,
+  })),
+);
+const GuardianConsentActionPage = lazy(() =>
+  import('../features/shs/GuardianConsentActionPage').then((m) => ({
+    default: m.GuardianConsentActionPage,
+  })),
+);
 
 export const routes: RouteObject[] = [
   { path: '/terms-and-conditions', element: withSuspense(<TermsPage />) },
   { path: '/privacy-policy', element: withSuspense(<PrivacyPolicyPage />) },
+  { path: '/guardian-consent', element: withSuspense(<GuardianConsentActionPage />) },
+  { path: '/guardian-consent-required', element: withSuspense(<GuardianConsentGatePage />) },
   {
     element: <AuthLayout />,
     children: [
@@ -285,6 +300,7 @@ export const routes: RouteObject[] = [
           { path: 'ai-usage', element: withSuspense(<AdminAiUsagePage />) },
           { path: 'content', element: withSuspense(<AdminContentPage />) },
           { path: 'learning', element: withSuspense(<AdminLearningPage />) },
+          { path: 'shs', element: withSuspense(<AdminShsPage />) },
           { path: 'announcements', element: withSuspense(<AdminAnnouncementsPage />) },
           { path: 'feedback', element: withSuspense(<AdminFeedbackPage />) },
           { path: 'audit-log', element: withSuspense(<AdminAuditLogPage />) },

@@ -12,6 +12,8 @@ export const listUsersQuerySchema = z.object({
   status: z.enum(['active', 'suspended']).optional(),
   verified: z.enum(['true', 'false']).optional(),
   authMethod: z.enum(['email', 'google']).optional(),
+  learnerType: z.enum(['university', 'shs']).optional(),
+  consentStatus: z.enum(['not_required', 'pending', 'given', 'withdrawn']).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   sortBy: z.enum(['createdAt', 'name', 'email', 'lastActiveAt']).default('createdAt'),

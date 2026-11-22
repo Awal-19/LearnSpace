@@ -1189,6 +1189,92 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
     }),
   );
 
+  router.get(
+    '/shs/overview',
+    asyncHandler(async (_req, res) => {
+      res.json(await admin.getShsOverview());
+    }),
+  );
+
+  router.patch(
+    '/shs/settings',
+    asyncHandler(async (req, res) => {
+      const schema = z
+        .object({
+          featureShsSignups: z.boolean().optional(),
+          featureShsCommunity: z.boolean().optional(),
+          shsBannedWords: z.array(z.string().trim().min(1).max(60)).max(200).optional(),
+          shsSyllabusSource: z.string().trim().min(3).max(300).optional(),
+        })
+        .strict();
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Invalid SHS settings payload');
+      res.json(await admin.updateShsSettings(req.user!.id, parsed.data, req.ip));
+    }),
+  );
+
+  router.patch(
+    '/shs/flags/:id',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Flag not found');
+      res.json(await admin.resolveShsFlag(req.user!.id, id.data, req.ip));
+    }),
+  );
+
+  router.post(
+    '/shs/subjects',
+    asyncHandler(async (req, res) => {
+      const schema = z
+        .object({
+          name: z.string().trim().min(2).max(120),
+          code: z.string().trim().max(24).nullable().optional(),
+          isCore: z.boolean().default(false),
+          programmeSlugs: z.array(z.string().trim().max(80)).default([]),
+          syllabusVersion: z.string().trim().min(2).max(60).default('NaCCA-2024'),
+          sourceCitation: z
+            .string()
+            .trim()
+            .min(3)
+            .max(300)
+            .default('NaCCA / GES Senior High School Curriculum Framework (nacca.gov.gh)'),
+        })
+        .strict();
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Invalid subject payload');
+      res.status(201).json(await admin.createShsSubject(req.user!.id, parsed.data, req.ip));
+    }),
+  );
+
+  router.patch(
+    '/shs/subjects/:id',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Subject not found');
+      const schema = z.object({ active: z.boolean() }).strict();
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Invalid subject status');
+      res.json(await admin.toggleShsSubject(req.user!.id, id.data, parsed.data.active, req.ip));
+    }),
+  );
+
+  router.post(
+    '/shs/subjects/:id/topics',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Subject not found');
+      const schema = z
+        .object({
+          title: z.string().trim().min(2).max(200),
+          schoolYear: z.string().trim().max(20).nullable().optional(),
+        })
+        .strict();
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Invalid topic payload');
+      res.status(201).json(await admin.addShsTopic(req.user!.id, id.data, parsed.data, req.ip));
+    }),
+  );
+
   return router;
 }
 

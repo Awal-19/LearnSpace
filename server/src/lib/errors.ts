@@ -7,6 +7,7 @@ export type ErrorCode =
   | 'REFRESH_INVALID'
   | 'EMAIL_NOT_VERIFIED'
   | 'FORBIDDEN'
+  | 'GUARDIAN_CONSENT_REQUIRED'
   | 'ACCOUNT_SUSPENDED'
   | 'CSRF_BLOCKED'
   | 'NOT_FOUND'
@@ -33,6 +34,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   REFRESH_INVALID: 401,
   EMAIL_NOT_VERIFIED: 403,
   FORBIDDEN: 403,
+  GUARDIAN_CONSENT_REQUIRED: 403,
   ACCOUNT_SUSPENDED: 403,
   CSRF_BLOCKED: 403,
   NOT_FOUND: 404,
@@ -59,6 +61,8 @@ const DEFAULT_MESSAGE: Record<ErrorCode, string> = {
   REFRESH_INVALID: 'Your session is no longer valid. Please log in again',
   EMAIL_NOT_VERIFIED: 'Please verify your email to use this feature',
   FORBIDDEN: 'You do not have permission to access this resource',
+  GUARDIAN_CONSENT_REQUIRED:
+    'Guardian consent is required before this account can access LearnSpace.',
   ACCOUNT_SUSPENDED: 'Your account has been suspended. Please contact support.',
   CSRF_BLOCKED: 'Request blocked',
   NOT_FOUND: 'Not found',

@@ -78,6 +78,40 @@ enum UsageFeature {
   revision_plan
   course_resource_search
   community_ai
+  shs_ai
+}
+
+enum LearnerType {
+  university
+  shs
+}
+
+enum AgeGroup {
+  adult_18_plus
+  under_18
+}
+
+enum GuardianConsentStatus {
+  not_required
+  pending
+  given
+  withdrawn
+}
+
+enum CourseItemType {
+  course
+  subject
+}
+
+enum WassceMockFormat {
+  objective
+  theory
+  mixed
+}
+
+enum ModerationPriority {
+  normal
+  high
 }
 
 enum CommunityMemberRole {
@@ -380,10 +414,16 @@ model User {
   failedLoginCount        Int       @default(0)
   lockedUntil             DateTime? @db.Timestamptz(3)
   tokensValidAfter        DateTime? @db.Timestamptz(3)
-  firstLoginAt            DateTime? @db.Timestamptz(3)
-  lastLoginAt             DateTime? @db.Timestamptz(3)
-  onboardingCompleted     Boolean   @default(false)
-  createdAt               DateTime  @default(now()) @db.Timestamptz(3)
+  firstLoginAt            DateTime?             @db.Timestamptz(3)
+  lastLoginAt             DateTime?             @db.Timestamptz(3)
+  onboardingCompleted     Boolean               @default(false)
+  learnerType             LearnerType           @default(university)
+  schoolYear              String?               @db.VarChar(20)
+  schoolName              String?               @db.VarChar(120)
+  ageGroup                AgeGroup              @default(adult_18_plus)
+  dateOfBirth             DateTime?             @db.Date
+  guardianConsentStatus   GuardianConsentStatus @default(not_required)
+  createdAt               DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
 
   identities     AuthIdentity[]
@@ -447,6 +487,9 @@ model User {
   moderationActionsActor   ModerationAction[]             @relation("ModerationActionActor")
   moderationActionsTarget  ModerationAction[]             @relation("ModerationActionTargetUser")
   communityNotifPrefs      CommunityNotificationPreference?
+  guardianConsents         GuardianConsent[]
+  wassceMockAttempts       WassceMockAttempt[]
+  shsModerationFlags       ShsModerationFlag[]
 
   @@index([role])
   @@index([status])
@@ -628,13 +671,17 @@ model Course {
   color       String?   @db.VarChar(7)
   courseNotes String?   @db.VarChar(4000)
   archivedAt              DateTime? @db.Timestamptz(3)
-  useResourcesInAssistant Boolean   @default(false)
-  communityId             String?   @db.Uuid
-  createdAt               DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+  useResourcesInAssistant Boolean        @default(false)
+  communityId             String?        @db.Uuid
+  type                    CourseItemType @default(course)
+  catalogueSubjectId      String?        @db.Uuid
+  createdAt               DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
 
   user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   community           Community?             @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  catalogueSubject    SubjectCatalogue?      @relation(fields: [catalogueSubjectId], references: [id], onDelete: SetNull)
+  wassceMockAttempts  WassceMockAttempt[]
   notes               Note[]
   tasks               Task[]
   timetableEntries    TimetableEntry[]
@@ -1231,6 +1278,11 @@ model AppSettings {
   communityExamNoticeEnabled    Boolean  @default(false)
   communityExamNoticeMessage    String   @default("Exam period notice: remember academic integrity rules—no cheating or sharing live exam answers.") @db.VarChar(500)
   communityPausedCourseSlugsJson Json    @default("[]")
+  featureShsSignups             Boolean  @default(false)
+  featureShsCommunity           Boolean  @default(true)
+  shsDailyTokenLimit            Int      @default(50000)
+  shsBannedWordsJson            Json     @default("[]")
+  shsSyllabusSource             String   @default("NaCCA / GES Senior High School Curriculum Framework (nacca.gov.gh)") @db.VarChar(300)
   updatedById                   String?  @db.Uuid
   updatedAt                DateTime @updatedAt @db.Timestamptz(3)
 
@@ -1629,15 +1681,16 @@ model RecommendationReport {
 // ---------------------------------------------------------------- collaboration & community
 
 model Community {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug           String   @unique @db.VarChar(200)
-  normalizedName String   @db.VarChar(120)
-  displayName    String   @db.VarChar(120)
-  universityKey  String?  @db.VarChar(120)
-  universityName String?  @db.VarChar(120)
-  isPaused       Boolean  @default(false)
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String      @unique @db.VarChar(200)
+  normalizedName String      @db.VarChar(120)
+  displayName    String      @db.VarChar(120)
+  learnerScope   LearnerType @default(university)
+  universityKey  String?     @db.VarChar(120)
+  universityName String?     @db.VarChar(120)
+  isPaused       Boolean     @default(false)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
 
   courses           Course[]
   members           CommunityMember[]
@@ -1648,6 +1701,7 @@ model Community {
 
   @@index([normalizedName])
   @@index([universityKey])
+  @@index([learnerScope])
   @@map("communities")
 }
 
@@ -1892,6 +1946,8 @@ model CommunityReport {
   targetType   CommunityReportTargetType
   targetId     String                    @db.Uuid
   targetUserId String?                   @db.Uuid
+  learnerScope LearnerType               @default(university)
+  priority     ModerationPriority        @default(normal)
   reason       String                    @db.VarChar(600)
   status       CommunityReportStatus     @default(open)
   reviewNote   String?                   @db.VarChar(500)
@@ -1902,7 +1958,7 @@ model CommunityReport {
   reporter   User  @relation("CommunityReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
   targetUser User? @relation("CommunityReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
 
-  @@index([status, createdAt(sort: Desc)])
+  @@index([status, priority, createdAt(sort: Desc)])
   @@index([targetType, targetId])
   @@map("community_reports")
 }
@@ -1959,4 +2015,114 @@ model CommunityNotificationPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("community_notification_preferences")
+}
+
+// ---------------------------------------------------------------- Ghana SHS & child safety
+
+model ShsProgramme {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(300)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([active, sortOrder])
+  @@map("shs_programmes")
+}
+
+model SubjectCatalogue {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug            String   @unique @db.VarChar(100)
+  name            String   @db.VarChar(120)
+  code            String?  @db.VarChar(24)
+  isCore          Boolean  @default(false)
+  programmeSlugs  Json     @default("[]")
+  syllabusVersion String   @default("NaCCA-2024") @db.VarChar(60)
+  sourceCitation  String   @default("NaCCA / GES Senior High School Curriculum Framework (nacca.gov.gh)") @db.VarChar(300)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  topics  SubjectTopic[]
+  courses Course[]
+
+  @@index([active, isCore, name])
+  @@map("subject_catalogue")
+}
+
+model SubjectTopic {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subjectId  String   @db.Uuid
+  title      String   @db.VarChar(200)
+  schoolYear String?  @db.VarChar(20)
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  subject SubjectCatalogue @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, title])
+  @@index([subjectId, active, sortOrder])
+  @@map("subject_topics")
+}
+
+model GuardianConsent {
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String                @db.Uuid
+  guardianEmail String?               @db.Citext
+  guardianPhone String?               @db.VarChar(32)
+  tokenHash     String                @unique
+  status        GuardianConsentStatus @default(pending)
+  consentedAt   DateTime?             @db.Timestamptz(3)
+  withdrawnAt   DateTime?             @db.Timestamptz(3)
+  ip            String?               @db.VarChar(64)
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime              @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("guardian_consents")
+}
+
+model WassceMockAttempt {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String           @db.Uuid
+  courseId        String           @db.Uuid
+  format          WassceMockFormat @default(objective)
+  topicsJson      Json             @default("[]")
+  questionsJson   Json             @default("[]")
+  answersJson     Json             @default("{}")
+  score           Int?
+  total           Int              @default(0)
+  weakTopicsJson  Json             @default("[]")
+  durationSeconds Int              @default(0)
+  completedAt     DateTime?        @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([userId, courseId, createdAt(sort: Desc)])
+  @@map("wassce_mock_attempts")
+}
+
+model ShsModerationFlag {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @db.Uuid
+  source         String   @db.VarChar(40)
+  direction      String   @db.VarChar(20)
+  reason         String   @db.VarChar(200)
+  excerpt        String   @db.VarChar(500)
+  reviewed       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reviewed, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("shs_moderation_flags")
 }

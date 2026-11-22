@@ -24,6 +24,13 @@ export interface ExamReminderEmailParams {
   examsUrl: string;
 }
 
+export interface GuardianConsentEmailParams {
+  to: string;
+  studentName: string;
+  approveUrl: string;
+  withdrawUrl: string;
+}
+
 export interface EmailService {
   sendVerificationEmail(to: string, name: string, verifyUrl: string): Promise<void>;
   sendOtpEmail(params: { email: string; name: string; code: string }): Promise<void>;
@@ -36,6 +43,7 @@ export interface EmailService {
   ): Promise<void>;
   sendClassReminderEmail(params: ClassReminderEmailParams): Promise<void>;
   sendExamReminderEmail(params: ExamReminderEmailParams): Promise<void>;
+  sendGuardianConsentEmail?(params: GuardianConsentEmailParams): Promise<void>;
 }
 
 function escapeHtml(value: string): string {
@@ -84,6 +92,38 @@ export function otpTemplate(name: string, code: string) {
       `<p style="margin:0 0 16px;padding:14px 18px;background:#f1f5f9;border-radius:10px;font-family:monospace;font-size:24px;font-weight:700;letter-spacing:6px;color:#0f172a;display:inline-block;">${safeCode}</p>`,
       `<p style="margin:0 0 12px;font-size:14px;color:#334155;">This code expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`,
       '<p style="margin:0;font-size:13px;color:#64748b;">If you did not request this, you can safely ignore this email.</p>',
+      '</div>',
+    ].join(''),
+  };
+}
+
+function guardianConsentTemplate(params: GuardianConsentEmailParams) {
+  const safeStudent = escapeHtml(params.studentName || 'a student');
+  const safeApprove = escapeHtml(params.approveUrl);
+  const safeWithdraw = escapeHtml(params.withdrawUrl);
+  return {
+    subject: `Guardian consent needed for ${params.studentName || 'your child'} on LearnSpace`,
+    text: [
+      'Hello Parent or Guardian,',
+      '',
+      `${params.studentName || 'A student'} has created a LearnSpace Senior High School (SHS) study account and listed you as their parent/guardian.`,
+      '',
+      'LearnSpace is a study workspace for Ghanaian SHS students with syllabus-aligned notes, flashcards, WASSCE practice, and a child-safe AI tutor. There are no ads, no public profiles, and no private direct messages between students.',
+      '',
+      `To approve this account: ${params.approveUrl}`,
+      '',
+      `If you ever wish to withdraw consent later (or did not expect this request): ${params.withdrawUrl}`,
+      '',
+      'LearnSpace',
+    ].join('\n'),
+    html: [
+      '<div style="font-family:Inter,system-ui,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#0f172a;line-height:1.6;">',
+      '<h2 style="margin:0 0 12px;color:#2563eb;">LearnSpace — Guardian Consent</h2>',
+      `<p style="margin:0 0 12px;">Hello Parent or Guardian,</p>`,
+      `<p style="margin:0 0 12px;"><strong>${safeStudent}</strong> created a LearnSpace Senior High School (SHS) study account and listed this email for parent/guardian permission.</p>`,
+      '<p style="margin:0 0 16px;font-size:14px;color:#334155;">LearnSpace helps students organise subjects, notes, flashcards, and WASSCE revision. Accounts for under-18 students are private by default, have no ads, and block private direct messages.</p>',
+      `<p style="margin:0 0 16px;"><a href="${safeApprove}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;">Approve Student Account</a></p>`,
+      `<p style="margin:0;font-size:13px;color:#64748b;">Need to deny or withdraw permission later? <a href="${safeWithdraw}" style="color:#dc2626;">Withdraw consent here</a>.</p>`,
       '</div>',
     ].join(''),
   };
@@ -301,6 +341,8 @@ export function createEmailService(
       sendClassReminderEmail: (params) =>
         send(params.to, 'reminder', classReminderTemplate(params)),
       sendExamReminderEmail: (params) => send(params.to, 'reminder', examReminderTemplate(params)),
+      sendGuardianConsentEmail: (params) =>
+        send(params.to, 'guardian_consent', guardianConsentTemplate(params)),
     };
   }
 
@@ -363,6 +405,8 @@ export function createEmailService(
       sendClassReminderEmail: (params) =>
         send(params.to, 'reminder', classReminderTemplate(params)),
       sendExamReminderEmail: (params) => send(params.to, 'reminder', examReminderTemplate(params)),
+      sendGuardianConsentEmail: (params) =>
+        send(params.to, 'guardian_consent', guardianConsentTemplate(params)),
     };
   }
 
@@ -406,6 +450,8 @@ export function createEmailService(
       sendClassReminderEmail: (params) =>
         send(params.to, 'reminder', classReminderTemplate(params)),
       sendExamReminderEmail: (params) => send(params.to, 'reminder', examReminderTemplate(params)),
+      sendGuardianConsentEmail: (params) =>
+        send(params.to, 'guardian_consent', guardianConsentTemplate(params)),
     };
   }
 

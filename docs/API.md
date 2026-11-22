@@ -445,3 +445,16 @@ Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`
 - `POST /api/admin/community/reports/:id/resolve` — `dismiss | hide | delete | warn | mute | suspend`.
 - `PATCH /api/admin/community/settings` (`super_admin` + step-up) — `featureCommunity`, `bannedWords`, `examNoticeEnabled`, `examNoticeMessage`, `pausedCourseSlugs`.
 - `POST /api/admin/community/moderators` — Assign `member | moderator | course_rep` per course community.
+
+## Ghanaian SHS, Guardian Consent & WASSCE Prep Endpoints
+
+- `GET /api/v1/shs/catalogue` — Returns official NaCCA/GES SHS programmes, core/elective subjects, syllabus topics, and citation.
+- `POST /api/v1/shs/onboarding/subjects` — Sets SHS profile (`schoolYear`, `schoolName`, `programme`) and creates `Course` records (`type: 'subject'`) from catalogue IDs or custom names.
+- `GET /api/v1/shs/consent/status` — Returns current `ageGroup`, `guardianConsentStatus`, and latest `GuardianConsent` request.
+- `POST /api/v1/shs/consent/request` — Sends or resends a guardian consent email with signed approve/withdraw links.
+- `POST /api/v1/shs/consent/approve` — Public signed-token endpoint for parent/guardian approval (records `consentedAt` + IP).
+- `POST /api/v1/shs/consent/withdraw` — Public signed-token endpoint for parent/guardian withdrawal (locks the account and rotates `tokensValidAfter`).
+- `GET /api/v1/shs/wassce/attempts` — Returns recent `WassceMockAttempt` history, aggregated weak topics, and official WAEC/NaCCA/GES links.
+- `POST /api/v1/shs/wassce/mock` — Generates original WASSCE-style `objective`, `theory`, or `mixed` mock questions from syllabus topics and student notes.
+- `POST /api/v1/shs/wassce/mock/:id/submit` — Grades objective items, returns theory marking guidance, and updates `weakTopicsJson`.
+- `GET /api/admin/shs/overview`, `PATCH /api/admin/shs/settings`, `PATCH /api/admin/shs/flags/:id`, `POST /api/admin/shs/subjects`, `PATCH /api/admin/shs/subjects/:id`, `POST /api/admin/shs/subjects/:id/topics` — Audit-logged admin controls for SHS features, safety flags, and syllabus catalogue.

@@ -28,6 +28,7 @@ const ADMIN_NAV = [
   { to: '/admin/ai-usage', label: 'AI Usage', icon: Cpu, superOnly: false },
   { to: '/admin/content', label: 'Content', icon: FileSearch, superOnly: false },
   { to: '/admin/learning', label: 'Learning', icon: GraduationCap, superOnly: false },
+  { to: '/admin/shs', label: 'SHS & Safety', icon: ShieldCheck, superOnly: false },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone, superOnly: false },
   { to: '/admin/feedback', label: 'Feedback', icon: MessageSquareWarning, superOnly: false },
   { to: '/admin/audit-log', label: 'Audit Log', icon: ShieldCheck, superOnly: false },

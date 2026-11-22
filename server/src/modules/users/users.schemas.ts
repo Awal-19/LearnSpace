@@ -20,6 +20,9 @@ export const updateProfileSchema = z
     level: optionalProfileText(30),
     university: optionalProfileText(120),
     bio: optionalProfileText(500),
+    learnerType: z.enum(['university', 'shs']).optional(),
+    schoolYear: z.union([z.enum(['SHS 1', 'SHS 2', 'SHS 3']), z.null()]).optional(),
+    schoolName: optionalProfileText(120),
   })
   .strict();
 

@@ -316,6 +316,8 @@ export function createAdminService(deps: AdminServiceDeps) {
       if (query.role) where.role = query.role;
       if (query.status) where.status = query.status;
       if (query.verified) where.emailVerified = query.verified === 'true';
+      if (query.learnerType) where.learnerType = query.learnerType;
+      if (query.consentStatus) where.guardianConsentStatus = query.consentStatus;
       if (query.authMethod === 'google') {
         where.identities = { some: { provider: 'google' } };
       } else if (query.authMethod === 'email') {
@@ -2570,6 +2572,199 @@ export function createAdminService(deps: AdminServiceDeps) {
       });
 
       return updated;
+    },
+
+    async getShsOverview() {
+      const [
+        shsUsers,
+        universityUsers,
+        consentPending,
+        consentGiven,
+        consentWithdrawn,
+        openFlagsCount,
+        settings,
+        flags,
+        programmes,
+        subjects,
+      ] = await Promise.all([
+        prisma.user.count({ where: { learnerType: 'shs' } }),
+        prisma.user.count({ where: { learnerType: 'university' } }),
+        prisma.user.count({ where: { ageGroup: 'under_18', guardianConsentStatus: 'pending' } }),
+        prisma.user.count({ where: { ageGroup: 'under_18', guardianConsentStatus: 'given' } }),
+        prisma.user.count({ where: { ageGroup: 'under_18', guardianConsentStatus: 'withdrawn' } }),
+        prisma.shsModerationFlag.count({ where: { reviewed: false } }),
+        getAppSettings(prisma),
+        prisma.shsModerationFlag.findMany({
+          where: { reviewed: false },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: { user: { select: { id: true, name: true, schoolYear: true } } },
+        }),
+        prisma.shsProgramme.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+        prisma.subjectCatalogue.findMany({
+          orderBy: [{ isCore: 'desc' }, { name: 'asc' }],
+          include: {
+            topics: { orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }] },
+          },
+        }),
+      ]);
+
+      return {
+        counts: {
+          shsUsers,
+          universityUsers,
+          consentPending,
+          consentGiven,
+          consentWithdrawn,
+          openFlagsCount,
+        },
+        settings: {
+          featureShsSignups: settings.featureShsSignups,
+          featureShsCommunity: settings.featureShsCommunity,
+          shsBannedWords: Array.isArray(settings.shsBannedWordsJson)
+            ? settings.shsBannedWordsJson.filter((x): x is string => typeof x === 'string')
+            : [],
+          shsSyllabusSource: settings.shsSyllabusSource,
+        },
+        flags,
+        programmes,
+        subjects,
+      };
+    },
+
+    async updateShsSettings(
+      actorId: string,
+      input: {
+        featureShsSignups?: boolean;
+        featureShsCommunity?: boolean;
+        shsBannedWords?: string[];
+        shsSyllabusSource?: string;
+      },
+      ip?: string,
+    ) {
+      const before = await getAppSettings(prisma);
+      const updated = await prisma.appSettings.update({
+        where: { id: 'global' },
+        data: {
+          ...(input.featureShsSignups !== undefined
+            ? { featureShsSignups: input.featureShsSignups }
+            : {}),
+          ...(input.featureShsCommunity !== undefined
+            ? { featureShsCommunity: input.featureShsCommunity }
+            : {}),
+          ...(input.shsBannedWords !== undefined
+            ? { shsBannedWordsJson: input.shsBannedWords as Prisma.InputJsonValue }
+            : {}),
+          ...(input.shsSyllabusSource !== undefined
+            ? { shsSyllabusSource: input.shsSyllabusSource }
+            : {}),
+          updatedById: actorId,
+        },
+      });
+      invalidateAppSettingsCache();
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_settings_update',
+        targetType: 'app_settings',
+        targetId: 'global',
+        before,
+        after: updated,
+        ip,
+      });
+      return updated;
+    },
+
+    async resolveShsFlag(actorId: string, flagId: string, ip?: string) {
+      const flag = await prisma.shsModerationFlag.update({
+        where: { id: flagId },
+        data: { reviewed: true },
+      });
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_flag_resolve',
+        targetType: 'shs_moderation_flag',
+        targetId: flagId,
+        ip,
+      });
+      return flag;
+    },
+
+    async createShsSubject(
+      actorId: string,
+      input: {
+        name: string;
+        code?: string | null;
+        isCore: boolean;
+        programmeSlugs: string[];
+        syllabusVersion: string;
+        sourceCitation: string;
+      },
+      ip?: string,
+    ) {
+      const slug = input.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 90);
+      const subject = await prisma.subjectCatalogue.create({
+        data: {
+          slug: `${slug}-${Date.now().toString(36).slice(-4)}`,
+          name: input.name.trim(),
+          code: input.code?.trim() || null,
+          isCore: input.isCore,
+          programmeSlugs: input.programmeSlugs as Prisma.InputJsonValue,
+          syllabusVersion: input.syllabusVersion.trim(),
+          sourceCitation: input.sourceCitation.trim(),
+        },
+      });
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_subject_create',
+        targetType: 'subject_catalogue',
+        targetId: subject.id,
+        after: subject,
+        ip,
+      });
+      return subject;
+    },
+
+    async toggleShsSubject(actorId: string, subjectId: string, active: boolean, ip?: string) {
+      const subject = await prisma.subjectCatalogue.update({
+        where: { id: subjectId },
+        data: { active },
+      });
+      await recordAuditLog(prisma, {
+        actorId,
+        action: active ? 'admin.shs_subject_activate' : 'admin.shs_subject_retire',
+        targetType: 'subject_catalogue',
+        targetId: subjectId,
+        ip,
+      });
+      return subject;
+    },
+
+    async addShsTopic(
+      actorId: string,
+      subjectId: string,
+      input: { title: string; schoolYear?: string | null },
+      ip?: string,
+    ) {
+      const topic = await prisma.subjectTopic.create({
+        data: {
+          subjectId,
+          title: input.title.trim(),
+          schoolYear: input.schoolYear?.trim() || null,
+        },
+      });
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_topic_create',
+        targetType: 'subject_topic',
+        targetId: topic.id,
+        after: topic,
+        ip,
+      });
+      return topic;
     },
   };
 }

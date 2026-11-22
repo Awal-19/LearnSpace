@@ -92,3 +92,11 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 - **Ask & Answer:** Open **Community** in the sidebar to view communities for each of your courses. Click **Ask a question**, optionally try **Ask AWAL first** for an instant AI explanation, and post to your classmates (anonymously if preferred).
 - **Study Groups:** Create public or invite-only study groups, chat in real time (mention `@AWAL` for group AI help), share tasks that sync to your Planner, and start a 25-minute Focus timer together.
 - **Share Safely:** Share read-only note copies or safe study links, and report or block any abusive content. Manage notification preferences in **Settings**.
+
+## Ghanaian SHS & WASSCE Mode
+
+- **Choosing SHS Mode:** Select **SHS student (Ghana)** during sign-up (or switch later in **Settings -> Learner Type & Academic Profile**). Your existing courses/subjects remain intact.
+- **Guardian Consent (Under 18):** Students under 18 enter a parent/guardian email so their guardian can approve the account. Accounts stay locked until approved, and guardians can withdraw consent at any time.
+- **Subjects & Syllabus Topics:** Open **Subjects -> Pick SHS Subjects** to tick core and elective NaCCA/GES subjects or add custom subjects.
+- **AWAL (SHS Mode):** Your AI tutor automatically uses clear, step-by-step explanations with Ghanaian examples aligned to the SHS syllabus and WASSCE style.
+- **WASSCE Exam Prep:** Open **Exams & Revision -> WASSCE Prep** to take timed original Objective (Paper 1) or Theory/Essay (Paper 2) mock exams, review weak topics, and launch **Revise this topic** in AWAL.

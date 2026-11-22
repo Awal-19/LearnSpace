@@ -36,6 +36,14 @@ export const signupSchema = z
         message: TERMS_CONSENT_REQUIRED_MESSAGE,
       }),
     captchaToken: z.string().trim().max(4096).optional(),
+    learnerType: z.enum(['university', 'shs']).default('university'),
+    schoolYear: z.enum(['SHS 1', 'SHS 2', 'SHS 3']).optional(),
+    schoolName: z.string().trim().max(120).optional(),
+    programme: z.string().trim().max(120).optional(),
+    ageGroup: z.enum(['adult_18_plus', 'under_18']).default('adult_18_plus'),
+    dateOfBirth: z.string().date().optional(),
+    guardianEmail: emailSchema.optional(),
+    guardianPhone: z.string().trim().max(32).optional(),
   })
   .strict();
 
@@ -96,6 +104,14 @@ export const resendOtpSchema = z
   .object({
     email: emailSchema,
     captchaToken: z.string().trim().max(4096).optional(),
+    learnerType: z.enum(['university', 'shs']).default('university'),
+    schoolYear: z.enum(['SHS 1', 'SHS 2', 'SHS 3']).optional(),
+    schoolName: z.string().trim().max(120).optional(),
+    programme: z.string().trim().max(120).optional(),
+    ageGroup: z.enum(['adult_18_plus', 'under_18']).default('adult_18_plus'),
+    dateOfBirth: z.string().date().optional(),
+    guardianEmail: emailSchema.optional(),
+    guardianPhone: z.string().trim().max(32).optional(),
   })
   .strict();
 

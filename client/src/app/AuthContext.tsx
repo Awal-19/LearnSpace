@@ -36,6 +36,11 @@ export interface AuthUser {
   isFirstVisit?: boolean;
   lastLoginAt?: string | null;
   onboardingCompleted?: boolean;
+  learnerType?: 'university' | 'shs';
+  schoolYear?: string | null;
+  schoolName?: string | null;
+  ageGroup?: 'adult_18_plus' | 'under_18';
+  guardianConsentStatus?: 'not_required' | 'pending' | 'given' | 'withdrawn';
 }
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';

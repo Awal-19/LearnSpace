@@ -36,6 +36,8 @@ export const createCourseSchema = z
     ),
     semester: optionalTrimmed(60),
     level: optionalTrimmed(30),
+    type: z.enum(['course', 'subject']).default('course').optional(),
+    catalogueSubjectId: z.string().uuid().nullable().optional(),
     color: hexColorSchema.optional(),
     notes: optionalTrimmed(4000),
   })

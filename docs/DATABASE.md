@@ -251,3 +251,13 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
 - **`study_groups`, `study_group_members`, `study_group_messages`, `study_group_tasks`**: Course-scoped public or invite-only study groups, SSE-backed chat with `clientMessageId` deduplication, shared tasks, and Focus timer state.
 - **`shared_resources`**: Read-only note copies, document summaries, and safe links shared with a course community or group.
 - **`community_reports`, `user_blocks`, `moderation_actions`, `community_notification_preferences`**: Moderation queue, user blocking, audit trail, and granular in-app/email notification preferences.
+
+## Ghanaian SHS & Child-Safety Tables
+
+- **`users` (extended)**: `learnerType` (`university | shs`, default `university`), `schoolYear`, `schoolName`, `ageGroup` (`adult_18_plus | under_18`), `dateOfBirth`, `guardianConsentStatus` (`not_required | pending | given | withdrawn`).
+- **`courses` (extended)**: `type` (`course | subject`, default `course`), `catalogueSubjectId` (optional FK to `subject_catalogue`).
+- **`communities` & `community_reports` (extended)**: `communities.learnerScope` (`university | shs`) enforces strict space isolation; `community_reports.priority` (`normal | high`) prioritizes SHS reports.
+- **`shs_programmes`, `subject_catalogue`, `subject_topics`**: Official NaCCA/GES SHS pathways, subjects, syllabus versions, citations, and topics.
+- **`guardian_consents`**: Hashed single-use/withdrawal tokens (`tokenHash`), guardian email/phone, `status`, `consentedAt`, `withdrawnAt`, and IP.
+- **`wassce_mock_attempts`**: Timed WASSCE mock exams (`objective | theory | mixed`), generated questions, student answers, scores, and `weakTopicsJson`.
+- **`shs_moderation_flags`**: Flagged SHS AI prompts/outputs and community posts/messages (`source`, `direction`, `reason`, `excerpt`, `reviewed`).

@@ -32,6 +32,7 @@ import { createRecommendationsService } from './modules/courses/recommendations.
 import { createCommunityRealtimeHub } from './modules/community/community.realtime';
 import { createCommunityService } from './modules/community/community.service';
 import { createCommunityGroupsService } from './modules/community/community.groups.service';
+import { createShsService } from './modules/shs/shs.service';
 import { createExamsService } from './modules/exams/exams.service';
 import { createFocusService } from './modules/focus/focus.service';
 import { createGpaService } from './modules/gpa/gpa.service';
@@ -229,6 +230,7 @@ function main(): void {
     dailyTokenLimit: aiDailyTokenLimit,
     logger,
   });
+  const shs = createShsService({ prisma, logger, email, clientUrl: env.CLIENT_URL, llm });
   const rag = createRagService({ prisma, logger });
   const attachments = createAttachmentsService({ prisma, storage, logger });
   const documentJobs = createDocumentJobQueue({ prisma, storage, llm, logger });
@@ -295,6 +297,10 @@ function main(): void {
         core: communityCore,
         groups: communityGroups,
         realtime: communityRealtime,
+        isEmailVerified,
+      },
+      shs: {
+        service: shs,
         isEmailVerified,
       },
       timetable,

@@ -90,6 +90,26 @@ export function requireVerified(
   });
 }
 
+/**
+ * Enforces guardian consent for under-18 students on all non-consent endpoints.
+ */
+export function requireGuardianConsent(prisma: PrismaClient): RequestHandler {
+  return asyncHandler(async (req, _res, next) => {
+    if (!req.user) {
+      next();
+      return;
+    }
+    const row = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { ageGroup: true, guardianConsentStatus: true },
+    });
+    if (row && row.ageGroup === 'under_18' && row.guardianConsentStatus !== 'given') {
+      throw new AppError('GUARDIAN_CONSENT_REQUIRED');
+    }
+    next();
+  });
+}
+
 /** Alias kept for route-level readability. */
 export const requireVerifiedEmail = requireVerified;
 

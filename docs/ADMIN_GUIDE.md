@@ -80,3 +80,8 @@ This guide explains how to access and use each page of the LearnSpace Admin Cons
 
 - **Moderation Queue:** In **Admin -> Content & Moderation -> Community Moderation**, review reported posts, replies, messages, resources, and users; apply `dismiss`, `hide`, `mute`, or `suspend` (all logged to `moderation_actions` and `audit_logs`).
 - **Safety & Exam Controls:** Toggle `featureCommunity`, manage `bannedWords`, enable the **Exam-Period Integrity Notice**, or pause question posting for specific course slugs.
+
+## SHS & Child-Safety Administration
+
+- **User Filters:** Filter users in **Admin -> Users** by `learnerType` (`University` vs `SHS (Ghana)`) and `consentStatus`.
+- **SHS & Safety Dashboard (`/admin/shs`):** View SHS vs University counts, guardian consent status counts (`pending`, `given`, `withdrawn`), toggle `featureShsSignups` and `featureShsCommunity` independently of university users, manage SHS banned words and the official syllabus source citation, review priority `ShsModerationFlag` items, and add/retire `SubjectCatalogue` subjects and `SubjectTopic` items (all audit-logged).

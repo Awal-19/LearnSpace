@@ -60,6 +60,11 @@ export interface PublicUser {
   isFirstVisit: boolean;
   lastLoginAt: Date | null;
   onboardingCompleted: boolean;
+  learnerType: 'university' | 'shs';
+  schoolYear: string | null;
+  schoolName: string | null;
+  ageGroup: 'adult_18_plus' | 'under_18';
+  guardianConsentStatus: 'not_required' | 'pending' | 'given' | 'withdrawn';
   createdAt: Date;
 }
 
@@ -76,6 +81,11 @@ export function toPublicUser(user: User): PublicUser {
       | 'firstLoginAt'
       | 'lastLoginAt'
       | 'onboardingCompleted'
+      | 'learnerType'
+      | 'schoolYear'
+      | 'schoolName'
+      | 'ageGroup'
+      | 'guardianConsentStatus'
     >
   >;
   return {
@@ -102,6 +112,11 @@ export function toPublicUser(user: User): PublicUser {
     isFirstVisit: !consent.firstLoginAt,
     lastLoginAt: consent.lastLoginAt ?? null,
     onboardingCompleted: Boolean(consent.onboardingCompleted),
+    learnerType: consent.learnerType ?? 'university',
+    schoolYear: consent.schoolYear ?? null,
+    schoolName: consent.schoolName ?? null,
+    ageGroup: consent.ageGroup ?? 'adult_18_plus',
+    guardianConsentStatus: consent.guardianConsentStatus ?? 'not_required',
     createdAt: user.createdAt,
   };
 }
@@ -287,12 +302,39 @@ export function createAuthService(deps: AuthServiceDeps) {
       const timezone = isValidTimezone(input.timezone) ? input.timezone : 'UTC';
       const acceptedAt = now();
 
+      const learnerType = input.learnerType ?? 'university';
+      if (learnerType === 'shs' && prisma.appSettings?.findUnique) {
+        const settings = await prisma.appSettings
+          .findUnique({ where: { id: 'global' } })
+          .catch(() => null);
+        if (settings && settings.featureShsSignups === false) {
+          throw new AppError('FORBIDDEN', 'SHS sign-ups are currently closed.');
+        }
+      }
+
+      const dobDate = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
+      let ageGroup: 'adult_18_plus' | 'under_18' = input.ageGroup ?? 'adult_18_plus';
+      if (dobDate && !Number.isNaN(dobDate.getTime())) {
+        const ageYears =
+          (acceptedAt.getTime() - dobDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+        if (ageYears < 18) ageGroup = 'under_18';
+      }
+      const guardianConsentStatus = ageGroup === 'under_18' ? 'pending' : 'not_required';
+
       const user = await prisma.user.create({
         data: {
           name: input.name,
           email: input.email,
           passwordHash,
           emailVerified: false,
+          learnerType,
+          schoolYear: input.schoolYear ?? null,
+          schoolName: input.schoolName ?? null,
+          programme: input.programme ?? null,
+          level: learnerType === 'shs' ? (input.schoolYear ?? null) : null,
+          ageGroup,
+          dateOfBirth: dobDate,
+          guardianConsentStatus,
           termsAccepted: true,
           termsVersion: CURRENT_TERMS_VERSION,
           termsAcceptedAt: acceptedAt,
@@ -301,6 +343,34 @@ export function createAuthService(deps: AuthServiceDeps) {
           settings: { create: { timezone } },
         },
       });
+
+      if (ageGroup === 'under_18' && input.guardianEmail) {
+        const consentToken = generateOpaqueToken();
+        const guardianEmail = input.guardianEmail.trim().toLowerCase();
+        await prisma.guardianConsent.create({
+          data: {
+            userId: user.id,
+            guardianEmail,
+            guardianPhone: input.guardianPhone?.trim() || null,
+            status: 'pending',
+            tokenHash: consentToken.hash,
+          },
+        });
+        const approveUrl = `${env.CLIENT_URL}/guardian-consent?token=${encodeURIComponent(consentToken.raw)}&action=approve`;
+        const withdrawUrl = `${env.CLIENT_URL}/guardian-consent?token=${encodeURIComponent(consentToken.raw)}&action=withdraw`;
+        if (email.sendGuardianConsentEmail) {
+          email
+            .sendGuardianConsentEmail({
+              to: guardianEmail,
+              studentName: user.name,
+              approveUrl,
+              withdrawUrl,
+            })
+            .catch((err) =>
+              logger.error({ err, userId: user.id }, 'Failed to send guardian consent email'),
+            );
+        }
+      }
 
       await createAndSendVerificationOtp(user, false);
       await recordActivityEvent(prisma, { userId: user.id, action: 'signup' });

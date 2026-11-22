@@ -33,6 +33,9 @@ export function RequireAuth() {
     if (user?.email) setPendingVerifyEmail(user.email);
     return <Navigate to="/verify-email" replace />;
   }
+  if (user.ageGroup === 'under_18' && user.guardianConsentStatus !== 'given') {
+    return <Navigate to="/guardian-consent-required" replace />;
+  }
   return <Outlet />;
 }
 

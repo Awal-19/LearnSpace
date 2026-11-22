@@ -24,6 +24,8 @@ export interface PublicCourse {
   deckCount: number;
   quizCount: number;
   studySeconds: number;
+  type: 'course' | 'subject';
+  catalogueSubjectId: string | null;
   recommendationCount: number;
   recommendationJobStatus: string | null;
 }
@@ -125,6 +127,8 @@ function toPublicCourse(
     deckCount: c._count?.decks ?? 0,
     quizCount: c._count?.quizzes ?? 0,
     studySeconds,
+    type: (c as { type?: 'course' | 'subject' }).type ?? 'course',
+    catalogueSubjectId: (c as { catalogueSubjectId?: string | null }).catalogueSubjectId ?? null,
     recommendationCount,
     recommendationJobStatus,
   };
@@ -436,6 +440,8 @@ export function createCoursesService({
           creditHours: input.creditHours ?? null,
           semester: input.semester ?? null,
           level: input.level ?? null,
+          type: input.type ?? 'course',
+          catalogueSubjectId: input.catalogueSubjectId ?? null,
           color: input.color ?? '#2563EB',
           courseNotes: input.notes ?? null,
         },

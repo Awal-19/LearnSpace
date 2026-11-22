@@ -11,6 +11,7 @@ import {
   helperBadgeForCount,
   sanitizeCommunityText,
 } from './community.safety';
+import { detectShsPii, logShsModerationFlag, screenShsChatContent } from '../shs/shs.safety';
 
 const MAX_NEW_GROUPS_PER_DAY = 3;
 export { MAX_NEW_GROUPS_PER_DAY };
@@ -93,11 +94,22 @@ export function createCommunityService(deps: CommunityServiceDeps) {
   }
 
   async function assertCommunityMember(userId: string, communityId: string) {
-    const member = await prisma.communityMember.findUnique({
-      where: { communityId_userId: { communityId, userId } },
-    });
-    if (!member) {
+    const [member, user, community, settings] = await Promise.all([
+      prisma.communityMember.findUnique({
+        where: { communityId_userId: { communityId, userId } },
+      }),
+      prisma.user.findUnique({ where: { id: userId }, select: { learnerType: true } }),
+      prisma.community.findUnique({ where: { id: communityId }, select: { learnerScope: true } }),
+      getSettings(),
+    ]);
+    if (!member || !community) {
       throw new AppError('NOT_FOUND', 'Community not found');
+    }
+    if (user && community.learnerScope !== user.learnerType) {
+      throw new AppError('NOT_FOUND', 'Community not found');
+    }
+    if (user?.learnerType === 'shs' && settings?.featureShsCommunity === false) {
+      throw new AppError('FORBIDDEN', 'SHS community is currently paused by an administrator.');
     }
     return member;
   }
@@ -171,15 +183,18 @@ export function createCommunityService(deps: CommunityServiceDeps) {
       if (!course) throw new AppError('NOT_FOUND', 'Course not found');
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { university: true },
+        select: { university: true, learnerType: true },
       });
 
       let communityId = course.communityId;
       if (!communityId) {
-        const { slug, normalizedName, universityKey } = buildCommunitySlug(
-          course.name,
-          user?.university,
-        );
+        const isShs = user?.learnerType === 'shs';
+        const {
+          slug: baseSlug,
+          normalizedName,
+          universityKey,
+        } = buildCommunitySlug(course.name, isShs ? 'shs-ghana' : user?.university);
+        const slug = isShs ? `shs:${baseSlug}` : baseSlug;
         const community = await prisma.community.upsert({
           where: { slug },
           create: {
@@ -187,7 +202,8 @@ export function createCommunityService(deps: CommunityServiceDeps) {
             normalizedName,
             displayName: course.name.trim(),
             universityKey,
-            universityName: user?.university?.trim() || null,
+            universityName: isShs ? 'Ghana SHS' : user?.university?.trim() || null,
+            learnerScope: isShs ? 'shs' : 'university',
           },
           update: {},
         });
@@ -643,12 +659,38 @@ export function createCommunityService(deps: CommunityServiceDeps) {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { createdAt: true },
+        select: { createdAt: true, learnerType: true },
       });
 
       const title = sanitizeCommunityText(input.title, 200);
       const body = sanitizeCommunityText(input.body, 10_000);
       const aiAttempt = input.aiAttempt ? sanitizeCommunityText(input.aiAttempt, 6000) : null;
+
+      if (user?.learnerType === 'shs') {
+        if (input.isAnonymous) {
+          throw new AppError('FORBIDDEN', 'Anonymous posting is disabled in SHS spaces.');
+        }
+        if (/https?:\/\/|www\./i.test(`${title} ${body}`)) {
+          throw new AppError('VALIDATION_ERROR', 'External links are not allowed in SHS spaces.');
+        }
+        const pii = detectShsPii(`${title}\n${body}`);
+        const safety = screenShsChatContent(`${title}\n${body}`);
+        const shsBanned = parseStringArray(settings?.shsBannedWordsJson);
+        const shsWordHit = checkProfanityAndBannedWords(`${title}\n${body}`, shsBanned);
+        if (pii || safety.flagged || shsWordHit.flagged) {
+          await logShsModerationFlag(prisma, {
+            userId,
+            source: 'community',
+            direction: 'community',
+            reason: pii ? `pii:${pii}` : (safety.reason ?? 'shs_banned_word'),
+            excerpt: `${title} — ${body}`,
+          });
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Your post was blocked by SHS safety filters (personal info, external links, or inappropriate words are not allowed).',
+          );
+        }
+      }
 
       // Spam / duplicate check in last 5 minutes
       const recentDup = await prisma.communityPost.findFirst({
@@ -879,9 +921,34 @@ export function createCommunityService(deps: CommunityServiceDeps) {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { createdAt: true },
+        select: { createdAt: true, learnerType: true },
       });
       const body = sanitizeCommunityText(input.body, 6000);
+      if (user?.learnerType === 'shs') {
+        if (input.isAnonymous) {
+          throw new AppError('FORBIDDEN', 'Anonymous posting is disabled in SHS spaces.');
+        }
+        if (/https?:\/\/|www\./i.test(body)) {
+          throw new AppError('VALIDATION_ERROR', 'External links are not allowed in SHS spaces.');
+        }
+        const pii = detectShsPii(body);
+        const safety = screenShsChatContent(body);
+        const shsBanned = parseStringArray(settings?.shsBannedWordsJson);
+        const shsWordHit = checkProfanityAndBannedWords(body, shsBanned);
+        if (pii || safety.flagged || shsWordHit.flagged) {
+          await logShsModerationFlag(prisma, {
+            userId,
+            source: 'community_reply',
+            direction: 'community',
+            reason: pii ? `pii:${pii}` : (safety.reason ?? 'shs_banned_word'),
+            excerpt: body,
+          });
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Your reply was blocked by SHS safety filters (personal info, external links, or inappropriate words are not allowed).',
+          );
+        }
+      }
       const adminBlockDomains = parseStringArray(settings?.recommendationBlockDomainsJson);
       try {
         assertSafeCommunityLinks(body, user?.createdAt ?? new Date(), adminBlockDomains);
@@ -1063,15 +1130,28 @@ export function createCommunityService(deps: CommunityServiceDeps) {
       },
     ) {
       let targetUserId: string | null = null;
+      let isShsTarget = false;
       if (input.targetType === 'post') {
-        const p = await prisma.communityPost.findUnique({ where: { id: input.targetId } });
+        const p = await prisma.communityPost.findUnique({
+          where: { id: input.targetId },
+          include: { community: { select: { learnerScope: true } } },
+        });
         targetUserId = p?.authorId ?? null;
+        isShsTarget = p?.community?.learnerScope === 'shs';
       } else if (input.targetType === 'reply') {
-        const r = await prisma.communityReply.findUnique({ where: { id: input.targetId } });
+        const r = await prisma.communityReply.findUnique({
+          where: { id: input.targetId },
+          include: { post: { include: { community: { select: { learnerScope: true } } } } },
+        });
         targetUserId = r?.authorId ?? null;
+        isShsTarget = r?.post?.community?.learnerScope === 'shs';
       } else if (input.targetType === 'message') {
-        const m = await prisma.studyGroupMessage.findUnique({ where: { id: input.targetId } });
+        const m = await prisma.studyGroupMessage.findUnique({
+          where: { id: input.targetId },
+          include: { group: { include: { community: { select: { learnerScope: true } } } } },
+        });
         targetUserId = m?.authorId ?? null;
+        isShsTarget = m?.group?.community?.learnerScope === 'shs';
       } else if (input.targetType === 'resource') {
         const sr = await prisma.sharedResource.findUnique({ where: { id: input.targetId } });
         targetUserId = sr?.authorId ?? null;
@@ -1085,6 +1165,7 @@ export function createCommunityService(deps: CommunityServiceDeps) {
           targetType: input.targetType,
           targetId: input.targetId,
           targetUserId,
+          priority: isShsTarget ? 'high' : 'normal',
           reason: sanitizeCommunityText(input.reason, 600),
         },
       });
