@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../design';
 import { ApiError } from '../../lib/apiClient';
@@ -12,9 +13,11 @@ function renderWithQuery(ui: React.ReactElement) {
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={qc}>
-      <ToastProvider>{ui}</ToastProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <ToastProvider>{ui}</ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 

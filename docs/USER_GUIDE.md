@@ -100,3 +100,8 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 - **Subjects & Syllabus Topics:** Open **Subjects -> Pick SHS Subjects** to tick core and elective NaCCA/GES subjects or add custom subjects.
 - **AWAL (SHS Mode):** Your AI tutor automatically uses clear, step-by-step explanations with Ghanaian examples aligned to the SHS syllabus and WASSCE style.
 - **WASSCE Exam Prep:** Open **Exams & Revision -> WASSCE Prep** to take timed original Objective (Paper 1) or Theory/Essay (Paper 2) mock exams, review weak topics, and launch **Revise this topic** in AWAL.
+
+### SHS Home & Navigation Highlights
+
+- **SHS Navigation:** Home, Subjects, Assistant (`AWAL` in SHS mode with `Test me`), Notes, Handouts, Exam Prep (WASSCE), Planner, Focus, Study, SHS Spaces, and More. University-only GPA/CGPA and credit-hour tools are hidden.
+- **SHS Home Widgets:** Includes your WASSCE countdown ring, My Subjects tiles with syllabus progress, Today's Study Plan with quick add, Daily Challenge streak, Weak Topics with **Revise this**, and milestone badges.

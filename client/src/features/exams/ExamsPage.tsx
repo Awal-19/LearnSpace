@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
 import {
   Badge,
   Button,
@@ -34,7 +35,8 @@ import {
 
 export function ExamsPage() {
   const { user } = useAuth();
-  const isShs = user?.learnerType === 'shs';
+  const exp = useExperience();
+  const isShs = exp.isShs || user?.learnerType === 'shs';
   const path = useAppPath();
   const toast = useToast();
   const qc = useQueryClient();
@@ -112,7 +114,7 @@ export function ExamsPage() {
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
-              Exams &amp; Revision
+              {isShs ? exp.labels.examPrep : 'Exams & Revision'}
             </h1>
             <p className="mt-0.5 text-sm text-muted">
               Track exam countdowns and generate AI day-by-day revision schedules synced to your

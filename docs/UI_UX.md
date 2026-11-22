@@ -245,3 +245,9 @@ Visible labels on all inputs · `aria-invalid` + `aria-describedby` for errors �
 
 - **Navigation & Dashboard:** Accessible via **Community** in the desktop sidebar and mobile **More** menu, plus a **Course Community** liquid-glass card on the Dashboard showing recent activity, unanswered questions, and study groups.
 - **Screens:** `CommunityHomePage`, `CourseCommunityPage` (Q&A feed, Ask AWAL first, threaded post detail, Study Groups, Shared Resources, Classmates), and `StudyGroupPage` (pinned composer chat, math rendering, shared tasks with Planner sync, Focus timer).
+
+## Ghanaian SHS Experience Architecture
+
+- **Central Config (`client/src/app/experience.ts`):** `EXPERIENCE_CONFIG` + `useExperience()` drive navigation (`Sidebar`, `BottomNav`, `MorePage`, `TopBar`), wording (`Subjects`, `Teacher`, `Term 1–3`, `SHS 1–3`, `Class notes and handouts`, `Exam Prep (WASSCE)`), feature visibility (hiding GPA, credits, course codes), and AI quick actions (`Test me`) from the server-authenticated `learnerType`.
+- **Dedicated SHS Dashboard (`ShsDashboardPage`):** Replaces the university dashboard for SHS students with greeting + streak + getting-started checklist, quick actions, WASSCE countdown ring, My Subjects tiles, Today's Study Plan, Daily Challenge, Weak Topics, Continue Studying, Focus & Badges, and Tip of the Day.
+- **Admin Preview:** Admins can preview the SHS dashboard read-only via `/?preview=shs` from **Admin -> SHS & Safety**.

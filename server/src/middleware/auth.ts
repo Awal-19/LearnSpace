@@ -110,6 +110,36 @@ export function requireGuardianConsent(prisma: PrismaClient): RequestHandler {
   });
 }
 
+/**
+ * Enforces learnerType isolation on university-only (/gpa/*) and SHS-only (/shs/*) routes.
+ */
+export function requireLearnerType(
+  prisma: PrismaClient,
+  expected: 'university' | 'shs',
+): RequestHandler {
+  return asyncHandler(async (req, _res, next) => {
+    if (!req.user) {
+      throw new AppError('UNAUTHENTICATED');
+    }
+    const row = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { learnerType: true, role: true },
+    });
+    if (!row) {
+      throw new AppError('UNAUTHENTICATED');
+    }
+    if (row.role !== 'admin' && row.role !== 'super_admin' && row.learnerType !== expected) {
+      throw new AppError(
+        'FORBIDDEN',
+        expected === 'university'
+          ? 'This feature is only available for university accounts.'
+          : 'This feature is only available for SHS accounts.',
+      );
+    }
+    next();
+  });
+}
+
 /** Alias kept for route-level readability. */
 export const requireVerifiedEmail = requireVerified;
 

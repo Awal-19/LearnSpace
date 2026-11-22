@@ -142,5 +142,50 @@ export function shsRouter(deps: {
     }),
   );
 
+  router.get(
+    '/shs/dashboard',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      res.json(await shs.getShsDashboard(req.user!.id));
+    }),
+  );
+
+  router.post(
+    '/shs/wassce-date',
+    auth,
+    verified,
+    validateBody(
+      z
+        .object({
+          targetDate: z.string().trim().min(4).max(40),
+          title: z.string().trim().max(120).optional(),
+        })
+        .strict(),
+    ),
+    asyncHandler(async (req, res) => {
+      res.json(await shs.setWassceTargetDate(req.user!.id, req.body.targetDate, req.body.title));
+    }),
+  );
+
+  router.post(
+    '/shs/daily-challenge/answer',
+    auth,
+    verified,
+    validateBody(
+      z
+        .object({
+          challengeId: z.string().trim().min(2).max(60),
+          selectedIndex: z.number().int().min(0).max(5),
+        })
+        .strict(),
+    ),
+    asyncHandler(async (req, res) => {
+      res.json(
+        await shs.answerDailyChallenge(req.user!.id, req.body.challengeId, req.body.selectedIndex),
+      );
+    }),
+  );
+
   return router;
 }

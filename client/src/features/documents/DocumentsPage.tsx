@@ -17,6 +17,7 @@ import {
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
 import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { CameraCaptureModal } from '../chat/CameraCaptureModal';
@@ -55,8 +56,15 @@ export function DocumentsPage() {
   const { documentId } = useParams<{ documentId?: string }>();
   const navigate = useNavigate();
   const appPath = useAppPath();
+  const exp = useExperience();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  const typeLabels: Record<DocumentType, string> = {
+    past_question: TYPE_LABELS.past_question,
+    slides: exp.labels.slides,
+    notes: exp.labels.courseNotes,
+  };
 
   const [filterType, setFilterType] = useState<DocumentType | ''>('');
   const [filterCourseId, setFilterCourseId] = useState('');
@@ -371,7 +379,7 @@ export function DocumentsPage() {
                     <Badge tone={STATUS_TONE[detail.document.status]}>
                       {detail.document.status}
                     </Badge>
-                    <Badge tone="neutral">{TYPE_LABELS[detail.document.type]}</Badge>
+                    <Badge tone="neutral">{typeLabels[detail.document.type]}</Badge>
                     {detail.document.courseId && coursesMap.has(detail.document.courseId) ? (
                       <CourseBadge link course={coursesMap.get(detail.document.courseId)} />
                     ) : null}
@@ -730,7 +738,7 @@ export function DocumentsPage() {
                   {doc.title}
                 </h3>
                 <p className="mt-0.5 text-xs text-muted">
-                  {TYPE_LABELS[doc.type]} · {formatBytes(doc.sizeBytes)}
+                  {typeLabels[doc.type]} · {formatBytes(doc.sizeBytes)}
                 </p>
                 {doc.courseId && coursesMap.has(doc.courseId) ? (
                   <div className="mt-2">

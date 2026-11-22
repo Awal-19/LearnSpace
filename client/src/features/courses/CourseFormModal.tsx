@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useExperience } from '../../app/experience';
 import { Button, Input, Modal, Textarea, cn } from '../../design';
 import { COURSE_COLORS, type CourseMutationPayload, type CourseSummary } from './coursesApi';
 
@@ -10,6 +11,7 @@ export interface CourseFormModalProps {
 }
 
 export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormModalProps) {
+  const exp = useExperience();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [lecturer, setLecturer] = useState('');
@@ -42,11 +44,12 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError('Course name is required.');
+      setError(`${exp.labels.courseSingular} name is required.`);
       return;
     }
 
-    const parsedCredits = creditHours.trim() === '' ? null : Number(creditHours);
+    const parsedCredits =
+      !exp.features.showCreditHours || creditHours.trim() === '' ? null : Number(creditHours);
     if (
       parsedCredits !== null &&
       (Number.isNaN(parsedCredits) || parsedCredits < 0 || parsedCredits > 30)
@@ -60,7 +63,7 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
     try {
       await onSubmit({
         name: trimmedName,
-        code: code.trim() || null,
+        code: exp.features.showCourseCode ? code.trim() || null : null,
         lecturer: lecturer.trim() || null,
         creditHours: parsedCredits,
         semester: semester.trim() || null,
@@ -70,7 +73,7 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save course.');
+      setError(err instanceof Error ? err.message : `Could not save ${exp.labels.courseLower}.`);
     } finally {
       setSaving(false);
     }
@@ -80,7 +83,7 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
     <Modal
       open={open}
       onClose={onClose}
-      title={course ? 'Edit course' : 'Add course'}
+      title={course ? `Edit ${exp.labels.courseLower}` : `Add ${exp.labels.courseLower}`}
       className="max-w-lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4 p-5 pt-3 sm:p-6 sm:pt-3">
@@ -93,54 +96,94 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
           </div>
         ) : null}
 
-        <div className="grid gap-3.5 sm:grid-cols-[1fr_140px]">
+        <div className={exp.features.showCourseCode ? 'grid gap-3.5 sm:grid-cols-[1fr_140px]' : ''}>
           <Input
-            label="Course name"
-            placeholder="e.g. Data Structures & Algorithms"
+            label={`${exp.labels.courseSingular} name`}
+            placeholder={exp.isShs ? 'e.g. Core Mathematics' : 'e.g. Data Structures & Algorithms'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
-          <Input
-            label="Course code"
-            placeholder="e.g. CSCD 204"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
+          {exp.features.showCourseCode ? (
+            <Input
+              label="Course code"
+              placeholder="e.g. CSCD 204"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          ) : null}
         </div>
 
-        <div className="grid gap-3.5 sm:grid-cols-2">
+        <div className={exp.features.showCreditHours ? 'grid gap-3.5 sm:grid-cols-2' : ''}>
           <Input
-            label="Lecturer"
-            placeholder="e.g. Dr. Mensah"
+            label={exp.isShs ? `${exp.labels.teacher} (optional)` : exp.labels.teacher}
+            placeholder={exp.isShs ? 'e.g. Mr. Boateng' : 'e.g. Dr. Mensah'}
             value={lecturer}
             onChange={(e) => setLecturer(e.target.value)}
           />
-          <Input
-            label="Credit hours"
-            type="number"
-            min={0}
-            max={30}
-            step={0.5}
-            placeholder="e.g. 3"
-            value={creditHours}
-            onChange={(e) => setCreditHours(e.target.value)}
-          />
+          {exp.features.showCreditHours ? (
+            <Input
+              label="Credit hours"
+              type="number"
+              min={0}
+              max={30}
+              step={0.5}
+              placeholder="e.g. 3"
+              value={creditHours}
+              onChange={(e) => setCreditHours(e.target.value)}
+            />
+          ) : null}
         </div>
 
         <div className="grid gap-3.5 sm:grid-cols-2">
-          <Input
-            label="Semester"
-            placeholder="e.g. 2026 Semester 1"
-            value={semester}
-            onChange={(e) => setSemester(e.target.value)}
-          />
-          <Input
-            label="Level"
-            placeholder="e.g. Level 200"
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-          />
+          {exp.labels.termOptions.length > 0 ? (
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium text-fg">{exp.labels.term} (optional)</span>
+              <select
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+              >
+                <option value="">Select term</option>
+                {exp.labels.termOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <Input
+              label={exp.labels.term}
+              placeholder="e.g. 2026 Semester 1"
+              value={semester}
+              onChange={(e) => setSemester(e.target.value)}
+            />
+          )}
+          {exp.isShs ? (
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium text-fg">{exp.labels.level} (optional)</span>
+              <select
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+              >
+                <option value="">Select year</option>
+                {exp.labels.levelOptions.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <Input
+              label={exp.labels.level}
+              placeholder="e.g. Level 200"
+              value={level}
+              onChange={(e) => setLevel(e.target.value)}
+            />
+          )}
         </div>
 
         <div className="space-y-2">
@@ -169,9 +212,13 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
         </div>
 
         <Textarea
-          label="Course notes (optional)"
+          label={`${exp.labels.courseSingular} notes (optional)`}
           rows={3}
-          placeholder="Syllabus link, assessment weights, lab group, or office hours..."
+          placeholder={
+            exp.isShs
+              ? 'Topics to focus on, teacher notes, or revision goals...'
+              : 'Syllabus link, assessment weights, lab group, or office hours...'
+          }
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
@@ -181,7 +228,7 @@ export function CourseFormModal({ open, onClose, course, onSubmit }: CourseFormM
             Cancel
           </Button>
           <Button type="submit" loading={saving}>
-            {course ? 'Save changes' : 'Create course'}
+            {course ? 'Save changes' : `Create ${exp.labels.courseLower}`}
           </Button>
         </div>
       </form>

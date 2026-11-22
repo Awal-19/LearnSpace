@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useAuth } from '../../app/AuthContext';
+import { useExperience } from '../../app/experience';
 import { Card, VerifiedBadge } from '../../design';
 import { request } from '../../lib/apiClient';
 import { AvatarUploader } from './AvatarUploader';
@@ -12,6 +13,7 @@ type Tab = 'details' | 'security';
 
 export function ProfilePage() {
   const { user } = useAuth();
+  const exp = useExperience();
   const [tab, setTab] = useState<Tab>('details');
 
   const statsQuery = useQuery({
@@ -32,9 +34,15 @@ export function ProfilePage() {
               {user.emailVerified ? <VerifiedBadge className="h-[18px] w-[18px]" /> : null}
             </h1>
             <p className="text-sm text-muted">{user.email}</p>
-            {(user.programme || user.university) && (
+            {(user.programme ||
+              (exp.isShs ? user.schoolYear || user.schoolName : user.university)) && (
               <p className="text-sm font-medium text-fg/80">
-                {[user.programme, user.level, user.university].filter(Boolean).join(' · ')}
+                {(exp.isShs
+                  ? [user.programme, user.schoolYear, user.schoolName]
+                  : [user.programme, user.level, user.university]
+                )
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             )}
           </div>

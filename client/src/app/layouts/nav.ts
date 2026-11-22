@@ -1,3 +1,4 @@
+import { EXPERIENCE_CONFIG, type ExperienceConfig } from '../experience';
 import {
   Award,
   BookMarked,
@@ -57,11 +58,19 @@ export const BOTTOM_NAV: NavItem[] = [
 ];
 
 /** Page title lookup for the top bar. */
-export function titleForPath(pathname: string, base: string): string {
+export function titleForPath(
+  pathname: string,
+  base: string,
+  experience: ExperienceConfig = EXPERIENCE_CONFIG.university,
+): string {
   const path = base && pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname;
-  const all = [...MAIN_NAV, ...ACCOUNT_NAV, ...BOTTOM_NAV];
+  const all = [
+    ...experience.nav.mainNav,
+    ...experience.nav.accountNav,
+    ...experience.nav.bottomNav,
+  ];
   const exact = all.find((item) => item.to === path);
-  if (exact) return exact.label === 'Home' ? 'Dashboard' : exact.label;
+  if (exact) return exact.label === 'Home' ? experience.labels.home : exact.label;
   const prefix = all.find((item) => item.to !== '/' && path.startsWith(`${item.to}/`));
   return prefix?.label ?? 'LearnSpace';
 }

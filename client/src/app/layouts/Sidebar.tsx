@@ -5,7 +5,8 @@ import { Avatar, cn, VerifiedBadge } from '../../design';
 import { getDueSummary } from '../../features/study/studyApi';
 import { useAuth } from '../AuthContext';
 import { useAppPath } from '../basePath';
-import { ACCOUNT_NAV, MAIN_NAV, type NavItem } from './nav';
+import { useExperience } from '../experience';
+import { type NavItem } from './nav';
 
 function SidebarLink({ item, badge }: { item: NavItem; badge?: string }) {
   const path = useAppPath();
@@ -56,6 +57,7 @@ function SidebarLink({ item, badge }: { item: NavItem; badge?: string }) {
 export function Sidebar() {
   const path = useAppPath();
   const { logout, user } = useAuth();
+  const experience = useExperience();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const navigate = useNavigate();
 
@@ -109,7 +111,7 @@ export function Sidebar() {
           <span className="font-display text-base font-bold tracking-tight text-fg">
             Learn<span className="text-primary-600 dark:text-primary-400">Space</span>
           </span>
-          <span className="text-[11px] font-medium text-muted">AI Study Workspace</span>
+          <span className="text-[11px] font-medium text-muted">{experience.workspaceTagline}</span>
         </NavLink>
       </div>
 
@@ -117,7 +119,7 @@ export function Sidebar() {
         <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted/80">
           Workspace
         </p>
-        {MAIN_NAV.map((item) => (
+        {experience.nav.mainNav.map((item) => (
           <SidebarLink
             key={item.to}
             item={item}
@@ -131,7 +133,7 @@ export function Sidebar() {
           {isAdmin ? (
             <SidebarLink item={{ to: '/admin', label: 'Admin Console', icon: ShieldCheck }} />
           ) : null}
-          {ACCOUNT_NAV.map((item) => (
+          {experience.nav.accountNav.map((item) => (
             <SidebarLink key={item.to} item={item} />
           ))}
         </nav>

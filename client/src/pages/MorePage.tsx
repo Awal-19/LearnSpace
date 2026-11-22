@@ -3,17 +3,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../design';
 import { useAuth } from '../app/AuthContext';
 import { useAppPath } from '../app/basePath';
-import { ACCOUNT_NAV, BOTTOM_NAV, MAIN_NAV } from '../app/layouts/nav';
-
-const BOTTOM_PATHS = new Set(BOTTOM_NAV.map((item) => item.to));
+import { useExperience } from '../app/experience';
 
 /** Mobile "More" destination: everything not in the bottom bar. */
 export function MorePage() {
   const path = useAppPath();
   const { logout, user } = useAuth();
+  const experience = useExperience();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const items = [...MAIN_NAV.filter((item) => !BOTTOM_PATHS.has(item.to)), ...ACCOUNT_NAV];
+  const bottomPaths = new Set(experience.nav.bottomNav.map((item) => item.to));
+  const items = [
+    ...experience.nav.mainNav.filter((item) => !bottomPaths.has(item.to)),
+    ...experience.nav.accountNav,
+  ];
 
   const handleLogout = async () => {
     await logout();

@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../../src/lib/errors';
-import { requireGuardianConsent } from '../../src/middleware/auth';
+import { requireGuardianConsent, requireLearnerType } from '../../src/middleware/auth';
 import { buildShsSystemPrompt, SHS_TUTOR_SYSTEM_PROMPT } from '../../src/modules/ai/ai.shs.prompts';
 import { createAdminService } from '../../src/modules/admin/admin.service';
 import { signupSchema } from '../../src/modules/auth/auth.schemas';
@@ -187,15 +187,13 @@ describe('Ghanaian SHS support & child safety', () => {
           .mockResolvedValue({ communityId: 'comm-shs', userId: 'u-shs', role: 'member' }),
       },
       community: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'comm-shs',
-            learnerScope: 'shs',
-            isPaused: false,
-            slug: 'shs:maths',
-            normalizedName: 'maths',
-          }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'comm-shs',
+          learnerScope: 'shs',
+          isPaused: false,
+          slug: 'shs:maths',
+          normalizedName: 'maths',
+        }),
       },
       user: {
         findUnique: vi.fn().mockResolvedValue({ createdAt: new Date(), learnerType: 'shs' }),
@@ -291,5 +289,28 @@ describe('Ghanaian SHS support & child safety', () => {
         }),
       }),
     );
+  });
+
+  it('blocks cross-type endpoints via requireLearnerType', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ learnerType: 'shs', role: 'student' })
+          .mockResolvedValueOnce({ learnerType: 'university', role: 'student' }),
+      },
+    } as unknown as PrismaClient;
+
+    const uniOnly = requireLearnerType(prisma, 'university');
+    const nextShs = vi.fn();
+    uniOnly({ user: { id: 'u-shs' } } as never, {} as never, nextShs);
+    await vi.waitFor(() => expect(nextShs).toHaveBeenCalledWith(expect.any(AppError)));
+    expect((nextShs.mock.calls[0]?.[0] as AppError).code).toBe('FORBIDDEN');
+
+    const shsOnly = requireLearnerType(prisma, 'shs');
+    const nextUni = vi.fn();
+    shsOnly({ user: { id: 'u-uni' } } as never, {} as never, nextUni);
+    await vi.waitFor(() => expect(nextUni).toHaveBeenCalledWith(expect.any(AppError)));
+    expect((nextUni.mock.calls[0]?.[0] as AppError).code).toBe('FORBIDDEN');
   });
 });

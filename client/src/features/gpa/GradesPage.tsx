@@ -12,6 +12,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useExperience } from '../../app/experience';
 import {
   CartesianGrid,
   Legend,
@@ -31,6 +33,7 @@ import { WhatIfPlannerPanel } from './WhatIfPlannerPanel';
 import { deleteGradeRecord, getGpaOverview, type AnnotatedGradeRecord } from './gpaApi';
 
 export function GradesPage() {
+  const exp = useExperience();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -43,14 +46,20 @@ export function GradesPage() {
   const gpaQuery = useQuery({
     queryKey: ['gpa', 'overview'],
     queryFn: getGpaOverview,
+    enabled: exp.features.showGpa,
   });
 
   const coursesQuery = useQuery({
     queryKey: ['courses'],
     queryFn: () => listCourses().catch(() => [] as CourseSummary[]),
     staleTime: 60_000,
+    enabled: exp.features.showGpa,
   });
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+
+  if (!exp.features.showGpa) {
+    return <Navigate to="/" replace />;
+  }
 
   const refreshGpa = async () => {
     await qc.invalidateQueries({ queryKey: ['gpa', 'overview'] });

@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '../../design';
 import { useAppPath } from '../basePath';
-import { BOTTOM_NAV } from './nav';
+import { useExperience } from '../experience';
 
 export function BottomNav() {
   const path = useAppPath();
+  const experience = useExperience();
   return (
     <nav
       aria-label="Primary"
@@ -12,7 +13,7 @@ export function BottomNav() {
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="mx-auto flex h-16 max-w-xl items-stretch justify-around px-2">
-        {BOTTOM_NAV.map(({ to, label, icon: Icon, end }) => (
+        {experience.nav.bottomNav.map(({ to, label, icon: Icon, end }) => (
           <li key={to} className="flex-1">
             <NavLink
               to={path(to)}

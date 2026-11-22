@@ -17,6 +17,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import {
@@ -45,6 +46,7 @@ const ACCESS_LABELS: Record<
 
 export function CourseRecommendedPanel({ courseId }: { courseId: string }) {
   const path = useAppPath();
+  const exp = useExperience();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -226,10 +228,10 @@ export function CourseRecommendedPanel({ courseId }: { courseId: string }) {
   const savedUrls = new Set(resources.map((r) => r.url));
 
   const subTabs: Array<{ id: SubTab; label: string; count: number }> = [
-    { id: 'books', label: 'Books', count: books.length },
+    { id: 'books', label: exp.isShs ? 'Textbooks' : 'Books', count: books.length },
     { id: 'past_questions', label: 'Past Questions', count: pastQuestions.length },
     { id: 'extras', label: 'Videos & Notes', count: extras.length },
-    { id: 'saved', label: 'Saved to Course', count: resources.length },
+    { id: 'saved', label: `Saved to ${exp.labels.courseSingular}`, count: resources.length },
   ];
 
   const activeItems =

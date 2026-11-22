@@ -1,6 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, BookOpen, CheckCircle2, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  Eye,
+  Plus,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Button, GlassCard, Input, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import {
@@ -106,12 +115,20 @@ export function AdminShsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-fg">SHS &amp; Child Safety</h1>
-        <p className="text-sm text-muted">
-          Manage Ghanaian SHS sign-ups, guardian consent status, safety filters, and the NaCCA/GES
-          subject catalogue.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-fg">SHS &amp; Child Safety</h1>
+          <p className="text-sm text-muted">
+            Manage Ghanaian SHS sign-ups, guardian consent status, safety filters, and the NaCCA/GES
+            subject catalogue.
+          </p>
+        </div>
+        <Link to="/?preview=shs">
+          <Button type="button" size="sm" variant="secondary">
+            <Eye className="h-4 w-4" aria-hidden="true" />
+            View as SHS Student (Demo)
+          </Button>
+        </Link>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">

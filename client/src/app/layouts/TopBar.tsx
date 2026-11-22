@@ -4,6 +4,7 @@ import { Avatar, VerifiedBadge } from '../../design';
 import { NotificationBell } from '../../features/planner/NotificationBell';
 import { useAuth } from '../AuthContext';
 import { useAppPath } from '../basePath';
+import { useExperience } from '../experience';
 import { ThemeToggle } from '../ThemeToggle';
 import { titleForPath } from './nav';
 
@@ -11,6 +12,7 @@ export function TopBar({ base = '' }: { base?: string }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const path = useAppPath();
+  const experience = useExperience();
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-line/60 bg-white/75 px-4 backdrop-blur-xl dark:border-line/70 dark:bg-surface/80 sm:px-6">
@@ -20,7 +22,7 @@ export function TopBar({ base = '' }: { base?: string }) {
         </div>
       </div>
       <h1 className="truncate font-display text-lg font-bold tracking-tight text-fg lg:text-xl">
-        {titleForPath(pathname, base)}
+        {titleForPath(pathname, base, experience)}
       </h1>
       <div className="flex items-center gap-2">
         {user ? <NotificationBell /> : null}

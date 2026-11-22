@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useAuth, type AuthUser } from '../../app/AuthContext';
+import { useExperience } from '../../app/experience';
 import { Button, Card, Input, Textarea, useToast } from '../../design';
 import { ApiError, request } from '../../lib/apiClient';
 
@@ -34,6 +35,7 @@ function toFormValues(user: AuthUser): ProfileFormValues {
 
 export function ProfileDetailsForm() {
   const { user, updateUser } = useAuth();
+  const exp = useExperience();
   const toast = useToast();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -100,29 +102,31 @@ export function ProfileDetailsForm() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Full name" error={errors.name?.message} {...register('name')} />
+          {!exp.isShs ? (
+            <Input
+              label={exp.labels.studentId}
+              placeholder="e.g. 10928374"
+              error={errors.studentId?.message}
+              {...register('studentId')}
+            />
+          ) : null}
           <Input
-            label="Student ID"
-            placeholder="e.g. 10928374"
-            error={errors.studentId?.message}
-            {...register('studentId')}
-          />
-          <Input
-            label="Programme / Major"
-            placeholder="e.g. BSc Computer Science"
+            label="Programme"
+            placeholder={exp.isShs ? 'e.g. General Science' : 'e.g. BSc Computer Science'}
             error={errors.programme?.message}
             {...register('programme')}
           />
           <Input
-            label="Level / Year"
-            placeholder="e.g. Level 300"
+            label={exp.labels.level}
+            placeholder={exp.isShs ? 'e.g. SHS 2' : 'e.g. Level 300'}
             error={errors.level?.message}
             {...register('level')}
           />
         </div>
 
         <Input
-          label="University"
-          placeholder="e.g. University of Ghana"
+          label={exp.labels.institution}
+          placeholder={exp.isShs ? 'e.g. Achimota School' : 'e.g. University of Ghana'}
           error={errors.university?.message}
           {...register('university')}
         />
@@ -131,7 +135,7 @@ export function ProfileDetailsForm() {
           <Textarea
             label="Bio"
             rows={4}
-            placeholder="Tell us what you are studying or your goals this semester..."
+            placeholder={`Tell us what you are studying or your goals this ${exp.labels.term.toLowerCase()}...`}
             error={errors.bio?.message}
             {...register('bio')}
           />

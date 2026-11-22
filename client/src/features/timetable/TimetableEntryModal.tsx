@@ -2,6 +2,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
 import { Button, Input, Modal } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import type { CourseSummary } from '../courses/coursesApi';
@@ -42,6 +43,7 @@ export function TimetableEntryModal({
   onSubmit,
 }: TimetableEntryModalProps) {
   const path = useAppPath();
+  const exp = useExperience();
 
   const [courseId, setCourseId] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(defaultDayOfWeek);
@@ -120,7 +122,7 @@ export function TimetableEntryModal({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!courseId) {
-      setError('Please select a course first.');
+      setError(`Please select a ${exp.labels.courseLower} first.`);
       return;
     }
     if (parsedStart === null || parsedEnd === null) {
@@ -202,11 +204,11 @@ export function TimetableEntryModal({
 
         {courseOptions.length === 0 ? (
           <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-3.5 text-xs text-fg dark:border-amber-500/30 dark:bg-amber-950/30">
-            <p className="font-medium">No active courses found.</p>
+            <p className="font-medium">No active {exp.labels.coursePluralLower} found.</p>
             <p className="mt-1 text-muted">
-              Create a course first so your class inherits its code and color badge.{' '}
+              Create a {exp.labels.courseLower} first so your class inherits its color badge.{' '}
               <Link to={path('/courses')} className="font-semibold text-primary-600 underline">
-                Go to Courses
+                Go to {exp.labels.coursePlural}
               </Link>
             </p>
           </div>
@@ -214,7 +216,7 @@ export function TimetableEntryModal({
 
         <div>
           <label htmlFor="tt-course" className="mb-1.5 block text-sm font-medium text-fg">
-            Course
+            {exp.labels.courseSingular}
           </label>
           <select
             id="tt-course"
@@ -223,7 +225,7 @@ export function TimetableEntryModal({
             disabled={courseOptions.length === 0}
             className="h-10 w-full rounded-xl border border-line bg-surface2/50 px-3 text-sm text-fg transition-colors focus:border-primary-500 focus:bg-surface focus:outline-none disabled:opacity-60"
           >
-            <option value="">Select course...</option>
+            <option value="">Select {exp.labels.courseLower}...</option>
             {courseOptions.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code ? `${c.code} — ${c.name}` : c.name}

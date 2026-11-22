@@ -20,6 +20,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
+import { ShsDashboardPage } from '../shs/ShsDashboardPage';
 import {
   Avatar,
   Badge,
@@ -125,6 +127,14 @@ interface DashboardResponse {
 }
 
 export function DashboardPage() {
+  const exp = useExperience();
+  if (exp.isShs) {
+    return <ShsDashboardPage />;
+  }
+  return <UniversityDashboardPage />;
+}
+
+function UniversityDashboardPage() {
   const { user, updateUser } = useAuth();
   const path = useAppPath();
   const qc = useQueryClient();

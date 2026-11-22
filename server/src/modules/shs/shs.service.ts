@@ -47,6 +47,60 @@ const OFFICIAL_WASSCE_LINKS = [
   },
 ];
 
+const DAILY_CHALLENGE_BANK = [
+  {
+    id: 'dc-math-1',
+    subject: 'Core Mathematics',
+    topic: 'Logarithms',
+    prompt: 'If $\\log_{10}(x) = 3$, what is the value of $x$?',
+    options: ['30', '100', '1000', '3000'],
+    correctIndex: 2,
+    explanation: 'By definition, $\\log_{10}(x) = 3$ means $x = 10^3 = 1000$.',
+  },
+  {
+    id: 'dc-sci-1',
+    subject: 'Integrated Science',
+    topic: 'Photosynthesis',
+    prompt: 'Which gas is released as a by-product during photosynthesis in green plants?',
+    options: ['Carbon dioxide', 'Nitrogen', 'Oxygen', 'Hydrogen'],
+    correctIndex: 2,
+    explanation:
+      'Plants use carbon dioxide and water in sunlight to produce glucose and release oxygen.',
+  },
+  {
+    id: 'dc-eng-1',
+    subject: 'English Language',
+    topic: 'Concord (Subject-Verb Agreement)',
+    prompt: 'Choose the correct verb: "Neither Kwame nor his friends ____ ready for the quiz."',
+    options: ['is', 'was', 'are', 'has been'],
+    correctIndex: 2,
+    explanation:
+      'With "neither...nor", the verb agrees with the nearer subject ("friends", which is plural).',
+  },
+  {
+    id: 'dc-soc-1',
+    subject: 'Social Studies',
+    topic: 'Constitution & Governance',
+    prompt: 'Which arm of government in Ghana is primarily responsible for making laws?',
+    options: [
+      'The Judiciary',
+      'The Legislature (Parliament)',
+      'The Executive',
+      'The Electoral Commission',
+    ],
+    correctIndex: 1,
+    explanation:
+      'Under the 1992 Constitution of Ghana, Parliament (the Legislature) exercises legislative power.',
+  },
+];
+
+const SHS_TIPS = [
+  'Break your study into 25-minute focus blocks with 5-minute breaks — consistency beats cramming.',
+  'After reading a topic, close your book and write down 3 key points in your own words.',
+  'For WASSCE theory questions, always show your formula and units before substituting numbers.',
+  'Revise your weak topics first while your mind is fresh, then review stronger subjects.',
+];
+
 export function createShsService(deps: {
   prisma: PrismaClient;
   logger: Logger;
@@ -614,6 +668,252 @@ export function createShsService(deps: {
         weakTopics,
         questions,
         answers: input.answers,
+      };
+    },
+
+    async getShsDashboard(userId: string) {
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const todayKey = now.toISOString().slice(0, 10);
+
+      const [
+        user,
+        courses,
+        todayTasks,
+        lastNote,
+        lastQuizAttempt,
+        lastConversation,
+        wassceExam,
+        focusAgg,
+        attempts,
+        noteCount,
+        chatCount,
+        quizCount,
+        dailyAnswers,
+      ] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true, schoolYear: true, programme: true, schoolName: true },
+        }),
+        prisma.course.findMany({
+          where: { userId, archivedAt: null },
+          orderBy: { createdAt: 'asc' },
+          include: {
+            catalogueSubject: {
+              include: { topics: { where: { active: true }, select: { id: true, title: true } } },
+            },
+            _count: { select: { notes: true, quizzes: true, wassceMockAttempts: true } },
+          },
+        }),
+        prisma.task.findMany({
+          where: { userId, status: 'todo' },
+          orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
+          take: 6,
+          select: { id: true, title: true, dueAt: true, priority: true, courseId: true },
+        }),
+        prisma.note.findFirst({
+          where: { userId },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, title: true, updatedAt: true, courseId: true },
+        }),
+        prisma.quizAttempt.findFirst({
+          where: { userId },
+          orderBy: { takenAt: 'desc' },
+          include: { quiz: { select: { id: true, title: true } } },
+        }),
+        prisma.conversation.findFirst({
+          where: { userId },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, title: true, updatedAt: true },
+        }),
+        prisma.exam.findFirst({
+          where: { userId, startsAt: { gte: now } },
+          orderBy: { startsAt: 'asc' },
+          select: { id: true, title: true, startsAt: true },
+        }),
+        prisma.studySession.aggregate({
+          where: { userId, startedAt: { gte: weekAgo } },
+          _sum: { durationSeconds: true },
+        }),
+        prisma.wassceMockAttempt.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          include: { course: { select: { id: true, name: true } } },
+        }),
+        prisma.note.count({ where: { userId } }),
+        prisma.conversation.count({ where: { userId } }),
+        prisma.quizAttempt.count({ where: { userId } }),
+        prisma.activityEvent.findMany({
+          where: { userId, action: 'shs_daily_challenge' },
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+          select: { createdAt: true },
+        }),
+      ]);
+
+      const weakMap = new Map<
+        string,
+        { courseId: string; courseName: string; topic: string; count: number }
+      >();
+      for (const att of attempts) {
+        const list = Array.isArray(att.weakTopicsJson)
+          ? att.weakTopicsJson.filter((x): x is string => typeof x === 'string')
+          : [];
+        for (const t of list) {
+          const key = `${att.courseId}:${t.toLowerCase()}`;
+          const prev = weakMap.get(key);
+          if (prev) prev.count += 1;
+          else
+            weakMap.set(key, {
+              courseId: att.courseId,
+              courseName: att.course.name,
+              topic: t,
+              count: 1,
+            });
+        }
+      }
+
+      const dayIndex = Math.floor(now.getTime() / (24 * 60 * 60 * 1000));
+      const challenge = DAILY_CHALLENGE_BANK[dayIndex % DAILY_CHALLENGE_BANK.length]!;
+      const answeredToday = dailyAnswers.some(
+        (d) => d.createdAt.toISOString().slice(0, 10) === todayKey,
+      );
+
+      const focusSecondsThisWeek = focusAgg._sum.durationSeconds ?? 0;
+      const badges = [
+        { id: 'first_subject', label: 'Subject Starter', earned: courses.length > 0 },
+        { id: 'note_taker', label: 'Note Maker', earned: noteCount > 0 },
+        { id: 'wassce_mock', label: 'WASSCE Practiser', earned: attempts.length > 0 },
+        { id: 'focus_60m', label: '60m Focus Week', earned: focusSecondsThisWeek >= 3600 },
+      ];
+
+      return {
+        greetingName: user?.name ?? 'Student',
+        schoolYear: user?.schoolYear ?? 'SHS',
+        programme: user?.programme ?? null,
+        checklist: {
+          hasSubject: courses.length > 0,
+          hasNote: noteCount > 0,
+          hasChat: chatCount > 0,
+          hasQuiz: quizCount > 0 || attempts.length > 0,
+        },
+        wassceTarget: wassceExam
+          ? {
+              id: wassceExam.id,
+              title: wassceExam.title,
+              targetDate: wassceExam.startsAt.toISOString(),
+              daysLeft: Math.max(
+                0,
+                Math.ceil((wassceExam.startsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+              ),
+            }
+          : null,
+        subjects: courses.map((c) => {
+          const totalTopics = c.catalogueSubject?.topics.length ?? 0;
+          const coveredEstimate = Math.min(
+            100,
+            totalTopics > 0
+              ? Math.round(
+                  ((c._count.notes + c._count.quizzes + c._count.wassceMockAttempts) /
+                    totalTopics) *
+                    100,
+                )
+              : Math.min(100, (c._count.notes + c._count.quizzes) * 25),
+          );
+          return {
+            id: c.id,
+            name: c.name,
+            color: c.color ?? '#2563EB',
+            progressPct: coveredEstimate,
+            notesCount: c._count.notes,
+            topicsCount: totalTopics,
+          };
+        }),
+        todayTasks,
+        continueFrom: {
+          lastNote: lastNote
+            ? { id: lastNote.id, title: lastNote.title, updatedAt: lastNote.updatedAt }
+            : null,
+          lastQuiz: lastQuizAttempt
+            ? {
+                id: lastQuizAttempt.quiz.id,
+                title: lastQuizAttempt.quiz.title,
+                score: lastQuizAttempt.score,
+                total: lastQuizAttempt.total,
+              }
+            : null,
+          lastChat: lastConversation
+            ? {
+                id: lastConversation.id,
+                title: lastConversation.title,
+                updatedAt: lastConversation.updatedAt,
+              }
+            : null,
+        },
+        dailyChallenge: {
+          id: challenge.id,
+          subject: challenge.subject,
+          topic: challenge.topic,
+          prompt: challenge.prompt,
+          options: challenge.options,
+          answeredToday,
+          streak: dailyAnswers.length,
+        },
+        weakTopics: [...weakMap.values()].sort((a, b) => b.count - a.count).slice(0, 5),
+        focusMinutesThisWeek: Math.round(focusSecondsThisWeek / 60),
+        streakDays: dailyAnswers.length,
+        badges,
+        tipOfTheDay: SHS_TIPS[dayIndex % SHS_TIPS.length]!,
+      };
+    },
+
+    async setWassceTargetDate(userId: string, targetDateIso: string, title = 'WASSCE Target Exam') {
+      const target = new Date(targetDateIso);
+      if (Number.isNaN(target.getTime())) {
+        throw new AppError('VALIDATION_ERROR', 'Invalid WASSCE target date.');
+      }
+      const course = await prisma.course.findFirst({
+        where: { userId, archivedAt: null },
+        select: { id: true },
+      });
+      if (!course) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'Add at least one SHS subject before setting an exam date.',
+        );
+      }
+      const existing = await prisma.exam.findFirst({
+        where: { userId, title: { contains: 'WASSCE', mode: 'insensitive' } },
+      });
+      const exam = existing
+        ? await prisma.exam.update({
+            where: { id: existing.id },
+            data: { startsAt: target, title },
+          })
+        : await prisma.exam.create({
+            data: { userId, courseId: course.id, title, examType: 'final', startsAt: target },
+          });
+      return { id: exam.id, targetDate: exam.startsAt.toISOString(), title: exam.title };
+    },
+
+    async answerDailyChallenge(userId: string, challengeId: string, selectedIndex: number) {
+      const challenge =
+        DAILY_CHALLENGE_BANK.find((c) => c.id === challengeId) ?? DAILY_CHALLENGE_BANK[0]!;
+      const correct = selectedIndex === challenge.correctIndex;
+      await prisma.activityEvent
+        .create({
+          data: {
+            userId,
+            action: 'shs_daily_challenge',
+            metadataJson: { challengeId: challenge.id, correct },
+          },
+        })
+        .catch(() => undefined);
+      return {
+        correct,
+        correctIndex: challenge.correctIndex,
+        explanation: challenge.explanation,
       };
     },
   };

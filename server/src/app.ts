@@ -7,7 +7,12 @@ import { pinoHttp } from 'pino-http';
 import type { Env } from './config/env';
 import { createLogger } from './lib/logger';
 import { createErrorHandler, notFound } from './middleware/errorHandler';
-import { requireAuth, requireGuardianConsent, requireVerified } from './middleware/auth';
+import {
+  requireAuth,
+  requireGuardianConsent,
+  requireLearnerType,
+  requireVerified,
+} from './middleware/auth';
 import { createRateLimiter, setRateLimitPrisma } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { healthRouter, type HealthDeps } from './modules/health/health.routes';
@@ -277,6 +282,13 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     );
   }
   if (deps.shs) {
+    if (deps.dashboardPrisma) {
+      const requireShs = requireLearnerType(deps.dashboardPrisma, 'shs');
+      app.use(`${API_PREFIX}/shs/wassce`, requireAuth(env.JWT_SECRET), requireShs);
+      app.use(`${API_PREFIX}/shs/dashboard`, requireAuth(env.JWT_SECRET), requireShs);
+      app.use(`${API_PREFIX}/shs/wassce-date`, requireAuth(env.JWT_SECRET), requireShs);
+      app.use(`${API_PREFIX}/shs/daily-challenge`, requireAuth(env.JWT_SECRET), requireShs);
+    }
     app.use(
       API_PREFIX,
       shsRouter({
@@ -327,6 +339,13 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
     app.use(API_PREFIX, focusRouter(deps.focus, env));
   }
   if (deps.gpa) {
+    if (deps.dashboardPrisma) {
+      app.use(
+        `${API_PREFIX}/gpa`,
+        requireAuth(env.JWT_SECRET),
+        requireLearnerType(deps.dashboardPrisma, 'university'),
+      );
+    }
     app.use(API_PREFIX, gpaRouter(deps.gpa, env));
   }
   if (deps.study) {

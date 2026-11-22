@@ -17,6 +17,7 @@ import {
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
+import { useExperience } from '../../app/experience';
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, useToast } from '../../design';
 import { ApiError } from '../../lib/apiClient';
 import { EXAM_TYPE_LABELS, formatExamCountdown, type ExamType } from '../exams/examsApi';
@@ -25,6 +26,7 @@ import { CourseRecommendedPanel } from './CourseRecommendedPanel';
 import { DeleteCourseModal } from './DeleteCourseModal';
 import {
   deleteCourse,
+  fetchShsCatalogue,
   formatStudyDuration,
   getCourseDetail,
   updateCourse,
@@ -32,16 +34,17 @@ import {
 } from './coursesApi';
 
 type DetailTab =
-  'notes' | 'documents' | 'tasks' | 'flashcards' | 'quizzes' | 'exams' | 'recommended';
+  'topics' | 'notes' | 'documents' | 'tasks' | 'flashcards' | 'quizzes' | 'exams' | 'recommended';
 
 export function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
   const path = useAppPath();
+  const exp = useExperience();
   const toast = useToast();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<DetailTab>('notes');
+  const [tab, setTab] = useState<DetailTab>(exp.isShs ? 'topics' : 'notes');
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -50,6 +53,13 @@ export function CourseDetailPage() {
     queryFn: () => getCourseDetail(courseId!),
     enabled: Boolean(courseId),
     staleTime: 20_000,
+  });
+
+  const shsCatQuery = useQuery({
+    queryKey: ['shs', 'catalogue'],
+    queryFn: fetchShsCatalogue,
+    enabled: exp.isShs,
+    staleTime: 60_000,
   });
 
   if (detailQuery.isLoading) {
@@ -72,14 +82,14 @@ export function CourseDetailPage() {
       <div className="mx-auto max-w-4xl space-y-4">
         <Button variant="ghost" size="sm" onClick={() => navigate(path('/courses'))}>
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back to Courses
+          Back to {exp.labels.coursePlural}
         </Button>
         <ErrorState
-          title="Could not load course"
+          title={`Could not load ${exp.labels.courseLower}`}
           message={
             detailQuery.error instanceof ApiError
               ? detailQuery.error.message
-              : 'This course could not be found.'
+              : `This ${exp.labels.courseLower} could not be found.`
           }
           onRetry={() => void detailQuery.refetch()}
         />
@@ -121,18 +131,26 @@ export function CourseDetailPage() {
   const handleDelete = async (id: string, mode: 'unassign' | 'delete') => {
     await deleteCourse(id, mode);
     await invalidateAll();
-    toast.show({ kind: 'success', title: 'Course deleted' });
+    toast.show({ kind: 'success', title: `${exp.labels.courseSingular} deleted` });
     navigate(path('/courses'), { replace: true });
   };
 
+  const matchedCatalogue = exp.isShs
+    ? shsCatQuery.data?.subjects.find((s) => s.name.toLowerCase() === course.name.toLowerCase())
+    : undefined;
+  const syllabusTopics = matchedCatalogue?.topics ?? [];
+
   const tabs: Array<{ id: DetailTab; label: string; count?: number }> = [
+    ...(exp.isShs
+      ? [{ id: 'topics' as const, label: 'Syllabus Topics', count: syllabusTopics.length }]
+      : []),
     { id: 'recommended', label: 'Recommended' },
     { id: 'notes', label: 'Notes', count: notes.length },
-    { id: 'documents', label: 'Documents', count: documents.length },
+    { id: 'documents', label: exp.isShs ? 'Handouts' : 'Documents', count: documents.length },
     { id: 'tasks', label: 'Tasks', count: tasks.length },
     { id: 'flashcards', label: 'Flashcards', count: decks.length },
     { id: 'quizzes', label: 'Quizzes', count: quizzes.length },
-    { id: 'exams', label: 'Exams', count: upcomingExams.length },
+    { id: 'exams', label: exp.labels.examPrep, count: upcomingExams.length },
   ];
 
   const accent = course.color ?? '#2563EB';
@@ -143,7 +161,7 @@ export function CourseDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="ghost" size="sm" onClick={() => navigate(path('/courses'))}>
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back to Courses
+          Back to {exp.labels.coursePlural}
         </Button>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -186,8 +204,10 @@ export function CourseDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-4 pt-1">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              {course.code ? <Badge tone="primary">{course.code}</Badge> : null}
-              {course.creditHours !== null ? (
+              {exp.features.showCourseCode && course.code ? (
+                <Badge tone="primary">{course.code}</Badge>
+              ) : null}
+              {exp.features.showCreditHours && course.creditHours !== null ? (
                 <Badge tone="neutral">{course.creditHours} credit hours</Badge>
               ) : null}
               {course.semester ? <Badge tone="neutral">{course.semester}</Badge> : null}
@@ -198,7 +218,9 @@ export function CourseDetailPage() {
               {course.name}
             </h1>
             {course.lecturer ? (
-              <p className="text-sm text-muted">Lecturer: {course.lecturer}</p>
+              <p className="text-sm text-muted">
+                {exp.labels.teacher}: {course.lecturer}
+              </p>
             ) : null}
             {course.notes ? (
               <p className="max-w-3xl text-sm leading-relaxed text-fg/85">{course.notes}</p>
@@ -240,7 +262,7 @@ export function CourseDetailPage() {
             <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <p className="text-xs text-muted">Course tasks</p>
+            <p className="text-xs text-muted">{exp.labels.courseSingular} tasks</p>
             <p className="text-lg font-bold text-fg tabular-nums">
               {stats.completedTasksCount}/{stats.openTasksCount + stats.completedTasksCount} done
             </p>
@@ -285,6 +307,54 @@ export function CourseDetailPage() {
 
       {/* Tab Content */}
       <Card className="p-5 sm:p-6">
+        {tab === 'topics' && exp.isShs ? (
+          syllabusTopics.length === 0 ? (
+            <EmptyState
+              icon={BookOpen}
+              title="No syllabus topics linked yet"
+              description="Custom subjects can still use Notes, Handouts, Flashcards, and WASSCE Exam Prep."
+            />
+          ) : (
+            <div className="space-y-2.5">
+              <p className="text-xs text-muted">
+                Official NaCCA / GES syllabus topics ({matchedCatalogue?.syllabusVersion ?? 'SHS'}).
+                Click Revise with AWAL to study any topic step by step.
+              </p>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {syllabusTopics.map((topic) => (
+                  <div
+                    key={topic.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface2/40 px-3.5 py-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-fg">{topic.title}</p>
+                      {topic.schoolYear ? (
+                        <p className="text-xs text-muted">{topic.schoolYear}</p>
+                      ) : null}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        navigate(
+                          path(
+                            `/chat?prefill=${encodeURIComponent(
+                              `Teach me "${topic.title}" in ${course.name} for WASSCE step by step.`,
+                            )}`,
+                          ),
+                        )
+                      }
+                    >
+                      Revise with AWAL
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        ) : null}
+
         {tab === 'recommended' ? <CourseRecommendedPanel courseId={course.id} /> : null}
 
         {tab === 'notes' ? (

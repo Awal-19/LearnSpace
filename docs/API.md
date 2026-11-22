@@ -458,3 +458,10 @@ Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`
 - `POST /api/v1/shs/wassce/mock` — Generates original WASSCE-style `objective`, `theory`, or `mixed` mock questions from syllabus topics and student notes.
 - `POST /api/v1/shs/wassce/mock/:id/submit` — Grades objective items, returns theory marking guidance, and updates `weakTopicsJson`.
 - `GET /api/admin/shs/overview`, `PATCH /api/admin/shs/settings`, `PATCH /api/admin/shs/flags/:id`, `POST /api/admin/shs/subjects`, `PATCH /api/admin/shs/subjects/:id`, `POST /api/admin/shs/subjects/:id/topics` — Audit-logged admin controls for SHS features, safety flags, and syllabus catalogue.
+
+## SHS Dashboard & Learner-Type Isolation Endpoints
+
+- `GET /api/v1/shs/dashboard` (SHS only) — Returns real-time SHS dashboard widgets (checklist, WASSCE target countdown, subjects with topic progress, today's tasks, daily challenge, weak topics, weekly focus minutes, badges, and tip of the day).
+- `POST /api/v1/shs/wassce-date` (SHS only) — Sets or updates the student's target WASSCE countdown date.
+- `POST /api/v1/shs/daily-challenge/answer` (SHS only) — Grades the daily NaCCA-aligned challenge question and records the student's streak.
+- Server-side `requireLearnerType` enforces `403 FORBIDDEN` when SHS accounts call `/api/v1/gpa/*` or when university accounts call SHS-only endpoints (`/api/v1/shs/wassce/*`, `/api/v1/shs/dashboard`, `/api/v1/shs/wassce-date`, `/api/v1/shs/daily-challenge/*`).

@@ -18,19 +18,13 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useExperience } from '../../app/experience';
 import { listCourses } from '../courses/coursesApi';
 import { DictationMicButton, DictationStatusBar } from '../dictation/DictationControls';
 import { useDictation } from '../dictation/useDictation';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import type { AiAction, MessageAttachment } from './chatApi';
 import { formatBytes } from './imagePrep';
-
-const ACTION_OPTIONS: Array<{ id: AiAction; label: string }> = [
-  { id: 'explain_simple', label: 'Explain simply' },
-  { id: 'example', label: 'Give an example' },
-  { id: 'quiz_me', label: 'Quiz me' },
-  { id: 'summarize', label: 'Summarize' },
-];
 
 const ATTACHMENT_QUICK_PROMPTS = [
   'Explain this',
@@ -168,6 +162,7 @@ export function Composer({
   onSend,
   onStop,
 }: ComposerProps) {
+  const exp = useExperience();
   const [text, setText] = useState('');
   const [action, setAction] = useState<AiAction | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -317,7 +312,7 @@ export function Composer({
             role="group"
             aria-label="Quick actions"
           >
-            {ACTION_OPTIONS.map((opt) => {
+            {exp.aiQuickActions.map((opt) => {
               const selected = action === opt.id;
               return (
                 <button

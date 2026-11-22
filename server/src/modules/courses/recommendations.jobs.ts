@@ -90,12 +90,16 @@ export function createRecommendationJobQueue(deps: {
 
       const user = await prisma.user.findUnique({
         where: { id: job.userId },
-        select: { programme: true, level: true, university: true },
+        select: { programme: true, level: true, university: true, learnerType: true },
       });
 
+      const isShs = user?.learnerType === 'shs';
       const adminAllowDomains = parseDomainArray(settings?.recommendationAllowDomainsJson);
       const adminBlockDomains = parseDomainArray(settings?.recommendationBlockDomainsJson);
-      const cacheKey = buildRecommendationCacheKey(course.name, course.level ?? user?.level);
+      const cacheKey = buildRecommendationCacheKey(
+        course.name,
+        isShs ? 'ghana-shs-wassce' : (course.level ?? user?.level),
+      );
 
       let items: VerifiedRecommendationItem[] = [];
       let searchesRun = 0;
@@ -149,10 +153,10 @@ export function createRecommendationJobQueue(deps: {
         const pipelineRes = await runRecommendationPipeline({
           input: {
             courseName: course.name,
-            code: course.code,
-            level: course.level ?? user?.level ?? null,
+            code: isShs ? null : course.code,
+            level: isShs ? 'Ghana SHS WASSCE' : (course.level ?? user?.level ?? null),
             programme: user?.programme ?? null,
-            university: user?.university ?? null,
+            university: isShs ? 'Ghana Education Service NaCCA' : (user?.university ?? null),
           },
           searchProvider,
           llm,
