@@ -226,4 +226,75 @@ describe('SHS Topic List & TopicLessonPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Tap to reveal answer/i }));
     expect(screen.getByText(/Answer: Reading quickly for main idea/i)).toBeTruthy();
   });
+
+  it('shows Preparing state when queued/generating and fallback on failure', async () => {
+    let calls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/shs/lessons/t-queued')) {
+        calls += 1;
+        return new Response(
+          JSON.stringify({
+            jobStatus: 'generating',
+            error: null,
+            topic: {
+              id: 't-queued',
+              title: 'Quadratic Equations',
+              strand: 'Algebra',
+              subStrand: null,
+              schoolYear: 'SHS 2',
+              subjectId: 'cat-math',
+              subjectName: 'Core Mathematics',
+              syllabusVersion: 'NaCCA-2024',
+            },
+            lesson: null,
+            progress: { status: 'not_started', positionPct: 0, timeSpentSeconds: 0 },
+            prevTopic: null,
+            nextTopic: null,
+          }),
+          { status: 202, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.includes('/shs/lessons/t-failed')) {
+        return new Response(
+          JSON.stringify({
+            jobStatus: 'failed',
+            error: 'AI service is busy right now. Please wait a moment and try again.',
+            topic: {
+              id: 't-failed',
+              title: 'Organic Chemistry',
+              strand: 'Chemistry of Carbon',
+              subStrand: null,
+              schoolYear: 'SHS 3',
+              subjectId: 'cat-chem',
+              subjectName: 'Chemistry',
+              syllabusVersion: 'NaCCA-2024',
+            },
+            lesson: null,
+            progress: { status: 'not_started', positionPct: 0, timeSpentSeconds: 0 },
+            prevTopic: null,
+            nextTopic: null,
+          }),
+          { status: 202, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 404 });
+    });
+
+    const qView = renderRoute('/subjects/subj-math/topics/t-queued');
+    await waitFor(() => {
+      expect(screen.getByText('Quadratic Equations')).toBeTruthy();
+    });
+    expect(screen.getByText(/Preparing your lesson/i)).toBeTruthy();
+    expect(calls).toBeGreaterThanOrEqual(1);
+    qView.unmount();
+
+    renderRoute('/subjects/subj-chem/topics/t-failed');
+    await waitFor(() => {
+      expect(screen.getByText('Could not prepare this lesson')).toBeTruthy();
+    });
+    expect(screen.getByText('Organic Chemistry')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Ask AWAL about this topic/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Report problem/i })).toBeTruthy();
+  });
 });

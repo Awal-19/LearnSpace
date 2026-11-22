@@ -118,6 +118,14 @@ enum LessonStatus {
   draft
   reviewed
   approved
+  needs_review
+}
+
+enum LessonJobStatus {
+  queued
+  generating
+  ready
+  failed
 }
 
 enum LessonProgressStatus {
@@ -2091,25 +2099,30 @@ model SubjectTopic {
 }
 
 model TopicLesson {
-  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  topicId       String       @unique @db.Uuid
-  contentJson   Json
-  status        LessonStatus @default(draft)
-  version       Int          @default(1)
-  languageLevel String       @default("shs") @db.VarChar(20)
-  reviewerId    String?      @db.Uuid
-  reviewedAt    DateTime?    @db.Timestamptz(3)
-  generatedAt   DateTime     @default(now()) @db.Timestamptz(3)
-  model         String       @db.VarChar(80)
-  promptVersion String       @default("v1") @db.VarChar(32)
-  opensCount    Int          @default(0)
-  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId               String          @unique @db.Uuid
+  contentJson           Json
+  status                LessonStatus    @default(draft)
+  jobStatus             LessonJobStatus @default(ready)
+  generationError       String?         @db.VarChar(500)
+  generationLockedUntil DateTime?       @db.Timestamptz(3)
+  generationStartedAt   DateTime?       @db.Timestamptz(3)
+  version               Int             @default(1)
+  languageLevel         String          @default("shs") @db.VarChar(20)
+  reviewerId            String?         @db.Uuid
+  reviewedAt            DateTime?       @db.Timestamptz(3)
+  generatedAt           DateTime        @default(now()) @db.Timestamptz(3)
+  model                 String          @db.VarChar(80)
+  promptVersion         String          @default("v1") @db.VarChar(32)
+  opensCount            Int             @default(0)
+  createdAt             DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime        @updatedAt @db.Timestamptz(3)
 
   topic    SubjectTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
   reviewer User?        @relation("TopicLessonReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
 
   @@index([status, updatedAt(sort: Desc)])
+  @@index([jobStatus, updatedAt(sort: Desc)])
   @@map("topic_lessons")
 }
 

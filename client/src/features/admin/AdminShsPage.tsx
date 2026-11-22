@@ -431,6 +431,49 @@ export function AdminShsPage() {
           ) : null}
         </div>
 
+        {lessonsQuery.data?.aiStatus || lessonsQuery.data?.counts ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {lessonsQuery.data?.aiStatus ? (
+              <Badge tone={lessonsQuery.data.aiStatus.configured ? 'success' : 'danger'}>
+                AI:{' '}
+                {lessonsQuery.data.aiStatus.configured
+                  ? `Ready (${lessonsQuery.data.aiStatus.model})`
+                  : 'Not configured'}
+              </Badge>
+            ) : null}
+            {lessonsQuery.data?.counts ? (
+              <>
+                <Badge tone="neutral">Ready: {lessonsQuery.data.counts.ready}</Badge>
+                <Badge tone="neutral">Needs Review: {lessonsQuery.data.counts.needsReview}</Badge>
+                <Badge tone="neutral">Generating: {lessonsQuery.data.counts.generating}</Badge>
+                <Badge tone={lessonsQuery.data.counts.failed > 0 ? 'danger' : 'neutral'}>
+                  Failed: {lessonsQuery.data.counts.failed}
+                </Badge>
+                <Badge tone="neutral">Missing: {lessonsQuery.data.counts.missing}</Badge>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {(lessonsQuery.data?.recentErrors ?? []).length > 0 ? (
+          <div className="space-y-1.5 rounded-xl border border-danger/30 bg-danger/5 p-3 text-xs">
+            <p className="font-semibold text-danger">
+              Recent Lesson Generation Errors ({lessonsQuery.data!.recentErrors!.length})
+            </p>
+            {lessonsQuery.data!.recentErrors!.map((errItem) => (
+              <div
+                key={errItem.topicId}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <span className="font-medium text-fg">
+                  {errItem.subjectName}: {errItem.topicTitle}
+                </span>
+                <span className="text-muted">{errItem.reason}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {(lessonsQuery.data?.reports ?? []).length > 0 ? (
           <div className="space-y-2 rounded-xl border border-amber-300/60 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
             <p className="text-xs font-semibold text-fg">
@@ -475,9 +518,17 @@ export function AdminShsPage() {
                   {t.subjectName}: {t.title}
                 </p>
                 <p className="text-muted">
-                  Status: {t.lesson ? t.lesson.status.toUpperCase() : 'MISSING'} · Opens:{' '}
-                  {t.lesson?.opensCount ?? 0} · Completed: {t.completedCount}
+                  Status:{' '}
+                  {t.lesson
+                    ? t.lesson.jobStatus && t.lesson.jobStatus !== 'ready'
+                      ? t.lesson.jobStatus.toUpperCase()
+                      : t.lesson.status.replace('_', ' ').toUpperCase()
+                    : 'MISSING'}{' '}
+                  · Opens: {t.lesson?.opensCount ?? 0} · Completed: {t.completedCount}
                 </p>
+                {t.lesson?.jobStatus === 'failed' && t.lesson.generationError ? (
+                  <p className="text-danger">{t.lesson.generationError}</p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {t.lesson && t.lesson.status !== 'approved' ? (

@@ -2785,11 +2785,14 @@ export function createAdminService(deps: AdminServiceDeps) {
               select: {
                 id: true,
                 status: true,
+                jobStatus: true,
+                generationError: true,
                 version: true,
                 model: true,
                 opensCount: true,
                 generatedAt: true,
                 reviewedAt: true,
+                updatedAt: true,
                 contentJson: true,
               },
             },
@@ -2809,34 +2812,73 @@ export function createAdminService(deps: AdminServiceDeps) {
         }),
       ]);
 
+      const mappedTopics = topics.map((t) => {
+        const completedCount = t.progresses.filter((p) => p.status === 'completed').length;
+        const totalTime = t.progresses.reduce((sum, p) => sum + p.timeSpentSeconds, 0);
+        return {
+          id: t.id,
+          title: t.title,
+          strand: t.strand,
+          subStrand: t.subStrand,
+          referenceNotes: t.referenceNotes,
+          schoolYear: t.schoolYear,
+          subjectId: t.subject.id,
+          subjectName: t.subject.name,
+          lesson: t.lesson
+            ? {
+                id: t.lesson.id,
+                status: t.lesson.status,
+                jobStatus: t.lesson.jobStatus,
+                generationError: t.lesson.generationError,
+                version: t.lesson.version,
+                opensCount: t.lesson.opensCount,
+                generatedAt: t.lesson.generatedAt,
+                updatedAt: t.lesson.updatedAt,
+                contentJson: t.lesson.contentJson,
+              }
+            : null,
+          completedCount,
+          avgTimeSeconds: t.progresses.length > 0 ? Math.round(totalTime / t.progresses.length) : 0,
+        };
+      });
+
+      const counts = {
+        total: mappedTopics.length,
+        missing: mappedTopics.filter((t) => !t.lesson).length,
+        generating: mappedTopics.filter(
+          (t) =>
+            t.lesson && (t.lesson.jobStatus === 'queued' || t.lesson.jobStatus === 'generating'),
+        ).length,
+        failed: mappedTopics.filter((t) => t.lesson?.jobStatus === 'failed').length,
+        needsReview: mappedTopics.filter(
+          (t) => t.lesson?.jobStatus === 'ready' && t.lesson.status === 'needs_review',
+        ).length,
+        ready: mappedTopics.filter((t) => t.lesson?.jobStatus === 'ready').length,
+      };
+
+      const recentErrors = mappedTopics
+        .filter((t) => t.lesson?.jobStatus === 'failed' && t.lesson.generationError)
+        .sort(
+          (a, b) =>
+            new Date(b.lesson!.updatedAt).getTime() - new Date(a.lesson!.updatedAt).getTime(),
+        )
+        .slice(0, 10)
+        .map((t) => ({
+          topicId: t.id,
+          topicTitle: t.title,
+          subjectName: t.subjectName,
+          reason: t.lesson!.generationError!,
+          updatedAt: t.lesson!.updatedAt,
+        }));
+
       return {
-        topics: topics.map((t) => {
-          const completedCount = t.progresses.filter((p) => p.status === 'completed').length;
-          const totalTime = t.progresses.reduce((sum, p) => sum + p.timeSpentSeconds, 0);
-          return {
-            id: t.id,
-            title: t.title,
-            strand: t.strand,
-            subStrand: t.subStrand,
-            referenceNotes: t.referenceNotes,
-            schoolYear: t.schoolYear,
-            subjectId: t.subject.id,
-            subjectName: t.subject.name,
-            lesson: t.lesson
-              ? {
-                  id: t.lesson.id,
-                  status: t.lesson.status,
-                  version: t.lesson.version,
-                  opensCount: t.lesson.opensCount,
-                  generatedAt: t.lesson.generatedAt,
-                  contentJson: t.lesson.contentJson,
-                }
-              : null,
-            completedCount,
-            avgTimeSeconds:
-              t.progresses.length > 0 ? Math.round(totalTime / t.progresses.length) : 0,
-          };
-        }),
+        aiStatus: {
+          configured: Boolean(llm && llm.isConfigured()),
+          model: llm?.modelName ?? 'unconfigured',
+        },
+        counts,
+        recentErrors,
+        topics: mappedTopics,
         reports,
       };
     },

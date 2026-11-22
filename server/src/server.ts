@@ -105,6 +105,36 @@ async function runStartupMigrations(databaseUrl: string, logger: Logger): Promis
   return false;
 }
 
+async function verifyShsLessonReadiness(
+  prisma: ReturnType<typeof createPrismaClient>,
+  llm: { isConfigured(): boolean; modelName: string },
+  logger: Logger,
+): Promise<void> {
+  if (!llm.isConfigured()) {
+    logger.warn('LLM provider is not configured; SHS lesson generation will return AI_UNAVAILABLE');
+  }
+  try {
+    const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('topic_lessons', 'lesson_progress', 'lesson_reports')
+    `;
+    const found = new Set(rows.map((r) => r.table_name));
+    const missing = ['topic_lessons', 'lesson_progress', 'lesson_reports'].filter(
+      (name) => !found.has(name),
+    );
+    if (missing.length > 0) {
+      logger.error(
+        { missingTables: missing },
+        'SHS lesson tables missing from database; run prisma migrate deploy',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Could not verify SHS lesson tables on startup');
+  }
+}
+
 async function ensureBootstrapAdmin(
   prisma: ReturnType<typeof createPrismaClient>,
   adminEmailRaw: string | undefined,
@@ -357,6 +387,7 @@ function main(): void {
     reminderTimer.unref();
     documentJobs.startWorker(2_000);
     recommendationQueue.startWorker(2_000);
+    void verifyShsLessonReadiness(prisma, llm, logger);
   };
 
   // Bind 0.0.0.0:$PORT immediately so /api/health passes Railway probes without waiting on migrations.

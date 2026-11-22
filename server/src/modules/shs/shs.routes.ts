@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { Env } from '../../config/env';
 import { requireAuth, requireVerifiedEmail } from '../../middleware/auth';
+import { createRateLimiter } from '../../middleware/rateLimit';
 import { asyncHandler, validateBody } from '../../middleware/validate';
 import type { createShsService } from './shs.service';
 
@@ -196,12 +197,32 @@ export function shsRouter(deps: {
     }),
   );
 
+  const lessonRetryLimiter = createRateLimiter({
+    prefix: 'shs-lesson-retry',
+    windowMs: 60_000,
+    limit: 6,
+  });
+
   router.get(
     '/shs/lessons/:topicId',
     auth,
     verified,
     asyncHandler(async (req, res) => {
-      res.json(await shs.getOrCreateTopicLesson(req.user!.id, req.params.topicId ?? ''));
+      const result = await shs.getOrCreateTopicLesson(req.user!.id, req.params.topicId ?? '');
+      res.status(result.jobStatus === 'ready' ? 200 : 202).json(result);
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/retry',
+    auth,
+    verified,
+    lessonRetryLimiter,
+    asyncHandler(async (req, res) => {
+      const result = await shs.getOrCreateTopicLesson(req.user!.id, req.params.topicId ?? '', {
+        retryFailed: true,
+      });
+      res.status(result.jobStatus === 'ready' ? 200 : 202).json(result);
     }),
   );
 

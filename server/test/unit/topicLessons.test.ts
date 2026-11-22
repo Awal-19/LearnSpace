@@ -2,7 +2,10 @@ import type { PrismaClient } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import type { LLMProvider } from '../../src/lib/llm/provider';
 import {
+  enqueueTopicLessonJob,
+  extractJsonObject,
   generateTopicLessonContent,
+  getInflightLessonJob,
   verifyLessonMathExamples,
   type TopicLessonContent,
 } from '../../src/modules/shs/shs.lessons';
@@ -100,7 +103,54 @@ const topicFixture = {
   subject: { name: 'English Language', syllabusVersion: 'NaCCA-2024' },
 };
 
+function createMockPrisma(initialRow: Record<string, unknown> | null = null) {
+  let row = initialRow;
+  return {
+    getRow: () => row,
+    prisma: {
+      topicLesson: {
+        findUnique: vi.fn().mockImplementation(async () => row),
+        create: vi.fn().mockImplementation(async ({ data }) => {
+          row = {
+            id: 'lesson-1',
+            version: 1,
+            opensCount: 0,
+            generatedAt: new Date(),
+            reviewedAt: null,
+            updatedAt: new Date(),
+            ...data,
+          };
+          return row;
+        }),
+        update: vi.fn().mockImplementation(async ({ data }) => {
+          row = {
+            ...(row ?? { id: 'lesson-1' }),
+            ...data,
+            version:
+              typeof data.version === 'object' && data.version?.increment
+                ? Number((row as { version?: number })?.version ?? 1) + 1
+                : (data.version ?? (row as { version?: number })?.version ?? 1),
+          };
+          return row;
+        }),
+        updateMany: vi.fn().mockImplementation(async ({ data }) => {
+          if (!row) return { count: 0 };
+          row = { ...row, ...data };
+          return { count: 1 };
+        }),
+      },
+      usageEvent: { create: vi.fn().mockResolvedValue({}) },
+    } as unknown as PrismaClient,
+  };
+}
+
 describe('SHS Topic Lessons', () => {
+  it('extracts JSON from fenced/prose output and rejects truncated JSON', () => {
+    const fenced = 'Here is the lesson:\n```json\n{"title":"Algebra","ok":true,}\n```\nEnjoy!';
+    expect(extractJsonObject(fenced)).toEqual({ title: 'Algebra', ok: true });
+    expect(() => extractJsonObject('{"title":"Algebra",')).toThrow();
+  });
+
   it('verifies worked math examples with mathjs and rejects mismatches', async () => {
     expect(await verifyLessonMathExamples(SAMPLE_LESSON)).toBeNull();
 
@@ -122,19 +172,8 @@ describe('SHS Topic Lessons', () => {
     expect(err).toMatch(/failed math verification/i);
   });
 
-  it('generates once, deduplicates simultaneous first-opens, and serves from DB afterward', async () => {
-    let storedLesson: Record<string, unknown> | null = null;
-    const prisma = {
-      topicLesson: {
-        findUnique: vi.fn().mockImplementation(async () => storedLesson),
-        upsert: vi.fn().mockImplementation(async ({ create }) => {
-          storedLesson = { id: 'lesson-1', ...create };
-          return storedLesson;
-        }),
-      },
-      usageEvent: { create: vi.fn().mockResolvedValue({}) },
-    } as unknown as PrismaClient;
-
+  it('passes responseMimeType application/json, deduplicates concurrent opens, and serves from DB afterward', async () => {
+    const mock = createMockPrisma();
     const generateText = vi.fn().mockImplementation(async () => {
       await new Promise((r) => setTimeout(r, 20));
       return {
@@ -149,17 +188,34 @@ describe('SHS Topic Lessons', () => {
     } as unknown as LLMProvider;
 
     const [first, second] = await Promise.all([
-      generateTopicLessonContent({ prisma, llm, logger, userId: 'u1', topic: topicFixture }),
-      generateTopicLessonContent({ prisma, llm, logger, userId: 'u2', topic: topicFixture }),
+      generateTopicLessonContent({
+        prisma: mock.prisma,
+        llm,
+        logger,
+        userId: 'u1',
+        topic: topicFixture,
+        retryBaseDelayMs: 5,
+      }),
+      generateTopicLessonContent({
+        prisma: mock.prisma,
+        llm,
+        logger,
+        userId: 'u2',
+        topic: topicFixture,
+        retryBaseDelayMs: 5,
+      }),
     ]);
 
     expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[1]).toMatchObject({
+      responseMimeType: 'application/json',
+      maxOutputTokens: 8192,
+    });
     expect(first.id).toBe('lesson-1');
     expect(second.id).toBe('lesson-1');
 
-    // Subsequent call serves from DB without calling AI
     const third = await generateTopicLessonContent({
-      prisma,
+      prisma: mock.prisma,
       llm,
       logger,
       userId: 'u3',
@@ -169,19 +225,14 @@ describe('SHS Topic Lessons', () => {
     expect(third.id).toBe('lesson-1');
   });
 
-  it('retries invalid AI JSON output and succeeds on valid second attempt', async () => {
-    const prisma = {
-      topicLesson: {
-        findUnique: vi.fn().mockResolvedValue(null),
-        upsert: vi.fn().mockImplementation(async ({ create }) => ({ id: 'lesson-2', ...create })),
-      },
-      usageEvent: { create: vi.fn().mockResolvedValue({}) },
-    } as unknown as PrismaClient;
-
+  it('retries invalid/truncated JSON and transient 429 provider errors with backoff', async () => {
+    const mock = createMockPrisma();
+    const rateLimitErr = Object.assign(new Error('429 Too Many Requests'), { status: 429 });
     const generateText = vi
       .fn()
+      .mockRejectedValueOnce(rateLimitErr)
       .mockResolvedValueOnce({
-        text: 'NOT VALID JSON',
+        text: '{"title":"Truncated"',
         usage: { inputTokens: 10, outputTokens: 5 },
       })
       .mockResolvedValueOnce({
@@ -196,14 +247,111 @@ describe('SHS Topic Lessons', () => {
     } as unknown as LLMProvider;
 
     const res = await generateTopicLessonContent({
-      prisma,
+      prisma: mock.prisma,
       llm,
       logger,
       userId: 'u1',
       topic: topicFixture,
+      retryBaseDelayMs: 5,
+    });
+    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(res.jobStatus).toBe('ready');
+  });
+
+  it('saves lesson as needs_review when mathjs verification still mismatches after retry', async () => {
+    const mock = createMockPrisma();
+    const mathBadLesson: TopicLessonContent = {
+      ...SAMPLE_LESSON,
+      workedExamples: [
+        {
+          id: 'bad-1',
+          title: 'Wrong Arithmetic',
+          problem: '2 + 2',
+          steps: ['Add 2 and 2'],
+          finalAnswer: '5',
+          verificationExpr: '2 + 2',
+          expectedNumeric: 5,
+        },
+      ],
+    };
+
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify(mathBadLesson),
+      usage: { inputTokens: 40, outputTokens: 100 },
+    });
+    const llm = {
+      isConfigured: () => true,
+      modelName: 'gemini-test',
+      generateText,
+    } as unknown as LLMProvider;
+
+    const res = await generateTopicLessonContent({
+      prisma: mock.prisma,
+      llm,
+      logger,
+      userId: 'u1',
+      topic: topicFixture,
+      retryBaseDelayMs: 5,
     });
     expect(generateText).toHaveBeenCalledTimes(2);
-    expect(res.id).toBe('lesson-2');
+    expect(res.status).toBe('needs_review');
+    expect(res.jobStatus).toBe('ready');
+  });
+
+  it('reclaims expired stuck locks and skips active locks', async () => {
+    const expiredMock = createMockPrisma({
+      id: 'lesson-stuck',
+      topicId: 'topic-1',
+      contentJson: {},
+      status: 'draft',
+      jobStatus: 'generating',
+      generationLockedUntil: new Date(Date.now() - 60_000),
+      generationError: null,
+    });
+
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify(SAMPLE_LESSON),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    const llm = {
+      isConfigured: () => true,
+      modelName: 'gemini-test',
+      generateText,
+    } as unknown as LLMProvider;
+
+    await enqueueTopicLessonJob({
+      prisma: expiredMock.prisma,
+      llm,
+      logger,
+      userId: 'u1',
+      topic: topicFixture,
+      retryBaseDelayMs: 5,
+    });
+    const pending = getInflightLessonJob(topicFixture.id);
+    if (pending) await pending;
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect((expiredMock.getRow() as { jobStatus?: string })?.jobStatus).toBe('ready');
+
+    // Active lock should NOT start another job
+    const activeMock = createMockPrisma({
+      id: 'lesson-active',
+      topicId: 'topic-active',
+      contentJson: {},
+      status: 'draft',
+      jobStatus: 'generating',
+      generationLockedUntil: new Date(Date.now() + 60_000),
+      generationError: null,
+    });
+    await enqueueTopicLessonJob({
+      prisma: activeMock.prisma,
+      llm,
+      logger,
+      userId: 'u1',
+      topic: { ...topicFixture, id: 'topic-active' },
+      retryBaseDelayMs: 5,
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
   });
 
   it('saves progress and reports lesson mistakes', async () => {

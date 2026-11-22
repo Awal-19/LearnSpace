@@ -31,6 +31,8 @@ interface LessonSection {
 }
 
 interface TopicLessonResponse {
+  jobStatus?: 'queued' | 'generating' | 'ready' | 'failed';
+  error?: string | null;
   topic: {
     id: string;
     title: string;
@@ -43,7 +45,7 @@ interface TopicLessonResponse {
   };
   lesson: {
     id: string;
-    status: 'draft' | 'reviewed' | 'approved';
+    status: 'draft' | 'reviewed' | 'approved' | 'needs_review';
     version: number;
     model: string;
     promptVersion: string;
@@ -78,7 +80,7 @@ interface TopicLessonResponse {
       outsideSyllabus?: boolean;
       disclaimer?: string;
     };
-  };
+  } | null;
   progress: {
     status: 'not_started' | 'in_progress' | 'completed';
     positionPct: number;
@@ -128,19 +130,35 @@ export function TopicLessonPage() {
   const [speaking, setSpeaking] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1);
   const startTimeRef = useRef<number>(Date.now());
+  const pollCountRef = useRef<number>(0);
+  const [retrying, setRetrying] = useState(false);
 
   const cached = useMemo(() => (topicId ? getCachedLesson(topicId) : null), [topicId]);
+
+  useEffect(() => {
+    pollCountRef.current = 0;
+  }, [topicId]);
 
   const query = useQuery({
     queryKey: ['shs', 'lesson', topicId],
     queryFn: async () => {
       const data = await request<TopicLessonResponse>(`/shs/lessons/${topicId}`);
-      if (topicId) setCachedLesson(topicId, data);
+      if (topicId && data.lesson && (data.jobStatus === 'ready' || !data.jobStatus)) {
+        setCachedLesson(topicId, data);
+      }
       return data;
     },
     enabled: Boolean(topicId),
     initialData: cached ?? undefined,
     staleTime: 5 * 60_000,
+    refetchInterval: (q) => {
+      const status = q.state.data?.jobStatus;
+      if ((status === 'queued' || status === 'generating') && pollCountRef.current < 25) {
+        pollCountRef.current += 1;
+        return pollCountRef.current <= 3 ? 1500 : pollCountRef.current <= 8 ? 3000 : 5000;
+      }
+      return false;
+    },
   });
 
   useEffect(() => {
@@ -189,6 +207,43 @@ export function TopicLessonPage() {
     window.speechSynthesis.speak(utter);
   };
 
+  const handleRetryLesson = async () => {
+    if (!topicId) return;
+    setRetrying(true);
+    pollCountRef.current = 0;
+    try {
+      const data = await request<TopicLessonResponse>(`/shs/lessons/${topicId}/retry`, {
+        method: 'POST',
+      });
+      qc.setQueryData(['shs', 'lesson', topicId], data);
+      if (data.lesson && data.jobStatus === 'ready') {
+        setCachedLesson(topicId, data);
+      }
+    } catch {
+      await query.refetch();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleSubmitReport = async () => {
+    if (reportReason.trim().length < 4) return;
+    setSubmittingReport(true);
+    try {
+      await request(`/shs/lessons/${topicId}/report`, {
+        method: 'POST',
+        body: { reason: reportReason.trim() },
+      });
+      setReportOpen(false);
+      setReportReason('');
+      toast.show({ kind: 'success', title: 'Thank you! Report sent to teachers/admins.' });
+    } catch {
+      toast.show({ kind: 'error', title: 'Could not submit report' });
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
+
   if (query.isLoading && !query.data) {
     return (
       <div className="mx-auto max-w-3xl space-y-5 px-1">
@@ -206,7 +261,54 @@ export function TopicLessonPage() {
     );
   }
 
-  if (query.isError || !query.data) {
+  if (query.data && (query.data.jobStatus === 'queued' || query.data.jobStatus === 'generating')) {
+    const t = query.data.topic;
+    return (
+      <div className="mx-auto max-w-3xl space-y-5 px-1">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back
+        </Button>
+        <Card className="space-y-4 p-6">
+          <div className="flex items-center gap-2 text-sm font-medium text-primary-600 dark:text-primary-400">
+            <Sparkles className="h-4 w-4 animate-pulse" aria-hidden="true" />
+            Preparing your lesson...
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted">{t.subjectName}</p>
+            <h1 className="font-display text-xl font-bold text-fg">{t.title}</h1>
+            <p className="mt-1 text-xs text-muted">
+              {t.strand ?? 'Core Syllabus'}
+              {t.subStrand ? ` · ${t.subStrand}` : ''} · Usually takes 10–20 seconds
+            </p>
+          </div>
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => navigate(path(`/assistant?topic=${encodeURIComponent(t.title)}`))}
+            >
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              Ask AWAL about this topic
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (query.isError || !query.data || query.data.jobStatus === 'failed' || !query.data.lesson) {
+    const fallbackTopic = query.data?.topic;
+    const reqId = query.error instanceof ApiError ? query.error.requestId : undefined;
+    const friendlyMessage =
+      query.data?.error ||
+      (query.error instanceof ApiError
+        ? query.error.message
+        : 'Please check your connection and try again.');
+
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
@@ -215,13 +317,87 @@ export function TopicLessonPage() {
         </Button>
         <ErrorState
           title="Could not prepare this lesson"
-          message={
-            query.error instanceof ApiError
-              ? query.error.message
-              : 'Please check your connection and try again.'
-          }
-          onRetry={() => void query.refetch()}
+          message={reqId ? `${friendlyMessage} (Ref: ${reqId})` : friendlyMessage}
+          onRetry={() => void handleRetryLesson()}
         />
+        <Card className="space-y-3 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium text-muted">
+                {fallbackTopic ? fallbackTopic.subjectName : 'SHS Topic'}
+              </p>
+              <h2 className="font-display text-lg font-semibold text-fg">
+                {fallbackTopic ? fallbackTopic.title : 'Study with AWAL instead'}
+              </h2>
+              {fallbackTopic?.strand ? (
+                <p className="text-xs text-muted">
+                  Syllabus: {fallbackTopic.strand}
+                  {fallbackTopic.subStrand ? ` · ${fallbackTopic.subStrand}` : ''}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() =>
+                  navigate(
+                    path(
+                      `/assistant?topic=${encodeURIComponent(fallbackTopic?.title ?? 'this topic')}`,
+                    ),
+                  )
+                }
+              >
+                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                Ask AWAL about this topic
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={retrying}
+                onClick={() => void handleRetryLesson()}
+              >
+                Try again
+              </Button>
+              {topicId ? (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setReportOpen(true)}>
+                  <Flag className="h-4 w-4" aria-hidden="true" />
+                  Report problem
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+        <Modal open={reportOpen} onClose={() => setReportOpen(false)} title="Report lesson problem">
+          <div className="space-y-3">
+            <p className="text-xs text-muted">
+              Tell us what went wrong so we can fix this topic lesson.
+            </p>
+            <Textarea
+              label="What went wrong?"
+              rows={3}
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder="Describe the issue..."
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setReportOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                loading={submittingReport}
+                disabled={reportReason.trim().length < 4}
+                onClick={() => void handleSubmitReport()}
+              >
+                Submit report
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }
@@ -287,24 +463,6 @@ export function TopicLessonPage() {
       navigate(path(`/study?quizId=${res.quizId}`));
     } catch {
       toast.show({ kind: 'error', title: 'Could not create quiz' });
-    }
-  };
-
-  const handleSubmitReport = async () => {
-    if (reportReason.trim().length < 4) return;
-    setSubmittingReport(true);
-    try {
-      await request(`/shs/lessons/${topic.id}/report`, {
-        method: 'POST',
-        body: { reason: reportReason.trim() },
-      });
-      setReportOpen(false);
-      setReportReason('');
-      toast.show({ kind: 'success', title: 'Thank you! Report sent to teachers/admins.' });
-    } catch {
-      toast.show({ kind: 'error', title: 'Could not submit report' });
-    } finally {
-      setSubmittingReport(false);
     }
   };
 
@@ -378,6 +536,13 @@ export function TopicLessonPage() {
             <Badge tone="success">Approved</Badge>
           ) : lesson.status === 'reviewed' ? (
             <Badge tone="primary">Reviewed</Badge>
+          ) : lesson.status === 'needs_review' ? (
+            <Badge
+              tone="neutral"
+              className="bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+            >
+              AI-prepared notes, not yet reviewed
+            </Badge>
           ) : (
             <Badge tone="neutral">Draft</Badge>
           )}

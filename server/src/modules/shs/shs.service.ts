@@ -6,7 +6,7 @@ import type { LLMProvider } from '../../lib/llm/provider';
 import { generateOpaqueToken, hashToken } from '../../lib/tokens';
 import { recordUsageEvent } from '../admin/admin.logging';
 import { ensureShsCatalogueSeeded, SHS_SYLLABUS_SOURCE } from './shs.catalogue';
-import { generateTopicLessonContent, type TopicLessonContent } from './shs.lessons';
+import { enqueueTopicLessonJob, type TopicLessonContent } from './shs.lessons';
 
 export interface WassceObjectiveQuestion {
   id: string;
@@ -980,7 +980,11 @@ export function createShsService(deps: {
       };
     },
 
-    async getOrCreateTopicLesson(userId: string, topicId: string) {
+    async getOrCreateTopicLesson(
+      userId: string,
+      topicId: string,
+      opts?: { retryFailed?: boolean },
+    ) {
       if (!llm) throw new AppError('AI_UNAVAILABLE', 'Lesson service unavailable.');
       const topic = await prisma.subjectTopic.findUnique({
         where: { id: topicId },
@@ -990,53 +994,80 @@ export function createShsService(deps: {
       });
       if (!topic) throw new AppError('NOT_FOUND', 'Topic not found');
 
-      const lesson = await generateTopicLessonContent({
+      const lesson = await enqueueTopicLessonJob({
         prisma,
         llm,
         logger,
         userId,
         topic,
+        retryFailed: opts?.retryFailed,
       });
 
-      await Promise.all([
+      const topicSummary = {
+        id: topic.id,
+        title: topic.title,
+        strand: topic.strand,
+        subStrand: topic.subStrand,
+        schoolYear: topic.schoolYear,
+        subjectId: topic.subject.id,
+        subjectName: topic.subject.name,
+        syllabusVersion: topic.subject.syllabusVersion,
+      };
+
+      const [siblingTopics, existingProgress] = await Promise.all([
+        prisma.subjectTopic.findMany({
+          where: { subjectId: topic.subjectId, active: true },
+          orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+          select: { id: true, title: true },
+        }),
+        prisma.lessonProgress.findUnique({
+          where: { userId_topicId: { userId, topicId: topic.id } },
+        }),
+      ]);
+
+      const idx = siblingTopics.findIndex((s) => s.id === topic.id);
+      const prevTopic = idx > 0 ? siblingTopics[idx - 1]! : null;
+      const nextTopic = idx >= 0 && idx < siblingTopics.length - 1 ? siblingTopics[idx + 1]! : null;
+
+      if (lesson.jobStatus !== 'ready') {
+        return {
+          jobStatus: lesson.jobStatus,
+          error: lesson.generationError ?? null,
+          topic: topicSummary,
+          lesson: null,
+          progress: existingProgress ?? {
+            status: 'not_started' as const,
+            positionPct: 0,
+            timeSpentSeconds: 0,
+            completedAt: null,
+          },
+          prevTopic,
+          nextTopic,
+        };
+      }
+
+      const [, progress] = await Promise.all([
         prisma.topicLesson
           .update({
             where: { id: lesson.id },
             data: { opensCount: { increment: 1 } },
           })
           .catch(() => undefined),
-        prisma.lessonProgress
-          .upsert({
-            where: { userId_topicId: { userId, topicId: topic.id } },
-            create: { userId, topicId: topic.id, status: 'in_progress', positionPct: 0 },
-            update: {},
-          })
-          .catch(() => undefined),
+        existingProgress
+          ? Promise.resolve(existingProgress)
+          : prisma.lessonProgress
+              .upsert({
+                where: { userId_topicId: { userId, topicId: topic.id } },
+                create: { userId, topicId: topic.id, status: 'in_progress', positionPct: 0 },
+                update: {},
+              })
+              .catch(() => null),
       ]);
 
-      const [progress, siblingTopics] = await Promise.all([
-        prisma.lessonProgress.findUnique({
-          where: { userId_topicId: { userId, topicId: topic.id } },
-        }),
-        prisma.subjectTopic.findMany({
-          where: { subjectId: topic.subjectId, active: true },
-          orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
-          select: { id: true, title: true },
-        }),
-      ]);
-
-      const idx = siblingTopics.findIndex((s) => s.id === topic.id);
       return {
-        topic: {
-          id: topic.id,
-          title: topic.title,
-          strand: topic.strand,
-          subStrand: topic.subStrand,
-          schoolYear: topic.schoolYear,
-          subjectId: topic.subject.id,
-          subjectName: topic.subject.name,
-          syllabusVersion: topic.subject.syllabusVersion,
-        },
+        jobStatus: 'ready' as const,
+        error: null,
+        topic: topicSummary,
         lesson: {
           id: lesson.id,
           status: lesson.status,
@@ -1053,8 +1084,8 @@ export function createShsService(deps: {
           timeSpentSeconds: 0,
           completedAt: null,
         },
-        prevTopic: idx > 0 ? siblingTopics[idx - 1]! : null,
-        nextTopic: idx >= 0 && idx < siblingTopics.length - 1 ? siblingTopics[idx + 1]! : null,
+        prevTopic,
+        nextTopic,
       };
     },
 
@@ -1125,7 +1156,8 @@ export function createShsService(deps: {
         }),
         prisma.topicLesson.findUnique({ where: { topicId } }),
       ]);
-      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      if (!topic || !lesson || lesson.jobStatus !== 'ready')
+        throw new AppError('NOT_FOUND', 'Lesson not found');
       const c = lesson.contentJson as unknown as TopicLessonContent;
 
       const body = input.excerpt?.trim()
@@ -1160,7 +1192,8 @@ export function createShsService(deps: {
         prisma.subjectTopic.findUnique({ where: { id: topicId } }),
         prisma.topicLesson.findUnique({ where: { topicId } }),
       ]);
-      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      if (!topic || !lesson || lesson.jobStatus !== 'ready')
+        throw new AppError('NOT_FOUND', 'Lesson not found');
       const c = lesson.contentJson as unknown as TopicLessonContent;
 
       const cardsData: Array<{ front: string; back: string; topic: string; position: number }> = [];
@@ -1213,7 +1246,8 @@ export function createShsService(deps: {
         prisma.subjectTopic.findUnique({ where: { id: topicId } }),
         prisma.topicLesson.findUnique({ where: { topicId } }),
       ]);
-      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      if (!topic || !lesson || lesson.jobStatus !== 'ready')
+        throw new AppError('NOT_FOUND', 'Lesson not found');
       const c = lesson.contentJson as unknown as TopicLessonContent;
 
       const questions = (c.checkYourself ?? []).map((q, i) => ({

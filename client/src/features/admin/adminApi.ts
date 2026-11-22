@@ -979,6 +979,25 @@ export function addAdminShsTopic(
 }
 
 export interface AdminShsLessonsResponse {
+  aiStatus?: {
+    configured: boolean;
+    model: string;
+  };
+  counts?: {
+    total: number;
+    missing: number;
+    generating: number;
+    failed: number;
+    needsReview: number;
+    ready: number;
+  };
+  recentErrors?: Array<{
+    topicId: string;
+    topicTitle: string;
+    subjectName: string;
+    reason: string;
+    updatedAt: string;
+  }>;
   topics: Array<{
     id: string;
     title: string;
@@ -990,7 +1009,9 @@ export interface AdminShsLessonsResponse {
     subjectName: string;
     lesson: {
       id: string;
-      status: 'draft' | 'reviewed' | 'approved';
+      status: 'draft' | 'reviewed' | 'approved' | 'needs_review';
+      jobStatus?: 'queued' | 'generating' | 'ready' | 'failed';
+      generationError?: string | null;
       version: number;
       opensCount: number;
       generatedAt: string;
