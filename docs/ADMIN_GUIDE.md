@@ -85,3 +85,7 @@ This guide explains how to access and use each page of the LearnSpace Admin Cons
 
 - **User Filters:** Filter users in **Admin -> Users** by `learnerType` (`University` vs `SHS (Ghana)`) and `consentStatus`.
 - **SHS & Safety Dashboard (`/admin/shs`):** View SHS vs University counts, guardian consent status counts (`pending`, `given`, `withdrawn`), toggle `featureShsSignups` and `featureShsCommunity` independently of university users, manage SHS banned words and the official syllabus source citation, review priority `ShsModerationFlag` items, and add/retire `SubjectCatalogue` subjects and `SubjectTopic` items (all audit-logged).
+
+## Topic Lessons & Review Workflow (Admin)
+
+- **Lessons Panel (`/admin/shs`):** View every syllabus topic's lesson status (`MISSING`, `DRAFT`, `REVIEWED`, `APPROVED`), opens count, and completions; approve lessons, regenerate individual lessons, bulk-generate missing lessons per subject, and resolve student mistake reports.

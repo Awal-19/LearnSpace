@@ -1275,6 +1275,57 @@ export function adminRouter({ admin, prisma, env }: AdminRouterDeps): Router {
     }),
   );
 
+  router.get(
+    '/shs/lessons',
+    asyncHandler(async (req, res) => {
+      const subjectId = typeof req.query.subjectId === 'string' ? req.query.subjectId : undefined;
+      res.json(await admin.getShsLessonsOverview(subjectId));
+    }),
+  );
+
+  router.patch(
+    '/shs/lessons/:topicId',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.topicId);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Topic not found');
+      res.json(await admin.updateAdminTopicLesson(req.user!.id, id.data, req.body ?? {}, req.ip));
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/regenerate',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.topicId);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Topic not found');
+      res.json(await admin.regenerateAdminTopicLesson(req.user!.id, id.data, req.ip));
+    }),
+  );
+
+  router.post(
+    '/shs/subjects/:id/lessons/bulk-generate',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Subject not found');
+      res.json(await admin.bulkGenerateSubjectLessons(req.user!.id, id.data, req.ip));
+    }),
+  );
+
+  router.patch(
+    '/shs/lesson-reports/:id',
+    asyncHandler(async (req, res) => {
+      const id = uuidParamSchema.safeParse(req.params.id);
+      if (!id.success) throw new AppError('NOT_FOUND', 'Report not found');
+      res.json(
+        await admin.resolveAdminLessonReport(
+          req.user!.id,
+          id.data,
+          req.body ?? { status: 'dismissed' },
+          req.ip,
+        ),
+      );
+    }),
+  );
+
   return router;
 }
 

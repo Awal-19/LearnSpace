@@ -412,17 +412,34 @@ export function WasscePrepPanel({ courses }: { courses: CourseSummary[] }) {
             <div className="rounded-xl border border-amber-300/60 bg-amber-50/50 p-4 dark:border-amber-500/25 dark:bg-amber-500/10 space-y-2">
               <p className="text-xs font-semibold text-fg">Topics to revise:</p>
               <div className="flex flex-wrap gap-2">
-                {graded.weakTopics.map((topic) => (
-                  <Button
-                    key={topic}
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleReviseTopic(activeMock.courseName, topic)}
-                  >
-                    Revise {topic}
-                  </Button>
-                ))}
+                {graded.weakTopics.map((topic) => {
+                  const matchedTopic = availableTopics.find(
+                    (t) => t.title.toLowerCase() === topic.toLowerCase(),
+                  );
+                  return (
+                    <div key={topic} className="flex flex-wrap items-center gap-1.5">
+                      {matchedTopic ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() =>
+                            navigate(path(`/subjects/${courseId}/topics/${matchedTopic.id}`))
+                          }
+                        >
+                          Read the lesson on {topic}
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleReviseTopic(activeMock.courseName, topic)}
+                      >
+                        Revise {topic}
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

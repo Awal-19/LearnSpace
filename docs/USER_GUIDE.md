@@ -105,3 +105,8 @@ LearnSpace is a calm, all-in-one academic workspace for university students.
 
 - **SHS Navigation:** Home, Subjects, Assistant (`AWAL` in SHS mode with `Test me`), Notes, Handouts, Exam Prep (WASSCE), Planner, Focus, Study, SHS Spaces, and More. University-only GPA/CGPA and credit-hour tools are hidden.
 - **SHS Home Widgets:** Includes your WASSCE countdown ring, My Subjects tiles with syllabus progress, Today's Study Plan with quick add, Daily Challenge streak, Weak Topics with **Revise this**, and milestone badges.
+
+## Reading Topic Lessons (SHS)
+
+- Open any SHS subject and **tap a topic** to read the full structured lesson (objectives, explanations, key terms, Ghanaian examples, worked examples, common mistakes, and 5-question Check Yourself).
+- Use **A-/A+** to adjust text size, **Read aloud** (with play/pause/speed), **Save to my notes**, **Make flashcards from this lesson**, **Take a quiz on this topic**, or **Report a mistake**.

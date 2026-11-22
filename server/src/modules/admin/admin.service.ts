@@ -32,6 +32,7 @@ import {
 } from '../users/userCleanup';
 import { getAppSettings, invalidateAppSettingsCache, recordAuditLog } from './admin.logging';
 import { ensureShsCatalogueSeeded } from '../shs/shs.catalogue';
+import { generateTopicLessonContent } from '../shs/shs.lessons';
 import type {
   acceptAdminInviteSchema,
   bulkUsersSchema,
@@ -2770,6 +2771,204 @@ export function createAdminService(deps: AdminServiceDeps) {
         ip,
       });
       return topic;
+    },
+
+    async getShsLessonsOverview(subjectId?: string) {
+      await ensureShsCatalogueSeeded(prisma).catch(() => undefined);
+      const [topics, reports] = await Promise.all([
+        prisma.subjectTopic.findMany({
+          where: { active: true, ...(subjectId ? { subjectId } : {}) },
+          orderBy: [{ subject: { name: 'asc' } }, { sortOrder: 'asc' }],
+          include: {
+            subject: { select: { id: true, name: true, syllabusVersion: true } },
+            lesson: {
+              select: {
+                id: true,
+                status: true,
+                version: true,
+                model: true,
+                opensCount: true,
+                generatedAt: true,
+                reviewedAt: true,
+                contentJson: true,
+              },
+            },
+            progresses: {
+              select: { status: true, timeSpentSeconds: true },
+            },
+          },
+        }),
+        prisma.lessonReport.findMany({
+          where: { status: 'open' },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            user: { select: { id: true, name: true } },
+            topic: { select: { id: true, title: true } },
+          },
+        }),
+      ]);
+
+      return {
+        topics: topics.map((t) => {
+          const completedCount = t.progresses.filter((p) => p.status === 'completed').length;
+          const totalTime = t.progresses.reduce((sum, p) => sum + p.timeSpentSeconds, 0);
+          return {
+            id: t.id,
+            title: t.title,
+            strand: t.strand,
+            subStrand: t.subStrand,
+            referenceNotes: t.referenceNotes,
+            schoolYear: t.schoolYear,
+            subjectId: t.subject.id,
+            subjectName: t.subject.name,
+            lesson: t.lesson
+              ? {
+                  id: t.lesson.id,
+                  status: t.lesson.status,
+                  version: t.lesson.version,
+                  opensCount: t.lesson.opensCount,
+                  generatedAt: t.lesson.generatedAt,
+                  contentJson: t.lesson.contentJson,
+                }
+              : null,
+            completedCount,
+            avgTimeSeconds:
+              t.progresses.length > 0 ? Math.round(totalTime / t.progresses.length) : 0,
+          };
+        }),
+        reports,
+      };
+    },
+
+    async updateAdminTopicLesson(
+      actorId: string,
+      topicId: string,
+      input: {
+        status?: 'draft' | 'reviewed' | 'approved';
+        contentJson?: Prisma.InputJsonValue;
+        referenceNotes?: string | null;
+        strand?: string | null;
+        subStrand?: string | null;
+      },
+      ip?: string,
+    ) {
+      if (
+        input.referenceNotes !== undefined ||
+        input.strand !== undefined ||
+        input.subStrand !== undefined
+      ) {
+        await prisma.subjectTopic.update({
+          where: { id: topicId },
+          data: {
+            ...(input.referenceNotes !== undefined ? { referenceNotes: input.referenceNotes } : {}),
+            ...(input.strand !== undefined ? { strand: input.strand } : {}),
+            ...(input.subStrand !== undefined ? { subStrand: input.subStrand } : {}),
+          },
+        });
+      }
+
+      let lesson = await prisma.topicLesson.findUnique({ where: { topicId } });
+      if (lesson && (input.status !== undefined || input.contentJson !== undefined)) {
+        lesson = await prisma.topicLesson.update({
+          where: { topicId },
+          data: {
+            ...(input.status !== undefined ? { status: input.status } : {}),
+            ...(input.contentJson !== undefined
+              ? { contentJson: input.contentJson, version: { increment: 1 } }
+              : {}),
+            reviewerId: actorId,
+            reviewedAt: new Date(),
+          },
+        });
+      }
+
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_lesson_update',
+        targetType: 'subject_topic',
+        targetId: topicId,
+        ip,
+      });
+      return { ok: true, lesson };
+    },
+
+    async regenerateAdminTopicLesson(actorId: string, topicId: string, ip?: string) {
+      if (!llm || !llm.isConfigured()) {
+        throw new AppError('AI_UNAVAILABLE', 'LLM provider is not configured.');
+      }
+      const topic = await prisma.subjectTopic.findUnique({
+        where: { id: topicId },
+        include: { subject: { select: { id: true, name: true, syllabusVersion: true } } },
+      });
+      if (!topic) throw new AppError('NOT_FOUND', 'Topic not found');
+
+      const lesson = await generateTopicLessonContent({
+        prisma,
+        llm,
+        logger,
+        userId: actorId,
+        topic,
+        forceRegenerate: true,
+      });
+
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_lesson_regenerate',
+        targetType: 'topic_lesson',
+        targetId: lesson.id,
+        ip,
+      });
+      return lesson;
+    },
+
+    async bulkGenerateSubjectLessons(actorId: string, subjectId: string, ip?: string) {
+      if (!llm || !llm.isConfigured()) {
+        throw new AppError('AI_UNAVAILABLE', 'LLM provider is not configured.');
+      }
+      const topics = await prisma.subjectTopic.findMany({
+        where: { subjectId, active: true, lesson: null },
+        take: 10,
+        include: { subject: { select: { id: true, name: true, syllabusVersion: true } } },
+      });
+      let generated = 0;
+      for (const topic of topics) {
+        try {
+          await generateTopicLessonContent({ prisma, llm, logger, userId: actorId, topic });
+          generated += 1;
+        } catch (err) {
+          logger.warn({ err, topicId: topic.id }, 'Bulk lesson generation skipped topic');
+        }
+      }
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_lesson_bulk_generate',
+        targetType: 'subject_catalogue',
+        targetId: subjectId,
+        metadata: { generated },
+        ip,
+      });
+      return { generated, remainingMissing: Math.max(0, topics.length - generated) };
+    },
+
+    async resolveAdminLessonReport(
+      actorId: string,
+      reportId: string,
+      input: { status: 'dismissed' | 'warned' | 'suspended'; reviewNote?: string },
+      ip?: string,
+    ) {
+      const report = await prisma.lessonReport.update({
+        where: { id: reportId },
+        data: { status: input.status, reviewNote: input.reviewNote ?? null },
+      });
+      await recordAuditLog(prisma, {
+        actorId,
+        action: 'admin.shs_lesson_report_resolve',
+        targetType: 'lesson_report',
+        targetId: reportId,
+        ip,
+      });
+      return report;
     },
   };
 }

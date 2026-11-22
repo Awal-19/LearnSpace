@@ -6,6 +6,7 @@ import type { LLMProvider } from '../../lib/llm/provider';
 import { generateOpaqueToken, hashToken } from '../../lib/tokens';
 import { recordUsageEvent } from '../admin/admin.logging';
 import { ensureShsCatalogueSeeded, SHS_SYLLABUS_SOURCE } from './shs.catalogue';
+import { generateTopicLessonContent, type TopicLessonContent } from './shs.lessons';
 
 export interface WassceObjectiveQuestion {
   id: string;
@@ -915,6 +916,327 @@ export function createShsService(deps: {
         correctIndex: challenge.correctIndex,
         explanation: challenge.explanation,
       };
+    },
+
+    async getSubjectTopicsWithProgress(userId: string, courseOrSubjectId: string) {
+      const course = await prisma.course.findFirst({
+        where: { id: courseOrSubjectId, userId },
+        select: { id: true, name: true, catalogueSubjectId: true },
+      });
+
+      let subjectId = course?.catalogueSubjectId ?? null;
+      if (!subjectId && course) {
+        const matched = await prisma.subjectCatalogue.findFirst({
+          where: { name: { equals: course.name, mode: 'insensitive' }, active: true },
+          select: { id: true },
+        });
+        subjectId = matched?.id ?? null;
+      }
+      if (!subjectId) {
+        const direct = await prisma.subjectCatalogue.findUnique({
+          where: { id: courseOrSubjectId },
+          select: { id: true },
+        });
+        subjectId = direct?.id ?? null;
+      }
+      if (!subjectId) {
+        return { subjectId: null, topics: [] };
+      }
+
+      const topics = await prisma.subjectTopic.findMany({
+        where: { subjectId, active: true },
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+        include: {
+          lesson: {
+            select: { id: true, status: true, version: true, contentJson: true },
+          },
+          progresses: {
+            where: { userId },
+            select: { status: true, positionPct: true, timeSpentSeconds: true, completedAt: true },
+          },
+        },
+      });
+
+      return {
+        subjectId,
+        topics: topics.map((t) => {
+          const content = t.lesson?.contentJson as { estimatedMinutes?: number } | undefined;
+          const prog = t.progresses[0];
+          return {
+            id: t.id,
+            title: t.title,
+            strand: t.strand ?? 'General Syllabus',
+            subStrand: t.subStrand ?? null,
+            schoolYear: t.schoolYear,
+            lessonReady: Boolean(t.lesson),
+            lessonStatus: t.lesson?.status ?? null,
+            estimatedMinutes: content?.estimatedMinutes ?? 8,
+            progressStatus: prog?.status ?? 'not_started',
+            positionPct: prog?.positionPct ?? 0,
+            timeSpentSeconds: prog?.timeSpentSeconds ?? 0,
+            completedAt: prog?.completedAt ?? null,
+          };
+        }),
+      };
+    },
+
+    async getOrCreateTopicLesson(userId: string, topicId: string) {
+      if (!llm) throw new AppError('AI_UNAVAILABLE', 'Lesson service unavailable.');
+      const topic = await prisma.subjectTopic.findUnique({
+        where: { id: topicId },
+        include: {
+          subject: { select: { id: true, name: true, syllabusVersion: true } },
+        },
+      });
+      if (!topic) throw new AppError('NOT_FOUND', 'Topic not found');
+
+      const lesson = await generateTopicLessonContent({
+        prisma,
+        llm,
+        logger,
+        userId,
+        topic,
+      });
+
+      await Promise.all([
+        prisma.topicLesson
+          .update({
+            where: { id: lesson.id },
+            data: { opensCount: { increment: 1 } },
+          })
+          .catch(() => undefined),
+        prisma.lessonProgress
+          .upsert({
+            where: { userId_topicId: { userId, topicId: topic.id } },
+            create: { userId, topicId: topic.id, status: 'in_progress', positionPct: 0 },
+            update: {},
+          })
+          .catch(() => undefined),
+      ]);
+
+      const [progress, siblingTopics] = await Promise.all([
+        prisma.lessonProgress.findUnique({
+          where: { userId_topicId: { userId, topicId: topic.id } },
+        }),
+        prisma.subjectTopic.findMany({
+          where: { subjectId: topic.subjectId, active: true },
+          orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+          select: { id: true, title: true },
+        }),
+      ]);
+
+      const idx = siblingTopics.findIndex((s) => s.id === topic.id);
+      return {
+        topic: {
+          id: topic.id,
+          title: topic.title,
+          strand: topic.strand,
+          subStrand: topic.subStrand,
+          schoolYear: topic.schoolYear,
+          subjectId: topic.subject.id,
+          subjectName: topic.subject.name,
+          syllabusVersion: topic.subject.syllabusVersion,
+        },
+        lesson: {
+          id: lesson.id,
+          status: lesson.status,
+          version: lesson.version,
+          model: lesson.model,
+          promptVersion: lesson.promptVersion,
+          generatedAt: lesson.generatedAt,
+          reviewedAt: lesson.reviewedAt,
+          content: lesson.contentJson as TopicLessonContent,
+        },
+        progress: progress ?? {
+          status: 'in_progress',
+          positionPct: 0,
+          timeSpentSeconds: 0,
+          completedAt: null,
+        },
+        prevTopic: idx > 0 ? siblingTopics[idx - 1]! : null,
+        nextTopic: idx >= 0 && idx < siblingTopics.length - 1 ? siblingTopics[idx + 1]! : null,
+      };
+    },
+
+    async updateLessonProgress(
+      userId: string,
+      topicId: string,
+      input: {
+        status?: 'not_started' | 'in_progress' | 'completed';
+        positionPct?: number;
+        addSeconds?: number;
+      },
+    ) {
+      const existing = await prisma.lessonProgress.findUnique({
+        where: { userId_topicId: { userId, topicId } },
+      });
+      const nextStatus =
+        input.status ??
+        (existing?.status === 'completed'
+          ? 'completed'
+          : (input.positionPct ?? 0) >= 90
+            ? 'completed'
+            : 'in_progress');
+      const nextPos =
+        input.positionPct !== undefined
+          ? Math.min(100, Math.max(0, input.positionPct))
+          : (existing?.positionPct ?? 0);
+
+      return prisma.lessonProgress.upsert({
+        where: { userId_topicId: { userId, topicId } },
+        create: {
+          userId,
+          topicId,
+          status: nextStatus,
+          positionPct: nextPos,
+          timeSpentSeconds: Math.max(0, input.addSeconds ?? 0),
+          completedAt: nextStatus === 'completed' ? new Date() : null,
+        },
+        update: {
+          status: nextStatus,
+          positionPct: nextPos,
+          ...(input.addSeconds
+            ? { timeSpentSeconds: { increment: Math.max(0, input.addSeconds) } }
+            : {}),
+          ...(nextStatus === 'completed' && !existing?.completedAt
+            ? { completedAt: new Date() }
+            : {}),
+        },
+      });
+    },
+
+    async reportLessonMistake(userId: string, topicId: string, reason: string) {
+      const topic = await prisma.subjectTopic.findUnique({ where: { id: topicId } });
+      if (!topic) throw new AppError('NOT_FOUND', 'Topic not found');
+      return prisma.lessonReport.create({
+        data: { userId, topicId, reason: reason.trim().slice(0, 1000) },
+      });
+    },
+
+    async saveLessonToNotes(
+      userId: string,
+      topicId: string,
+      input: { courseId?: string | null; excerpt?: string | null },
+    ) {
+      const [topic, lesson] = await Promise.all([
+        prisma.subjectTopic.findUnique({
+          where: { id: topicId },
+          include: { subject: { select: { name: true } } },
+        }),
+        prisma.topicLesson.findUnique({ where: { topicId } }),
+      ]);
+      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      const c = lesson.contentJson as unknown as TopicLessonContent;
+
+      const body = input.excerpt?.trim()
+        ? `> Selected from ${topic.title} (${topic.subject.name})\n\n${input.excerpt.trim()}`
+        : [
+            `# ${c.title}`,
+            c.introduction,
+            ...c.sections.map((s) => `## ${s.heading}\n${s.body}`),
+            c.rememberThis.length
+              ? `## Remember This\n${c.rememberThis.map((r) => `- ${r}`).join('\n')}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n');
+
+      return prisma.note.create({
+        data: {
+          userId,
+          courseId: input.courseId ?? null,
+          title: `${topic.title} — Study Notes`.slice(0, 150),
+          body,
+        },
+      });
+    },
+
+    async createFlashcardsFromLesson(
+      userId: string,
+      topicId: string,
+      input: { courseId?: string | null },
+    ) {
+      const [topic, lesson] = await Promise.all([
+        prisma.subjectTopic.findUnique({ where: { id: topicId } }),
+        prisma.topicLesson.findUnique({ where: { topicId } }),
+      ]);
+      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      const c = lesson.contentJson as unknown as TopicLessonContent;
+
+      const cardsData: Array<{ front: string; back: string; topic: string; position: number }> = [];
+      let pos = 0;
+      for (const sec of c.sections) {
+        for (const kt of sec.keyTerms ?? []) {
+          cardsData.push({
+            front: kt.term,
+            back: kt.definition,
+            topic: topic.title,
+            position: pos++,
+          });
+        }
+      }
+      for (const q of c.checkYourself ?? []) {
+        cardsData.push({
+          front: q.question,
+          back: `${q.answer}\n\n${q.explanation}`,
+          topic: topic.title,
+          position: pos++,
+        });
+      }
+      if (cardsData.length === 0) {
+        cardsData.push({
+          front: `Key summary of ${topic.title}`,
+          back: c.rememberThis.join('\n'),
+          topic: topic.title,
+          position: 0,
+        });
+      }
+
+      const deck = await prisma.deck.create({
+        data: {
+          userId,
+          courseId: input.courseId ?? null,
+          title: `${topic.title} Flashcards`.slice(0, 150),
+          topic: topic.title,
+          cards: { create: cardsData.slice(0, 25) },
+        },
+      });
+      return { deckId: deck.id, cardsCount: Math.min(25, cardsData.length) };
+    },
+
+    async createQuizFromLesson(
+      userId: string,
+      topicId: string,
+      input: { courseId?: string | null },
+    ) {
+      const [topic, lesson] = await Promise.all([
+        prisma.subjectTopic.findUnique({ where: { id: topicId } }),
+        prisma.topicLesson.findUnique({ where: { topicId } }),
+      ]);
+      if (!topic || !lesson) throw new AppError('NOT_FOUND', 'Lesson not found');
+      const c = lesson.contentJson as unknown as TopicLessonContent;
+
+      const questions = (c.checkYourself ?? []).map((q, i) => ({
+        prompt: q.question,
+        options:
+          q.options && q.options.length >= 2
+            ? q.options
+            : [q.answer, 'None of the above', 'Cannot be determined', 'All of the above'],
+        correctIndex: Math.max(0, (q.options ?? []).indexOf(q.answer)),
+        explanation: q.explanation,
+        position: i,
+      }));
+
+      const quiz = await prisma.quiz.create({
+        data: {
+          userId,
+          courseId: input.courseId ?? null,
+          title: `${topic.title} Quick Quiz`.slice(0, 150),
+          topic: topic.title,
+          questions: { create: questions },
+        },
+      });
+      return { quizId: quiz.id, questionsCount: questions.length };
     },
   };
 }

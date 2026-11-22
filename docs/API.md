@@ -465,3 +465,12 @@ Errors: `401 UNAUTHENTICATED`, `403 EMAIL_NOT_VERIFIED`, `413 PAYLOAD_TOO_LARGE`
 - `POST /api/v1/shs/wassce-date` (SHS only) — Sets or updates the student's target WASSCE countdown date.
 - `POST /api/v1/shs/daily-challenge/answer` (SHS only) — Grades the daily NaCCA-aligned challenge question and records the student's streak.
 - Server-side `requireLearnerType` enforces `403 FORBIDDEN` when SHS accounts call `/api/v1/gpa/*` or when university accounts call SHS-only endpoints (`/api/v1/shs/wassce/*`, `/api/v1/shs/dashboard`, `/api/v1/shs/wassce-date`, `/api/v1/shs/daily-challenge/*`).
+
+## SHS Topic Lessons Endpoints
+
+- `GET /api/v1/shs/subjects/:subjectId/topics` (SHS only) — Lists syllabus topics grouped by strand with lesson readiness, reading time, and student progress.
+- `GET /api/v1/shs/lessons/:topicId` (SHS only) — Returns the stored `TopicLesson` (or generates, validates, verifies math with `mathjs`, and stores it once under an in-process lock) plus `prevTopic`/`nextTopic` and `LessonProgress`.
+- `PATCH /api/v1/shs/lessons/:topicId/progress` (SHS only) — Saves `status`, `positionPct`, and `timeSpentSeconds`.
+- `POST /api/v1/shs/lessons/:topicId/report` (SHS only) — Submits a `LessonReport` for admin/teacher review.
+- `POST /api/v1/shs/lessons/:topicId/save-note`, `/flashcards`, `/quiz` (SHS only) — Copies the lesson into Notes or creates a linked Deck/Quiz.
+- `GET /api/admin/shs/lessons`, `PATCH /api/admin/shs/lessons/:topicId`, `POST /api/admin/shs/lessons/:topicId/regenerate`, `POST /api/admin/shs/subjects/:id/lessons/bulk-generate`, `PATCH /api/admin/shs/lesson-reports/:id` — Audit-logged admin lesson management & review workflow.

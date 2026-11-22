@@ -288,6 +288,8 @@ export function createApp(env: Env, deps: AppDeps, logger: Logger = createLogger
       app.use(`${API_PREFIX}/shs/dashboard`, requireAuth(env.JWT_SECRET), requireShs);
       app.use(`${API_PREFIX}/shs/wassce-date`, requireAuth(env.JWT_SECRET), requireShs);
       app.use(`${API_PREFIX}/shs/daily-challenge`, requireAuth(env.JWT_SECRET), requireShs);
+      app.use(`${API_PREFIX}/shs/lessons`, requireAuth(env.JWT_SECRET), requireShs);
+      app.use(`${API_PREFIX}/shs/subjects`, requireAuth(env.JWT_SECRET), requireShs);
     }
     app.use(
       API_PREFIX,

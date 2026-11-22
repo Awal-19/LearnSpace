@@ -261,3 +261,10 @@ Index: **UK** `(userId, startedAt)` (also makes `POST /study-sessions` idempoten
 - **`guardian_consents`**: Hashed single-use/withdrawal tokens (`tokenHash`), guardian email/phone, `status`, `consentedAt`, `withdrawnAt`, and IP.
 - **`wassce_mock_attempts`**: Timed WASSCE mock exams (`objective | theory | mixed`), generated questions, student answers, scores, and `weakTopicsJson`.
 - **`shs_moderation_flags`**: Flagged SHS AI prompts/outputs and community posts/messages (`source`, `direction`, `reason`, `excerpt`, `reviewed`).
+
+## Topic Lessons & Progress Tables
+
+- **`subject_topics` (extended)**: Added `strand`, `subStrand`, and `referenceNotes` (admin-supplied syllabus notes).
+- **`topic_lessons`**: Stores AI-prepared structured JSON lessons once per topic (`topicId` unique, `contentJson`, `status: draft | reviewed | approved`, `version`, `reviewerId`, `reviewedAt`, `model`, `promptVersion`, `opensCount`).
+- **`lesson_progress`**: Per-student progress (`userId`, `topicId` unique, `status: not_started | in_progress | completed`, `positionPct`, `timeSpentSeconds`, `completedAt`).
+- **`lesson_reports`**: Student mistake reports (`userId`, `topicId`, `reason`, `status`).

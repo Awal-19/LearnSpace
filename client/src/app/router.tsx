@@ -121,6 +121,9 @@ const CoursesPage = lazy(() =>
 const CourseDetailPage = lazy(() =>
   import('../features/courses/CourseDetailPage').then((m) => ({ default: m.CourseDetailPage })),
 );
+const TopicLessonPage = lazy(() =>
+  import('../features/shs/TopicLessonPage').then((m) => ({ default: m.TopicLessonPage })),
+);
 const TimetablePage = lazy(() =>
   import('../features/timetable/TimetablePage').then((m) => ({ default: m.TimetablePage })),
 );
@@ -148,6 +151,14 @@ export const appRoutes: RouteObject[] = [
   {
     path: 'courses/:courseId',
     element: withSuspense(<CourseDetailPage />),
+  },
+  {
+    path: 'subjects/:subjectId/topics/:topicId',
+    element: withSuspense(<TopicLessonPage />),
+  },
+  {
+    path: 'courses/:courseId/topics/:topicId',
+    element: withSuspense(<TopicLessonPage />),
   },
   {
     path: 'chat',

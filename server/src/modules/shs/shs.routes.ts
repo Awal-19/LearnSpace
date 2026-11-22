@@ -187,5 +187,100 @@ export function shsRouter(deps: {
     }),
   );
 
+  router.get(
+    '/shs/subjects/:subjectId/topics',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      res.json(await shs.getSubjectTopicsWithProgress(req.user!.id, req.params.subjectId ?? ''));
+    }),
+  );
+
+  router.get(
+    '/shs/lessons/:topicId',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      res.json(await shs.getOrCreateTopicLesson(req.user!.id, req.params.topicId ?? ''));
+    }),
+  );
+
+  router.patch(
+    '/shs/lessons/:topicId/progress',
+    auth,
+    verified,
+    validateBody(
+      z
+        .object({
+          status: z.enum(['not_started', 'in_progress', 'completed']).optional(),
+          positionPct: z.number().int().min(0).max(100).optional(),
+          addSeconds: z.number().int().min(0).max(3600).optional(),
+        })
+        .strict(),
+    ),
+    asyncHandler(async (req, res) => {
+      res.json(await shs.updateLessonProgress(req.user!.id, req.params.topicId ?? '', req.body));
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/report',
+    auth,
+    verified,
+    validateBody(z.object({ reason: z.string().trim().min(4).max(1000) }).strict()),
+    asyncHandler(async (req, res) => {
+      res
+        .status(201)
+        .json(
+          await shs.reportLessonMistake(req.user!.id, req.params.topicId ?? '', req.body.reason),
+        );
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/save-note',
+    auth,
+    verified,
+    validateBody(
+      z
+        .object({
+          courseId: z.string().uuid().nullable().optional(),
+          excerpt: z.string().trim().max(8000).nullable().optional(),
+        })
+        .strict(),
+    ),
+    asyncHandler(async (req, res) => {
+      res
+        .status(201)
+        .json(await shs.saveLessonToNotes(req.user!.id, req.params.topicId ?? '', req.body));
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/flashcards',
+    auth,
+    verified,
+    validateBody(z.object({ courseId: z.string().uuid().nullable().optional() }).strict()),
+    asyncHandler(async (req, res) => {
+      res
+        .status(201)
+        .json(
+          await shs.createFlashcardsFromLesson(req.user!.id, req.params.topicId ?? '', req.body),
+        );
+    }),
+  );
+
+  router.post(
+    '/shs/lessons/:topicId/quiz',
+    auth,
+    verified,
+    validateBody(z.object({ courseId: z.string().uuid().nullable().optional() }).strict()),
+    asyncHandler(async (req, res) => {
+      res
+        .status(201)
+        .json(await shs.createQuizFromLesson(req.user!.id, req.params.topicId ?? '', req.body));
+    }),
+  );
+
   return router;
 }

@@ -977,3 +977,69 @@ export function addAdminShsTopic(
 ) {
   return adminRequest(`/shs/subjects/${subjectId}/topics`, { method: 'POST', body });
 }
+
+export interface AdminShsLessonsResponse {
+  topics: Array<{
+    id: string;
+    title: string;
+    strand: string | null;
+    subStrand: string | null;
+    referenceNotes: string | null;
+    schoolYear: string | null;
+    subjectId: string;
+    subjectName: string;
+    lesson: {
+      id: string;
+      status: 'draft' | 'reviewed' | 'approved';
+      version: number;
+      opensCount: number;
+      generatedAt: string;
+      contentJson: unknown;
+    } | null;
+    completedCount: number;
+    avgTimeSeconds: number;
+  }>;
+  reports: Array<{
+    id: string;
+    reason: string;
+    createdAt: string;
+    user: { id: string; name: string };
+    topic: { id: string; title: string };
+  }>;
+}
+
+export function fetchAdminShsLessons(subjectId?: string) {
+  const qs = subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : '';
+  return adminRequest<AdminShsLessonsResponse>(`/shs/lessons${qs}`);
+}
+
+export function updateAdminShsLesson(
+  topicId: string,
+  body: {
+    status?: 'draft' | 'reviewed' | 'approved';
+    contentJson?: unknown;
+    referenceNotes?: string | null;
+    strand?: string | null;
+    subStrand?: string | null;
+  },
+) {
+  return adminRequest(`/shs/lessons/${topicId}`, { method: 'PATCH', body });
+}
+
+export function regenerateAdminShsLesson(topicId: string) {
+  return adminRequest(`/shs/lessons/${topicId}/regenerate`, { method: 'POST' });
+}
+
+export function bulkGenerateAdminShsLessons(subjectId: string) {
+  return adminRequest<{ generated: number; remainingMissing: number }>(
+    `/shs/subjects/${subjectId}/lessons/bulk-generate`,
+    { method: 'POST' },
+  );
+}
+
+export function resolveAdminShsLessonReport(
+  reportId: string,
+  status: 'dismissed' | 'warned' | 'suspended' = 'dismissed',
+) {
+  return adminRequest(`/shs/lesson-reports/${reportId}`, { method: 'PATCH', body: { status } });
+}

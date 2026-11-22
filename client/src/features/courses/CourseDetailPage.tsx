@@ -6,19 +6,31 @@ import {
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Edit3,
   FileText,
   GraduationCap,
   Layers,
   MapPin,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAppPath } from '../../app/basePath';
 import { useExperience } from '../../app/experience';
-import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, useToast } from '../../design';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  Skeleton,
+  useToast,
+} from '../../design';
+import { request } from '../../lib/apiClient';
 import { ApiError } from '../../lib/apiClient';
 import { EXAM_TYPE_LABELS, formatExamCountdown, type ExamType } from '../exams/examsApi';
 import { CourseFormModal } from './CourseFormModal';
@@ -26,7 +38,6 @@ import { CourseRecommendedPanel } from './CourseRecommendedPanel';
 import { DeleteCourseModal } from './DeleteCourseModal';
 import {
   deleteCourse,
-  fetchShsCatalogue,
   formatStudyDuration,
   getCourseDetail,
   updateCourse,
@@ -47,6 +58,9 @@ export function CourseDetailPage() {
   const [tab, setTab] = useState<DetailTab>(exp.isShs ? 'topics' : 'notes');
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [topicSearch, setTopicSearch] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const detailQuery = useQuery({
     queryKey: ['course', courseId],
@@ -55,12 +69,51 @@ export function CourseDetailPage() {
     staleTime: 20_000,
   });
 
-  const shsCatQuery = useQuery({
-    queryKey: ['shs', 'catalogue'],
-    queryFn: fetchShsCatalogue,
-    enabled: exp.isShs,
-    staleTime: 60_000,
+  const shsTopicsQuery = useQuery({
+    queryKey: ['shs', 'subject-topics', courseId],
+    queryFn: () =>
+      request<{
+        subjectId: string | null;
+        topics: Array<{
+          id: string;
+          title: string;
+          strand: string;
+          subStrand: string | null;
+          schoolYear: string | null;
+          lessonReady: boolean;
+          lessonStatus: string | null;
+          estimatedMinutes: number;
+          progressStatus: 'not_started' | 'in_progress' | 'completed';
+          positionPct: number;
+        }>;
+      }>(`/shs/subjects/${courseId}/topics`),
+    enabled: exp.isShs && Boolean(courseId),
+    staleTime: 30_000,
   });
+
+  const syllabusTopics = useMemo(() => shsTopicsQuery.data?.topics ?? [], [shsTopicsQuery.data]);
+  const filteredTopics = useMemo(() => {
+    const q = topicSearch.trim().toLowerCase();
+    return syllabusTopics.filter((t) => {
+      if (yearFilter && t.schoolYear !== yearFilter) return false;
+      if (statusFilter && t.progressStatus !== statusFilter) return false;
+      if (q && !t.title.toLowerCase().includes(q) && !t.strand.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [syllabusTopics, topicSearch, yearFilter, statusFilter]);
+
+  const groupedTopics = useMemo(() => {
+    const map = new Map<string, typeof filteredTopics>();
+    for (const t of filteredTopics) {
+      const key = t.strand || 'General Syllabus';
+      const arr = map.get(key) ?? [];
+      arr.push(t);
+      map.set(key, arr);
+    }
+    return [...map.entries()];
+  }, [filteredTopics]);
 
   if (detailQuery.isLoading) {
     return (
@@ -134,11 +187,6 @@ export function CourseDetailPage() {
     toast.show({ kind: 'success', title: `${exp.labels.courseSingular} deleted` });
     navigate(path('/courses'), { replace: true });
   };
-
-  const matchedCatalogue = exp.isShs
-    ? shsCatQuery.data?.subjects.find((s) => s.name.toLowerCase() === course.name.toLowerCase())
-    : undefined;
-  const syllabusTopics = matchedCatalogue?.topics ?? [];
 
   const tabs: Array<{ id: DetailTab; label: string; count?: number }> = [
     ...(exp.isShs
@@ -284,7 +332,7 @@ export function CourseDetailPage() {
       <div
         role="tablist"
         aria-label="Course overview sections"
-        className="inline-flex flex-wrap gap-1 rounded-xl bg-surface2/80 p-1 ring-1 ring-line/60"
+        className="flex max-w-full flex-wrap gap-1 rounded-xl bg-surface2/80 p-1 ring-1 ring-line/60"
       >
         {tabs.map((item) => (
           <button
@@ -308,49 +356,113 @@ export function CourseDetailPage() {
       {/* Tab Content */}
       <Card className="p-5 sm:p-6">
         {tab === 'topics' && exp.isShs ? (
-          syllabusTopics.length === 0 ? (
+          shsTopicsQuery.isLoading ? (
+            <Skeleton className="h-44 rounded-xl" />
+          ) : syllabusTopics.length === 0 ? (
             <EmptyState
               icon={BookOpen}
               title="No syllabus topics linked yet"
               description="Custom subjects can still use Notes, Handouts, Flashcards, and WASSCE Exam Prep."
             />
           ) : (
-            <div className="space-y-2.5">
-              <p className="text-xs text-muted">
-                Official NaCCA / GES syllabus topics ({matchedCatalogue?.syllabusVersion ?? 'SHS'}).
-                Click Revise with AWAL to study any topic step by step.
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                {syllabusTopics.map((topic) => (
-                  <div
-                    key={topic.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface2/40 px-3.5 py-2.5 text-sm"
+            <div className="space-y-4">
+              <p className="text-xs text-muted">Tap a topic to read the lesson.</p>
+
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                <Input
+                  label="Search topics"
+                  placeholder="Search by topic or strand..."
+                  value={topicSearch}
+                  onChange={(e) => setTopicSearch(e.target.value)}
+                />
+                <label className="block space-y-1 text-xs">
+                  <span className="font-medium text-fg">SHS Year</span>
+                  <select
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-fg">{topic.title}</p>
-                      {topic.schoolYear ? (
-                        <p className="text-xs text-muted">{topic.schoolYear}</p>
-                      ) : null}
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        navigate(
-                          path(
-                            `/chat?prefill=${encodeURIComponent(
-                              `Teach me "${topic.title}" in ${course.name} for WASSCE step by step.`,
-                            )}`,
-                          ),
-                        )
-                      }
-                    >
-                      Revise with AWAL
-                    </Button>
-                  </div>
-                ))}
+                    <option value="">All years</option>
+                    <option value="SHS 1">SHS 1</option>
+                    <option value="SHS 2">SHS 2</option>
+                    <option value="SHS 3">SHS 3</option>
+                  </select>
+                </label>
+                <label className="block space-y-1 text-xs">
+                  <span className="font-medium text-fg">Status</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm text-fg"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="not_started">Not started</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </label>
               </div>
+
+              {groupedTopics.length === 0 ? (
+                <p className="py-6 text-center text-xs text-muted">
+                  No topics match your current filter.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {groupedTopics.map(([strand, items]) => (
+                    <div key={strand} className="space-y-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        {strand}
+                      </h3>
+                      <div className="space-y-2">
+                        {items.map((topic) => (
+                          <Link
+                            key={topic.id}
+                            to={path(`/subjects/${course.id}/topics/${topic.id}`)}
+                            className="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-line bg-surface2/40 px-4 py-3 text-left transition hover:border-primary-300 hover:bg-primary-50/40 dark:hover:bg-primary-500/10"
+                          >
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <p className="break-words text-sm font-medium leading-snug text-fg">
+                                {topic.title}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                {topic.schoolYear ? (
+                                  <Badge tone="neutral">{topic.schoolYear}</Badge>
+                                ) : null}
+                                <Badge
+                                  tone={
+                                    topic.progressStatus === 'completed'
+                                      ? 'success'
+                                      : topic.progressStatus === 'in_progress'
+                                        ? 'primary'
+                                        : 'neutral'
+                                  }
+                                >
+                                  {topic.progressStatus === 'completed'
+                                    ? 'Completed'
+                                    : topic.progressStatus === 'in_progress'
+                                      ? 'In progress'
+                                      : 'Not started'}
+                                </Badge>
+                                <span className="text-muted">{topic.estimatedMinutes} min</span>
+                                {topic.lessonReady ? (
+                                  <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                                    <Sparkles className="h-3 w-3" aria-hidden="true" /> Ready
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <ChevronRight
+                              className="h-4 w-4 shrink-0 text-muted"
+                              aria-hidden="true"
+                            />
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         ) : null}

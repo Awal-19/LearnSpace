@@ -114,6 +114,18 @@ enum ModerationPriority {
   high
 }
 
+enum LessonStatus {
+  draft
+  reviewed
+  approved
+}
+
+enum LessonProgressStatus {
+  not_started
+  in_progress
+  completed
+}
+
 enum CommunityMemberRole {
   member
   moderator
@@ -490,6 +502,9 @@ model User {
   guardianConsents         GuardianConsent[]
   wassceMockAttempts       WassceMockAttempt[]
   shsModerationFlags       ShsModerationFlag[]
+  reviewedTopicLessons     TopicLesson[]       @relation("TopicLessonReviewer")
+  lessonProgresses         LessonProgress[]
+  lessonReports            LessonReport[]
 
   @@index([role])
   @@index([status])
@@ -2054,19 +2069,85 @@ model SubjectCatalogue {
 }
 
 model SubjectTopic {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  subjectId  String   @db.Uuid
-  title      String   @db.VarChar(200)
-  schoolYear String?  @db.VarChar(20)
-  sortOrder  Int      @default(0)
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subjectId      String   @db.Uuid
+  title          String   @db.VarChar(200)
+  strand         String?  @db.VarChar(120)
+  subStrand      String?  @db.VarChar(120)
+  referenceNotes String?
+  schoolYear     String?  @db.VarChar(20)
+  sortOrder      Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
-  subject SubjectCatalogue @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject    SubjectCatalogue @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lesson     TopicLesson?
+  progresses LessonProgress[]
+  reports    LessonReport[]
 
   @@unique([subjectId, title])
   @@index([subjectId, active, sortOrder])
   @@map("subject_topics")
+}
+
+model TopicLesson {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId       String       @unique @db.Uuid
+  contentJson   Json
+  status        LessonStatus @default(draft)
+  version       Int          @default(1)
+  languageLevel String       @default("shs") @db.VarChar(20)
+  reviewerId    String?      @db.Uuid
+  reviewedAt    DateTime?    @db.Timestamptz(3)
+  generatedAt   DateTime     @default(now()) @db.Timestamptz(3)
+  model         String       @db.VarChar(80)
+  promptVersion String       @default("v1") @db.VarChar(32)
+  opensCount    Int          @default(0)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+
+  topic    SubjectTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  reviewer User?        @relation("TopicLessonReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([status, updatedAt(sort: Desc)])
+  @@map("topic_lessons")
+}
+
+model LessonProgress {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String               @db.Uuid
+  topicId          String               @db.Uuid
+  status           LessonProgressStatus @default(not_started)
+  positionPct      Int                  @default(0)
+  timeSpentSeconds Int                  @default(0)
+  completedAt      DateTime?            @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic SubjectTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, status])
+  @@map("lesson_progress")
+}
+
+model LessonReport {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String     @db.Uuid
+  topicId    String     @db.Uuid
+  reason     String     @db.VarChar(1000)
+  status     FlagStatus @default(open)
+  reviewNote String?    @db.VarChar(500)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic SubjectTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([topicId])
+  @@map("lesson_reports")
 }
 
 model GuardianConsent {

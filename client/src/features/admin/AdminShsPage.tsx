@@ -14,10 +14,15 @@ import { Badge, Button, GlassCard, Input, Skeleton, useToast } from '../../desig
 import { ApiError } from '../../lib/apiClient';
 import {
   addAdminShsTopic,
+  bulkGenerateAdminShsLessons,
   createAdminShsSubject,
+  fetchAdminShsLessons,
   fetchAdminShsOverview,
+  regenerateAdminShsLesson,
   resolveAdminShsFlag,
+  resolveAdminShsLessonReport,
   toggleAdminShsSubject,
+  updateAdminShsLesson,
   updateAdminShsSettings,
 } from './adminApi';
 
@@ -29,6 +34,13 @@ export function AdminShsPage() {
     queryKey: ['admin', 'shs-overview'],
     queryFn: fetchAdminShsOverview,
   });
+
+  const lessonsQuery = useQuery({
+    queryKey: ['admin', 'shs-lessons'],
+    queryFn: () => fetchAdminShsLessons(),
+  });
+
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [bannedWordsText, setBannedWordsText] = useState('');
   const [syllabusSource, setSyllabusSource] = useState('');
@@ -375,6 +387,129 @@ export function AdminShsPage() {
             ))}
           </div>
         )}
+      </GlassCard>
+
+      <GlassCard className="space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-base font-semibold text-fg">
+              Topic Lessons &amp; Review Workflow
+            </h2>
+            <p className="text-xs text-muted">
+              Review, approve, regenerate, or bulk-generate AI-prepared SHS lessons and handle
+              reported mistakes.
+            </p>
+          </div>
+          {topicSubjectId ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              loading={bulkBusy}
+              onClick={async () => {
+                setBulkBusy(true);
+                try {
+                  const res = await bulkGenerateAdminShsLessons(topicSubjectId);
+                  await lessonsQuery.refetch();
+                  toast.show({
+                    kind: 'success',
+                    title: `Generated ${res.generated} lesson(s)`,
+                  });
+                } catch (err) {
+                  toast.show({
+                    kind: 'error',
+                    title: 'Bulk generation failed',
+                    description: err instanceof ApiError ? err.message : 'Try again.',
+                  });
+                } finally {
+                  setBulkBusy(false);
+                }
+              }}
+            >
+              Bulk Generate Missing Lessons
+            </Button>
+          ) : null}
+        </div>
+
+        {(lessonsQuery.data?.reports ?? []).length > 0 ? (
+          <div className="space-y-2 rounded-xl border border-amber-300/60 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+            <p className="text-xs font-semibold text-fg">
+              Reported Lesson Mistakes ({lessonsQuery.data!.reports.length})
+            </p>
+            {lessonsQuery.data!.reports.map((rep) => (
+              <div
+                key={rep.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs"
+              >
+                <div>
+                  <p className="font-medium text-fg">
+                    {rep.topic.title} — <span className="text-muted">{rep.user.name}</span>
+                  </p>
+                  <p className="text-muted">{rep.reason}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    await resolveAdminShsLessonReport(rep.id, 'dismissed');
+                    await lessonsQuery.refetch();
+                    toast.show({ kind: 'success', title: 'Report resolved' });
+                  }}
+                >
+                  Resolve
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          {(lessonsQuery.data?.topics ?? []).slice(0, 15).map((t) => (
+            <div
+              key={t.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface2/40 px-3 py-2.5 text-xs"
+            >
+              <div>
+                <p className="font-medium text-fg">
+                  {t.subjectName}: {t.title}
+                </p>
+                <p className="text-muted">
+                  Status: {t.lesson ? t.lesson.status.toUpperCase() : 'MISSING'} · Opens:{' '}
+                  {t.lesson?.opensCount ?? 0} · Completed: {t.completedCount}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {t.lesson && t.lesson.status !== 'approved' ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      await updateAdminShsLesson(t.id, { status: 'approved' });
+                      await lessonsQuery.refetch();
+                      toast.show({ kind: 'success', title: 'Lesson approved' });
+                    }}
+                  >
+                    Approve
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    await regenerateAdminShsLesson(t.id);
+                    await lessonsQuery.refetch();
+                    toast.show({ kind: 'success', title: 'Lesson regenerated' });
+                  }}
+                >
+                  {t.lesson ? 'Regenerate' : 'Generate'}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </GlassCard>
     </div>
   );
