@@ -126,7 +126,7 @@ export function ProfileDetailsForm() {
 
         <Input
           label={exp.labels.institution}
-          placeholder={exp.isShs ? 'e.g. Achimota School' : 'e.g. University of Ghana'}
+          placeholder={exp.isShs ? 'e.g. Dormaa Ahenkro Senior High' : 'e.g. University of Ghana'}
           error={errors.university?.message}
           {...register('university')}
         />

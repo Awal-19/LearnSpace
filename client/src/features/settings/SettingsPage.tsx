@@ -370,7 +370,7 @@ export function SettingsPage() {
         {learnerType === 'shs' ? (
           <Input
             label="School name (optional)"
-            placeholder="e.g. Achimota School"
+            placeholder="e.g. Dormaa Ahenkro Senior High"
             value={schoolName}
             onChange={(e) => setSchoolName(e.target.value)}
           />
