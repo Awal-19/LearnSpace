@@ -19,9 +19,11 @@ import {
   createReplySchema,
   cursorQuerySchema,
   joinGroupByCodeSchema,
+  listFeedQuerySchema,
   listPostsQuerySchema,
   moderateCommunityContentSchema,
   reportContentSchema,
+  searchQuerySchema,
   sendGroupMessageSchema,
   shareResourceSchema,
   startGroupFocusSchema,
@@ -103,6 +105,95 @@ export function communityRouter(deps: {
     verified,
     asyncHandler(async (req, res) => {
       res.json(await core.getHome(req.user!.id));
+    }),
+  );
+
+  router.get(
+    '/community/dashboard',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      res.json(await core.hub.getDashboard(req.user!.id));
+    }),
+  );
+
+  router.get(
+    '/community/feed',
+    auth,
+    verified,
+    validateQuery(listFeedQuerySchema),
+    asyncHandler(async (req, res) => {
+      res.json(
+        await core.hub.listFeed(
+          req.user!.id,
+          req.query as unknown as z.infer<typeof listFeedQuerySchema>,
+        ),
+      );
+    }),
+  );
+
+  router.get(
+    '/community/discover',
+    auth,
+    verified,
+    validateQuery(searchQuerySchema),
+    asyncHandler(async (req, res) => {
+      const query = req.query as unknown as z.infer<typeof searchQuerySchema>;
+      res.json(await core.hub.discover(req.user!.id, query.q));
+    }),
+  );
+
+  router.get(
+    '/community/groups',
+    auth,
+    verified,
+    validateQuery(searchQuerySchema),
+    asyncHandler(async (req, res) => {
+      res.json(
+        await core.hub.listGroupsHub(
+          req.user!.id,
+          req.query as unknown as z.infer<typeof searchQuerySchema>,
+        ),
+      );
+    }),
+  );
+
+  router.get(
+    '/community/leaderboard',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      res.json(await core.hub.getLeaderboard(req.user!.id));
+    }),
+  );
+
+  router.post(
+    '/community/courses/:communityId/join',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      const communityId = parseUuid(req.params.communityId, 'Community');
+      res.json(await core.hub.joinCommunity(req.user!.id, communityId));
+    }),
+  );
+
+  router.post(
+    '/community/users/:targetUserId/follow',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      const targetUserId = parseUuid(req.params.targetUserId, 'User');
+      res.json(await core.hub.toggleFollow(req.user!.id, targetUserId));
+    }),
+  );
+
+  router.post(
+    '/community/posts/:postId/bookmark',
+    auth,
+    verified,
+    asyncHandler(async (req, res) => {
+      const postId = parseUuid(req.params.postId, 'Post');
+      res.json(await core.hub.toggleBookmark(req.user!.id, postId));
     }),
   );
 

@@ -13,6 +13,20 @@ export const listPostsQuerySchema = cursorQuerySchema.extend({
   q: z.string().trim().max(120).optional(),
 });
 
+export const listFeedQuerySchema = cursorQuerySchema.extend({
+  filter: z
+    .enum(['all', 'following', 'unanswered', 'trending', 'resources', 'bookmarks'])
+    .default('all'),
+  type: z.enum(['all', 'question', 'discussion', 'resource', 'announcement']).default('all'),
+  communityId: z.string().uuid().optional(),
+  q: z.string().trim().max(120).optional(),
+});
+
+export const searchQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  communityId: z.string().uuid().optional(),
+});
+
 export const switchCourseCommunitySchema = z
   .object({
     scope: z.enum(['university', 'global']).optional(),

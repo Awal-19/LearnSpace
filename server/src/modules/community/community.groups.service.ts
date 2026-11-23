@@ -148,10 +148,20 @@ export function createCommunityGroupsService(deps: {
     },
 
     async joinGroup(userId: string, groupId: string) {
-      await core.assertCommunityFeatureEnabled();
-      const group = await prisma.studyGroup.findUnique({ where: { id: groupId } });
-      if (!group) throw new AppError('NOT_FOUND', 'Study group not found');
-      await core.assertCommunityMember(userId, group.communityId);
+      const settings = await core.assertCommunityFeatureEnabled();
+      const [group, user] = await Promise.all([
+        prisma.studyGroup.findUnique({
+          where: { id: groupId },
+          include: { community: { select: { id: true, learnerScope: true } } },
+        }),
+        prisma.user.findUnique({ where: { id: userId }, select: { learnerType: true } }),
+      ]);
+      if (!group || (user && group.community.learnerScope !== user.learnerType)) {
+        throw new AppError('NOT_FOUND', 'Study group not found');
+      }
+      if (user?.learnerType === 'shs' && settings?.featureShsCommunity === false) {
+        throw new AppError('FORBIDDEN', 'SHS community is currently paused by an administrator.');
+      }
 
       if (group.visibility === 'invite_only') {
         const existing = await prisma.studyGroupMember.findUnique({
@@ -164,6 +174,12 @@ export function createCommunityGroupsService(deps: {
           );
         }
       }
+
+      await prisma.communityMember.upsert({
+        where: { communityId_userId: { communityId: group.communityId, userId } },
+        create: { communityId: group.communityId, userId, role: 'member' },
+        update: {},
+      });
 
       await prisma.studyGroupMember.upsert({
         where: { groupId_userId: { groupId, userId } },

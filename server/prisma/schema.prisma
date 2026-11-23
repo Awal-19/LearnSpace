@@ -496,6 +496,9 @@ model User {
   communityReplies         CommunityReply[]
   communityVotes           CommunityVote[]
   communityAttachments     CommunityAttachment[]
+  communityBookmarks       CommunityBookmark[]
+  communityFollowing       CommunityFollow[]              @relation("CommunityFollowFollower")
+  communityFollowers       CommunityFollow[]              @relation("CommunityFollowFollowing")
   studyGroupMemberships    StudyGroupMember[]
   studyGroupMessages       StudyGroupMessage[]
   studyGroupTasks          StudyGroupTask[]
@@ -1785,6 +1788,7 @@ model CommunityPost {
   author      User?                 @relation(fields: [authorId], references: [id], onDelete: SetNull)
   replies     CommunityReply[]
   attachments CommunityAttachment[]
+  bookmarks   CommunityBookmark[]
 
   @@index([communityId, hidden, isPinned(sort: Desc), createdAt(sort: Desc)])
   @@index([communityId, status, createdAt(sort: Desc)])
@@ -1829,6 +1833,34 @@ model CommunityVote {
   @@unique([userId, targetType, targetId])
   @@index([targetType, targetId])
   @@map("community_votes")
+}
+
+model CommunityBookmark {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("community_bookmarks")
+}
+
+model CommunityFollow {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  follower  User @relation("CommunityFollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("CommunityFollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+  @@map("community_follows")
 }
 
 model CommunityAttachment {

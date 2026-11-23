@@ -21,6 +21,124 @@ export interface CommunitySummary {
   groupCount: number;
 }
 
+export interface CommunityFeedPostItem extends CommunityPostSummary {
+  isBookmarked?: boolean;
+}
+
+export interface CommunityDashboardResponse {
+  learnerType: 'university' | 'shs';
+  userSummary: {
+    id: string;
+    name: string;
+    schoolYear: string | null;
+    programme: string | null;
+    university: string | null;
+  };
+  rulesAccepted: boolean;
+  stats: {
+    totalStudents: number;
+    totalPosts: number;
+    solvedDiscussions: number;
+    totalGroups: number;
+    totalResources: number;
+    followingCount: number;
+    joinedSubjectsCount: number;
+    myGroupsCount: number;
+  };
+  popularSubjects: Array<{
+    id: string;
+    slug: string;
+    displayName: string;
+    universityName: string | null;
+    isPaused: boolean;
+    memberCount: number;
+    postCount: number;
+    groupCount: number;
+    isJoined: boolean;
+  }>;
+  trendingDiscussions: CommunityPostSummary[];
+  suggestedGroups: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    visibility: 'public_course' | 'invite_only';
+    communityId: string;
+    communityName: string;
+    memberCount: number;
+    messageCount: number;
+  }>;
+  suggestedStudents: Array<{
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    subtitle: string;
+    sharedCount: number;
+    helpedCount: number;
+    badge: string | null;
+    isFollowing: boolean;
+  }>;
+  recentActivities: Array<{
+    id: string;
+    kind: 'question' | 'post' | 'resource' | 'group';
+    actorName: string;
+    title: string;
+    targetName: string;
+    communityId: string;
+    postId: string | null;
+    groupId: string | null;
+    createdAt: string;
+  }>;
+  myBookmarkedIds: string[];
+  myFollowingIds: string[];
+}
+
+export interface CommunityDiscoverResponse {
+  communities: Array<{
+    id: string;
+    slug: string;
+    displayName: string;
+    universityName: string | null;
+    isPaused: boolean;
+    memberCount: number;
+    postCount: number;
+    groupCount: number;
+    isJoined: boolean;
+  }>;
+  students: Array<{
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    subtitle: string;
+    sharedCount: number;
+    helpedCount: number;
+    badge: string | null;
+    isFollowing: boolean;
+  }>;
+  popularTags: Array<{ tag: string; count: number }>;
+}
+
+export interface CommunityLeaderboardResponse {
+  learnerType: 'university' | 'shs';
+  myStats: {
+    rank: number | null;
+    helpedCount: number;
+    acceptedCount: number;
+    badge: string | null;
+    hideStats: boolean;
+  };
+  leaders: Array<{
+    rank: number;
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    subtitle: string;
+    helpedCount: number;
+    acceptedCount: number;
+    badge: string | null;
+    isMe: boolean;
+  }>;
+}
+
 export interface StudyGroupSummary {
   id: string;
   name: string;
@@ -152,6 +270,80 @@ export interface CommunityNotificationPrefs {
 
 export function fetchCommunityHome() {
   return request<CommunityHomeResponse>('/community/home');
+}
+
+export function fetchCommunityDashboard() {
+  return request<CommunityDashboardResponse>('/community/dashboard');
+}
+
+export function fetchCommunityFeed(params?: {
+  filter?: 'all' | 'following' | 'unanswered' | 'trending' | 'resources' | 'bookmarks';
+  type?: 'all' | 'question' | 'discussion' | 'resource' | 'announcement';
+  communityId?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.filter) sp.set('filter', params.filter);
+  if (params?.type) sp.set('type', params.type);
+  if (params?.communityId) sp.set('communityId', params.communityId);
+  if (params?.q) sp.set('q', params.q);
+  if (params?.cursor) sp.set('cursor', params.cursor);
+  if (params?.limit) sp.set('limit', String(params.limit));
+  const qs = sp.toString();
+  return request<{ items: CommunityFeedPostItem[]; nextCursor: string | null }>(
+    `/community/feed${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export function fetchCommunityDiscover(q?: string) {
+  const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return request<CommunityDiscoverResponse>(`/community/discover${qs}`);
+}
+
+export function fetchCommunityGroupsHub(params?: { communityId?: string; q?: string }) {
+  const sp = new URLSearchParams();
+  if (params?.communityId) sp.set('communityId', params.communityId);
+  if (params?.q) sp.set('q', params.q);
+  const qs = sp.toString();
+  return request<{
+    myGroups: StudyGroupSummary[];
+    discoverGroups: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      visibility: 'public_course' | 'invite_only';
+      communityId: string;
+      communityName: string;
+      memberCount: number;
+      messageCount: number;
+    }>;
+    communities: Array<{ id: string; displayName: string }>;
+  }>(`/community/groups${qs ? `?${qs}` : ''}`);
+}
+
+export function fetchCommunityLeaderboard() {
+  return request<CommunityLeaderboardResponse>('/community/leaderboard');
+}
+
+export function joinCourseCommunity(communityId: string) {
+  return request<{ joined: boolean; communityId: string }>(
+    `/community/courses/${communityId}/join`,
+    { method: 'POST' },
+  );
+}
+
+export function toggleFollowStudent(targetUserId: string) {
+  return request<{ following: boolean }>(`/community/users/${targetUserId}/follow`, {
+    method: 'POST',
+  });
+}
+
+export function toggleBookmarkPost(postId: string) {
+  return request<{ bookmarked: boolean }>(`/community/posts/${postId}/bookmark`, {
+    method: 'POST',
+  });
 }
 
 export function acceptCommunityRules() {

@@ -4,6 +4,7 @@ import { AppError } from '../../lib/errors';
 import type { LLMProvider } from '../../lib/llm/provider';
 import { recordUsageEvent } from '../admin/admin.logging';
 import { enforceAiQuota } from '../ai/aiQuota';
+import { createCommunityHubService } from './community.hub.service';
 import {
   assertSafeCommunityLinks,
   buildCommunitySlug,
@@ -165,7 +166,64 @@ export function createCommunityService(deps: CommunityServiceDeps) {
       .catch(() => undefined);
   }
 
+  const hub = createCommunityHubService({
+    prisma,
+    assertCommunityFeatureEnabled,
+    getBlockedUserIds,
+    ensureCommunityProfile,
+    syncCourseToCommunity: async (userId: string, courseId: string) => {
+      const course = await prisma.course.findFirst({
+        where: { id: courseId, userId },
+        select: { id: true, name: true, communityId: true },
+      });
+      if (!course) throw new AppError('NOT_FOUND', 'Course not found');
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { university: true, learnerType: true },
+      });
+
+      let communityId = course.communityId;
+      if (!communityId) {
+        const isShs = user?.learnerType === 'shs';
+        const {
+          slug: baseSlug,
+          normalizedName,
+          universityKey,
+        } = buildCommunitySlug(course.name, isShs ? 'shs-ghana' : user?.university);
+        const slug = isShs ? `shs:${baseSlug}` : baseSlug;
+        const community = await prisma.community.upsert({
+          where: { slug },
+          create: {
+            slug,
+            normalizedName,
+            displayName: course.name.trim(),
+            universityKey,
+            universityName: isShs ? 'Ghana SHS' : user?.university?.trim() || null,
+            learnerScope: isShs ? 'shs' : 'university',
+          },
+          update: {},
+        });
+        communityId = community.id;
+        await prisma.course.update({
+          where: { id: course.id },
+          data: { communityId },
+        });
+      }
+
+      await prisma.communityMember.upsert({
+        where: { communityId_userId: { communityId, userId } },
+        create: { communityId, userId, role: 'member' },
+        update: {},
+      });
+
+      return communityId;
+    },
+    formatAuthor,
+    sendCommunityNotification,
+  });
+
   return {
+    hub,
     getSettings,
     assertCommunityFeatureEnabled,
     getBlockedUserIds,

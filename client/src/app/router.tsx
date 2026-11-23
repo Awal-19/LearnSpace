@@ -41,6 +41,26 @@ const CommunityHomePage = lazy(() =>
     default: m.CommunityHomePage,
   })),
 );
+const CommunityDiscoverPage = lazy(() =>
+  import('../features/community/CommunityDiscoverPage').then((m) => ({
+    default: m.CommunityDiscoverPage,
+  })),
+);
+const CommunityGroupsHubPage = lazy(() =>
+  import('../features/community/CommunityGroupsHubPage').then((m) => ({
+    default: m.CommunityGroupsHubPage,
+  })),
+);
+const CommunityDiscussionsPage = lazy(() =>
+  import('../features/community/CommunityDiscussionsPage').then((m) => ({
+    default: m.CommunityDiscussionsPage,
+  })),
+);
+const CommunityLeaderboardPage = lazy(() =>
+  import('../features/community/CommunityLeaderboardPage').then((m) => ({
+    default: m.CommunityLeaderboardPage,
+  })),
+);
 const CourseCommunityPage = lazy(() =>
   import('../features/community/CourseCommunityPage').then((m) => ({
     default: m.CourseCommunityPage,
@@ -215,6 +235,22 @@ export const appRoutes: RouteObject[] = [
   {
     path: 'community',
     element: withSuspense(<CommunityHomePage />),
+  },
+  {
+    path: 'community/discover',
+    element: withSuspense(<CommunityDiscoverPage />),
+  },
+  {
+    path: 'community/groups',
+    element: withSuspense(<CommunityGroupsHubPage />),
+  },
+  {
+    path: 'community/discussions',
+    element: withSuspense(<CommunityDiscussionsPage />),
+  },
+  {
+    path: 'community/leaderboard',
+    element: withSuspense(<CommunityLeaderboardPage />),
   },
   {
     path: 'community/courses/:communityId',
